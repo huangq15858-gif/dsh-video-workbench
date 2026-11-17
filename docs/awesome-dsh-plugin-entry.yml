@@ -1,10 +1,11 @@
 # 提交 PR 到 awesome-dsh-plugin/awesome-dsh-plugin 时，新增文件：
 # data/plugins/Merziller__dsh-video-workbench.yml
-# 注意：不要手动编辑 awesome-dsh-plugin 的 README.md（CI 会自动生成）
+# 注意：不要手动编辑 awesome-dsh-plugin 的 README.md / README.zh.md（合并后 CI 会自动生成）
 
 url: https://github.com/Merziller/dsh-video-workbench
 name: Merziller/dsh-video-workbench
 category: tools
 description:
-  en: Multi-agent dual-engine (HTML5/GSAP and Remotion) video creation workbench with bundled FFmpeg and Remotion runtime, beat-sync mixing, and multi-engine TTS.
-  zh: 多智能体双引擎（HTML5 与 Remotion）AI 视频工作台：内置免配置 Remotion 与 FFmpeg 运行时、BGM 节拍踩点混音及多引擎配音克隆。
+  en: 'Video workbench plugin for DeepSeek Harness: 24 tools spanning HTML5/Canvas and Remotion 4.x TSX rendering with bundled FFmpeg and Remotion runtime, BGM beat-sync mixing, multi-engine TTS (IndexTTS-2.5, GPT-SoVITS, custom OpenAI/HTTP/CLI), and transparent alpha avatar overlays.'
+  zh: 'DeepSeek Harness 视频创作工作台：集成 24 个工具，支持 HTML5/Canvas 与 Remotion 4.x TSX 双引擎出片，内置免配置 FFmpeg 与 Remotion 运行时、BGM 节拍踩点混音、IndexTTS-2.5 / GPT-SoVITS / 自定义多引擎配音与透明通道数字人口播。'
+tarball: https://github.com/Merziller/dsh-video-workbench/releases/download/v0.2.0/dsh-video-workbench-0.2.0.tgz

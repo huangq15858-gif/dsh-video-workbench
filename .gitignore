@@ -59,6 +59,7 @@ voice-packs/samples/
 *.pth
 *.onnx
 *.png
+!assets/screenshots/*.png
 *.jpg
 *.jpeg
 *.webp
