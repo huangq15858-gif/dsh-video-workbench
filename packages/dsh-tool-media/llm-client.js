@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
-import { loadEnv, resolveEnvPath } from '@dsh-video/shared'
+import { loadEnv, resolveEnvPath } from '../shared/index.js'
 
 export const WIRE_PROTOCOLS = [
   {

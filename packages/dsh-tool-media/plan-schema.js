@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
-import { deriveVerbalSubtitleParts, normalizeVideoStyle, resolveSafeZoneSpec, sanitizeSpokenNarration, VIDEO_STYLES } from '@dsh-video/shared'
+import { deriveVerbalSubtitleParts, normalizeVideoStyle, resolveSafeZoneSpec, sanitizeSpokenNarration, VIDEO_STYLES } from '../shared/index.js'
 
 export const PROMO_PLAN_VERSION = 'promo-plan/1'
 

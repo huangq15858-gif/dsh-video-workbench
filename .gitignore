@@ -47,6 +47,7 @@ voice-packs/imported/
 voice-packs/samples/
 
 # Generated Media & Test Artifacts
+*.tgz
 *.mp4
 *.mov
 *.webm

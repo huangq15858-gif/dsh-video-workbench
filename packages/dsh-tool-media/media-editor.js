@@ -9,7 +9,7 @@ import {
   runCommandRedirected,
   VIDEO_STYLES,
   writeScriptJson,
-} from '@dsh-video/shared'
+} from '../shared/index.js'
 import { readAssets, writeAssets } from './asset-manager.js'
 
 const STYLE_COLOR_GRADE = Object.fromEntries(

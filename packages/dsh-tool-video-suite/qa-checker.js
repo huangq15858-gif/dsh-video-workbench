@@ -9,23 +9,12 @@ import {
 import { dirname, join, resolve } from 'node:path'
 import {
   computeSafeZonePreflight,
+  ensureRemotionJunction,
   resolveBinaries,
-  resolveEnvPath,
+  resolveRemotionRuntime,
   RESTRICTED_COMMERCIAL_FONT_PATTERNS,
   runCommandRedirected,
-} from '@dsh-video/shared'
-
-export function ensureRemotionJunction(projectDir) {
-  const absDir = resolve(projectDir)
-  const templateRoot = resolveEnvPath('REMOTION_TEMPLATE_ROOT', '')
-  const projNm = join(absDir, 'node_modules')
-  if (templateRoot && existsSync(join(templateRoot, 'node_modules')) && !existsSync(projNm)) {
-    try {
-      symlinkSync(join(templateRoot, 'node_modules'), projNm, 'junction')
-    } catch {}
-  }
-  return { absDir, templateRoot }
-}
+} from '../shared/index.js'
 
 /**
  * Scan LLM-generated TSX/HTML files for unsafe APIs, external links, hardcoded Windows paths, or Remotion/HyperFrames violations.
@@ -121,9 +110,10 @@ export function scanAiGeneratedCodeSandbox(filesMap = {}, { engine = 'remotion',
  * Run strict TypeScript typechecking (`tsc --noEmit`) against a Remotion project directory.
  */
 export async function runTypecheckOnProject(projectDir) {
-  const { absDir, templateRoot } = ensureRemotionJunction(projectDir)
+  const { absDir, templateRoot, runtime } = ensureRemotionJunction(projectDir)
   const candidates = [
     join(absDir, 'node_modules', 'typescript', 'bin', 'tsc'),
+    ...(runtime?.tscBin ? [runtime.tscBin] : []),
     ...(templateRoot ? [join(templateRoot, 'node_modules', 'typescript', 'bin', 'tsc')] : []),
   ]
   const tscBin = candidates.find((p) => existsSync(p))

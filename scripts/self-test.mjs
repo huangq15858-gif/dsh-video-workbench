@@ -1637,17 +1637,54 @@ export const BATCH_01_SCENES: Record<string, React.FC<CustomSceneProps>> = {
     throw new Error(`Adaptive pacing check failed: calm=${pCalm.id}, bal=${pBal.id}, dyn=${pDyn.id}, dur=${calmRepaired.shots[0].durationSec}`)
   }
 
-  // 16e. DSH desktop manifest + synchronous client module slot registration + Warroom interactive controls
+  // 16e. DSH desktop root-bundle manifest (zero workspace:* + bundled Remotion/FFmpeg) + synchronous client module slots
+  const rootPkg = JSON.parse(readFileSync(join(REPO_ROOT, 'package.json'), 'utf8'))
+  const rootPatchRaw = readFileSync(join(REPO_ROOT, 'cordis.patch.yml'), 'utf8')
   const wbPkg = JSON.parse(readFileSync(join(REPO_ROOT, 'packages', 'dsh-web-video-workbench', 'package.json'), 'utf8'))
-  const wbPatchRaw = readFileSync(join(REPO_ROOT, 'packages', 'dsh-web-video-workbench', 'cordis.patch.yml'), 'utf8')
   const wbClientSrc = readFileSync(join(REPO_ROOT, 'packages', 'dsh-web-video-workbench', 'lib', 'client.js'), 'utf8')
+  const allPkgFiles = ['package.json', ...readdirSync(join(REPO_ROOT, 'packages')).map((d) => join('packages', d, 'package.json'))]
+  for (const relPkg of allPkgFiles) {
+    const absPkg = join(REPO_ROOT, relPkg)
+    if (!existsSync(absPkg)) continue
+    if (readFileSync(absPkg, 'utf8').includes('workspace:*')) {
+      throw new Error(`${relPkg} still contains unresolvable workspace:* dependency`)
+    }
+  }
   if (
+    rootPkg.name !== 'dsh-video-workbench' ||
+    rootPkg.private === true ||
+    rootPkg.exports?.['./client'] !== './packages/dsh-web-video-workbench/lib/client.js' ||
+    rootPkg.dsh?.bundle?.patch !== './cordis.patch.yml' ||
+    rootPkg.dsh?.client?.platform !== 'web' ||
+    !rootPkg.dependencies?.remotion ||
+    !rootPkg.dependencies?.['@remotion/renderer'] ||
+    !rootPkg.dependencies?.['@ffmpeg-installer/ffmpeg'] ||
+    !rootPkg.dependencies?.['@ffprobe-installer/ffprobe'] ||
+    !rootPatchRaw.includes('dsh-video-workbench') ||
     wbPkg.exports?.['./client'] !== './lib/client.js' ||
-    wbPkg.dsh?.client?.platform !== 'web' ||
-    !wbPatchRaw.includes('@dsh-video/preset-video') ||
-    !wbPatchRaw.includes('@dsh-video/web-video-workbench')
+    wbPkg.dsh?.client?.platform !== 'web'
   ) {
-    throw new Error('dsh-web-video-workbench DSH desktop bundle manifest incomplete')
+    throw new Error('DSH root bundle manifest or bundled dependencies incomplete')
+  }
+  const rootBundlePlugin = (await import('../index.js')).default
+  const bundleTools = []
+  const bundlePresets = []
+  const bundleRoutes = []
+  const bundleWebui = []
+  const bundleMockCtx = {
+    plugin(plg) {
+      if (typeof plg === 'function') plg(bundleMockCtx)
+      else if (plg?.apply) plg.apply(bundleMockCtx)
+    },
+    inject(_deps, fn) { fn(bundleMockCtx) },
+    tools: { register: (d) => bundleTools.push(d.name) },
+    agentPresets: { register: (d) => bundlePresets.push(d.id) },
+    connection: { fetch: { register: (r) => bundleRoutes.push(r.path) } },
+    webui: { addStaticModule: (m) => bundleWebui.push(m) },
+  }
+  rootBundlePlugin.apply(bundleMockCtx)
+  if (bundleTools.length < 24 || !bundlePresets.includes('video-maker') || bundleRoutes.length < 30 || bundleWebui.length < 1) {
+    throw new Error(`Root bundle index.js failed to mount full stack: tools=${bundleTools.length}, presets=${bundlePresets.length}, routes=${bundleRoutes.length}, webui=${bundleWebui.length}`)
   }
   let capturedLoaderDef = null
   const mockReact = {

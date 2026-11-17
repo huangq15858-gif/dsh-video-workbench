@@ -1,8 +1,8 @@
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import vm from 'node:vm'
-import { createAbortError, resolveBinaries, runCommandRedirected } from '@dsh-video/shared'
-import { executeGenerateSpeech } from '@dsh-video/tool-local-tts'
+import { createAbortError, resolveBinaries, runCommandRedirected } from '../shared/index.js'
+import { executeGenerateSpeech } from '../dsh-tool-local-tts/index.js'
 import { DSP_SR, encodeStereoWav } from './audio-dsp.js'
 import { callLlmChat, extractJsonFromLlmText, getSafeLlmConfigSummary } from './llm-client.js'
 

@@ -132,16 +132,28 @@ INDEXTTS_ENDPOINT=http://127.0.0.1:9880
 REMOTION_TEMPLATE_ROOT=D:/your_path/remotion-template
 ```
 
-### 方式 A：一键挂载到本机 DeepSeek Harness 桌面端（推荐）
+### 方式 A：一行命令 / DSH 插件市场一键静默安装（推荐，免配置 Remotion 与 FFmpeg）
+
+本仓库根目录已构建为标准单包 DSH Bundle（零 `workspace:*` 依赖、零 `postinstall` 构建脚本），声明并随包自动安装 **`remotion`、`@remotion/bundler`、`@remotion/renderer`、`react`、`typescript`、`@ffmpeg-installer/ffmpeg`、`@ffprobe-installer/ffprobe`**，且在 Windows 下可自动复用系统自带 Microsoft Edge 完成 Remotion 与 HTML5 出片，无需用户再手动下载安装 Remotion 工程或配置 `FFMPEG_PATH`。
 
 ```powershell
-# 创建工作区内部包软链，并自动写入 ~/.dsh/profiles/desktop 的 bundles、依赖与插件软链
+# 直接从 GitHub 安装到 DSH 桌面端或 web profile（自动静默拉齐 Remotion + FFmpeg 依赖）
+dsh plugin --profile desktop add github:Merziller/dsh-video-workbench
+```
+
+> 若通过 **dshmarket / DSH「发现」插件市场** 搜到 `dsh-video-workbench`，点击卡片「**安装**」即可静默完成，完全无需命令行与手动配依赖；若本机另有本地 `IndexTTS-2.5` / `GPT-SoVITS` 配音模型，才需在界面弹窗里填写服务地址或可选目录。
+
+### 方式 B：克隆源码开发挂载（同步工作区软链到本机 DSH 桌面端）
+
+```powershell
+# 拉取源码后先安装运行依赖，再一键软链到 ~/.dsh/profiles/desktop
+pnpm install
 node scripts/install-profile.mjs
 ```
 
 执行成功后：**完全退出并重新启动 DeepSeek Harness 客户端**，在左侧边栏即可切换进入 **`🎬 AI 视频工坊`**（工作台左上角提供 **`← DeepSeek 对话`** 胶囊随时切回主对话），大模型预设会自动挂载 **`视频制作模式 (video-maker)`**（会自动同步读取你在 DSH 客户端中配置好的模型与 API Key）。
 
-### 方式 B：独立浏览器运行（支持系统浏览器直接开启摄像头自拍）
+### 方式 C：独立浏览器运行（支持系统浏览器直接开启摄像头自拍）
 
 ```powershell
 # 启动独立 Web 控制台（默认监听 http://127.0.0.1:4399，可用 DSH_VIDEO_PORT 改端口）
@@ -151,13 +163,19 @@ node scripts/dsh-runner.mjs video --keep-alive
 .\pnpm.cmd dsh video --keep-alive
 ```
 
-### 验证安装（全链条 16 关自动化自检）
+### 验证安装与发布自检（全链条 16 关自测 + 单包打包验证）
 
 ```powershell
+# 运行全链路 16 关端到端自动化验证
 node scripts/self-test.mjs
+
+# 检验 DSH 市场分发 .tgz 安装包是否自包含且无敏感文件泄露
+node scripts/pack-bundle.mjs
 ```
 
-> 说明：`self-test.mjs` 会完整测试 FFmpeg 解析、23 个 Cordis 工具注册、`IndexTTS-2.5` 常驻健康检查与真人配音（需已配置 `INDEXTTS_ROOT` / 可访问服务端）、HTML5 & Remotion 双引擎渲染（Remotion 阶段需 `REMOTION_TEMPLATE_ROOT`）、四协议 LLM 模拟自愈、BGM 节拍解析、DSH 同步槽位加载，以及开源合规与脱敏路径扫描。
+> 说明：`self-test.mjs` 会完整测试 FFmpeg/FFprobe 解析（含内置 zero-script 二进制与系统二进制）、24 个 Cordis 工具注册、`IndexTTS-2.5` 常驻健康检查与真人配音（需已配置 `INDEXTTS_ROOT` / 可访问服务端）、HTML5 & Remotion 双引擎渲染、四协议 LLM 模拟自愈、BGM 节拍解析、DSH 同步槽位加载、无 `workspace:*` 依赖清单检查，以及开源合规与脱敏路径扫描。
+
+> 📦 **上架 DSH 插件市场（awesome-dsh-plugin）**：仓库已预置 [`.github/workflows/release.yml`](./.github/workflows/release.yml)（打 `v*` Tag 自动构建 Release `.tgz` 预构建包）与 [`docs/awesome-dsh-plugin-entry.yml`](./docs/awesome-dsh-plugin-entry.yml)（标准目录条目模板）；推送仓库并给 GitHub 仓库添加 **`dsh-plugin`** Topic 标签后，即可向 `awesome-dsh-plugin/awesome-dsh-plugin` 提交 PR 收录。
 
 ---
 

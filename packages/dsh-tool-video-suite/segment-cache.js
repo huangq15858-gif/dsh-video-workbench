@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs'
 import { isAbsolute, join, resolve } from 'node:path'
-import { createAbortError, runCommandRedirected } from '@dsh-video/shared'
+import { createAbortError, runCommandRedirected } from '../shared/index.js'
 
 export function sha256Hex(input) {
   return createHash('sha256').update(input).digest('hex')

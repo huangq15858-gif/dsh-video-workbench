@@ -2,16 +2,16 @@ import { writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import {
   ensureWin11ProjectGuards,
-  REPO_ROOT,
+  PACKAGE_ROOT,
   writeScriptJson,
-} from '@dsh-video/shared'
-import LocalTtsPlugin from '@dsh-video/tool-local-tts'
-import AvatarPlugin from '@dsh-video/tool-avatar'
-import VideoSuitePlugin from '@dsh-video/tool-video-suite'
+} from '../shared/index.js'
+import LocalTtsPlugin from '../dsh-tool-local-tts/index.js'
+import AvatarPlugin from '../dsh-tool-avatar/index.js'
+import VideoSuitePlugin from '../dsh-tool-video-suite/index.js'
 import MediaPlugin, {
   buildRichHtmlVideo,
   writeRemotionProjectFiles,
-} from '@dsh-video/tool-media'
+} from '../dsh-tool-media/index.js'
 
 export const VIDEO_MAKER_SYSTEM_PROMPT = `你是 DeepSeek Harness「视频制作模式」(DSH Video Workbench) 的首席电影视觉导演与创意编程工程师，同时精通 **Remotion 4.x (React/TSX)** 与 **HyperFrames HTML5/Canvas** 帧级视频创作。
 
@@ -193,10 +193,10 @@ export function apply(ctx) {
         { path: '@deepseek-ai/dsh-tool-jobs' },
         { path: '@deepseek-ai/dsh-skill-filesystem' },
         { path: '@deepseek-ai/dsh-tool-skill' },
-        { path: join(REPO_ROOT, 'packages', 'dsh-tool-local-tts', 'index.js') },
-        { path: join(REPO_ROOT, 'packages', 'dsh-tool-avatar', 'index.js') },
-        { path: join(REPO_ROOT, 'packages', 'dsh-tool-video-suite', 'index.js') },
-        { path: join(REPO_ROOT, 'packages', 'dsh-tool-media', 'index.js') },
+        { path: join(PACKAGE_ROOT, 'packages', 'dsh-tool-local-tts', 'index.js') },
+        { path: join(PACKAGE_ROOT, 'packages', 'dsh-tool-avatar', 'index.js') },
+        { path: join(PACKAGE_ROOT, 'packages', 'dsh-tool-video-suite', 'index.js') },
+        { path: join(PACKAGE_ROOT, 'packages', 'dsh-tool-media', 'index.js') },
       ],
     })
   })

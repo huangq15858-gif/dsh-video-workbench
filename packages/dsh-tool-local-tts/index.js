@@ -9,9 +9,10 @@ import {
   REPO_ROOT,
   resolveBinaries,
   resolveEnvPath,
+  resolvePackagePath,
   runCommandRedirected,
   writeScriptJson,
-} from '@dsh-video/shared'
+} from '../shared/index.js'
 import {
   cloneRecordedVoice,
   findBestAvailableWavVoice,
@@ -315,7 +316,7 @@ export async function executeGenerateSpeech(args = {}) {
     effectiveVoice.promptText || (fallbackRef && refAudio === fallbackRef ? process.env.DEFAULT_REF_TEXT || '' : '')
   const allowPlaceholder =
     Boolean(args.allowPlaceholder) || String(process.env.TTS_ALLOW_PLACEHOLDER || '') === '1'
-  const bridgeScript = join(REPO_ROOT, 'scripts', 'tts-bridge.py')
+  const bridgeScript = resolvePackagePath('scripts', 'tts-bridge.py')
   const placeholderPythonBin = resolveEnvPath('INDEXTTS_PYTHON', '') || resolveEnvPath('GPTVOICE_PYTHON', '') || 'python'
 
   let providerInfo = {}

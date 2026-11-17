@@ -1,7 +1,7 @@
 {
   "name": "@dsh-video/web-video-workbench",
   "version": "0.1.0",
-  "description": "Three-column HTML/Remotion Video Workbench & Top-Bar Capsule Switcher for DeepSeek Harness",
+  "description": "Three-column HTML/Remotion Video Workbench WebUI & API plugin for DeepSeek Harness",
   "license": "MIT",
   "type": "module",
   "main": "./lib/index.js",
@@ -19,13 +19,5 @@
       "platform": "web",
       "immediately": true
     }
-  },
-  "dependencies": {
-    "@dsh-video/shared": "workspace:*",
-    "@dsh-video/tool-local-tts": "workspace:*",
-    "@dsh-video/tool-avatar": "workspace:*",
-    "@dsh-video/tool-video-suite": "workspace:*",
-    "@dsh-video/tool-media": "workspace:*",
-    "@dsh-video/preset-video": "workspace:*"
   }
 }

@@ -5,7 +5,7 @@
  * Zero build/JSX required; zero DSH core mutation.
  */
 window.__ModuleLoader__?.load({
-  id: '@dsh-video/web-video-workbench',
+  id: 'dsh-video-workbench',
   factory: (resolveModule) => {
     const ReactMod = resolveModule('react')
     const React = ReactMod?.default || ReactMod
@@ -7348,7 +7348,7 @@ window.__ModuleLoader__?.load({
     }
 
     return {
-      name: '@dsh-video/web-video-workbench',
+      name: 'dsh-video-workbench',
       inject: ['slots'],
       apply(ctx) {
         try {

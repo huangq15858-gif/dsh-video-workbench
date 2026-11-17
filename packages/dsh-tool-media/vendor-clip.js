@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { basename, join, resolve } from 'node:path'
-import { resolveBinaries, runCommandRedirected } from '@dsh-video/shared'
+import { resolveBinaries, runCommandRedirected } from '../shared/index.js'
 import { importAssets, updateAsset } from './asset-manager.js'
 
 function collectFilesRecursive(dir, base = '') {
@@ -103,8 +103,8 @@ export async function renderVendorClipIsolated({
   const tmpRawMp4 = join(reg.vendorDir, '.raw-render.mp4')
   const cleanClipAbs = join(reg.vendorDir, `vendor-${sanitizeSlug(reg.name)}-${reg.bundleSha256.slice(0, 8)}.mp4`)
 
-  const { resolveBrowserExecutable } = await import('@dsh-video/tool-video-suite')
-  const { renderHtmlVideoToMp4 } = await import('@dsh-video/tool-video-suite/frame-renderer.js')
+  const { resolveBrowserExecutable } = await import('../dsh-tool-video-suite/index.js')
+  const { renderHtmlVideoToMp4 } = await import('../dsh-tool-video-suite/frame-renderer.js')
   const browserBin = resolveBrowserExecutable()
   if (!browserBin) {
     throw new Error('未找到 Chromium / Edge 无头浏览器，无法渲染隔离 .motion 动画片段')

@@ -1,25 +1,83 @@
 {
-  "name": "dsh-video-workbench-monorepo",
-  "version": "0.1.0",
-  "private": true,
-  "description": "Dual-Engine (HTML/GSAP & Remotion) Video Workbench + Voice Pack System for DeepSeek Harness (DSH)",
+  "name": "dsh-video-workbench",
+  "version": "0.2.0",
+  "description": "DeepSeek Harness 多智能体双引擎视频工作台：AI 策划分镜、HTML5/Remotion 动效编码、48kHz 踩点混音、IndexTTS-2.5 / GPT-SoVITS 多引擎配音与数字人口播。",
   "license": "MIT",
+  "author": "Merziller",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Merziller/dsh-video-workbench.git"
+  },
+  "homepage": "https://github.com/Merziller/dsh-video-workbench#readme",
+  "bugs": {
+    "url": "https://github.com/Merziller/dsh-video-workbench/issues"
+  },
   "type": "module",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "main": "./index.js",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./packages/dsh-web-video-workbench/lib/client.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.js",
+    "cordis.patch.yml",
+    "packages/shared",
+    "packages/dsh-tool-local-tts",
+    "packages/dsh-tool-avatar",
+    "packages/dsh-tool-video-suite",
+    "packages/dsh-tool-media",
+    "packages/dsh-preset-video",
+    "packages/dsh-web-video-workbench",
+    "scripts/tts-bridge.py",
+    "scripts/tts-server.py",
+    "voice-packs/README.md",
+    "voice-packs/catalog.example.json",
+    ".env.example",
+    "README.md",
+    "LICENSE"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true
+    }
+  },
   "scripts": {
     "dsh": "node ./scripts/dsh-runner.mjs",
     "dsh:video": "node ./scripts/dsh-runner.mjs video",
     "setup:profile": "node ./scripts/install-profile.mjs",
+    "pack:bundle": "node ./scripts/pack-bundle.mjs",
     "test": "node ./scripts/self-test.mjs"
   },
-  "engines": {
-    "node": ">=20.0.0"
+  "dependencies": {
+    "@ffmpeg-installer/ffmpeg": "^1.1.0",
+    "@ffprobe-installer/ffprobe": "^2.1.2",
+    "@remotion/bundler": "4.0.542",
+    "@remotion/cli": "4.0.542",
+    "@remotion/renderer": "4.0.542",
+    "@types/react": "^18.3.31",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "remotion": "4.0.542",
+    "typescript": "^5.8.3"
   },
   "keywords": [
-    "deepseek-harness",
     "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
     "cordis",
     "remotion",
     "gsap",
+    "ffmpeg",
+    "video",
     "indextts",
     "gpt-sovits",
     "video-workbench"

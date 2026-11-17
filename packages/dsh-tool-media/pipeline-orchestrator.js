@@ -10,14 +10,14 @@ import {
   runCommandRedirected,
   sanitizeSpokenNarration,
   writeScriptJson,
-} from '@dsh-video/shared'
-import { executeGenerateSpeech, getActiveTtsEngineId, matchAllScenesInScript, resolveTtsEngineSpec } from '@dsh-video/tool-local-tts'
-import { executeGenerateAvatar } from '@dsh-video/tool-avatar'
+} from '../shared/index.js'
+import { executeGenerateSpeech, getActiveTtsEngineId, matchAllScenesInScript, resolveTtsEngineSpec } from '../dsh-tool-local-tts/index.js'
+import { executeGenerateAvatar } from '../dsh-tool-avatar/index.js'
 import {
   executeVideoLint,
   executeVideoRender,
   executeVideoSnapshot,
-} from '@dsh-video/tool-video-suite'
+} from '../dsh-tool-video-suite/index.js'
 import { importAssets, readAssets } from './asset-manager.js'
 import { planVideoFromAssets, syncProjectCodeFromScript } from './ai-director.js'
 import { buildRichHtmlVideo } from './html-generator.js'

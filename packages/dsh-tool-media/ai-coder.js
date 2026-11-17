@@ -15,9 +15,9 @@ import {
   readScriptJson,
   resolveVideoDimensions,
   writeScriptJson,
-} from '@dsh-video/shared'
-import { executeGenerateSpeech, matchAllScenesInScript } from '@dsh-video/tool-local-tts'
-import { executeVideoLint, executeVideoRender, runTypecheckOnProject, scanAiGeneratedCodeSandbox } from '@dsh-video/tool-video-suite'
+} from '../shared/index.js'
+import { executeGenerateSpeech, matchAllScenesInScript } from '../dsh-tool-local-tts/index.js'
+import { executeVideoLint, executeVideoRender, runTypecheckOnProject, scanAiGeneratedCodeSandbox } from '../dsh-tool-video-suite/index.js'
 import { importAssets, readAssets } from './asset-manager.js'
 import {
   analyzeAudioBeatStructure,

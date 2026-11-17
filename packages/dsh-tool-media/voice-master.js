@@ -15,7 +15,7 @@ import {
   resolveBinaries,
   runCommandRedirected,
   writeScriptJson,
-} from '@dsh-video/shared'
+} from '../shared/index.js'
 import { callLlmChat, extractJsonFromLlmText, getSafeLlmConfigSummary } from './llm-client.js'
 
 const clamp = (v, min, max, fallback) => {

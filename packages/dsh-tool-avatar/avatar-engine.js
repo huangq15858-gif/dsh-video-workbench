@@ -20,11 +20,12 @@ import {
   readScriptJson,
   REPO_ROOT,
   resolveBinaries,
+  resolveBrowserExecutable,
   resolveEnvPath,
   runCommandRedirected,
   writeScriptJson,
-} from '@dsh-video/shared'
-import { cloneRecordedVoice, executeGenerateSpeech } from '@dsh-video/tool-local-tts'
+} from '../shared/index.js'
+import { cloneRecordedVoice, executeGenerateSpeech } from '../dsh-tool-local-tts/index.js'
 
 export const AVATAR_TEMPLATES = [
   {
@@ -117,33 +118,6 @@ export function resolveSafeAvatarLayout(rawLayout) {
   if (['pip-br', 'br', 'bottom-right', '右下', '右下角', '右下角画中画'].includes(txt)) return 'pip-br'
   if (['off', 'none', '关闭'].includes(txt)) return 'off'
   return 'pip-br'
-}
-
-function findLocalBrowserBinary() {
-  loadEnv()
-  const explicit = resolveEnvPath('BROWSER_EXECUTABLE_PATH', '')
-  if (explicit && existsSync(explicit)) return explicit
-  const pwPath = resolveEnvPath('PLAYWRIGHT_BROWSERS_PATH', '')
-  if (pwPath && existsSync(pwPath)) {
-    try {
-      for (const entry of readdirSync(pwPath)) {
-        if (entry.startsWith('chromium-')) {
-          const exe = join(pwPath, entry, 'chrome-win', 'chrome.exe')
-          if (existsSync(exe)) return exe
-        }
-      }
-    } catch {}
-  }
-  const pf = process.env.ProgramFiles || ''
-  const pf86 = process.env['ProgramFiles(x86)'] || ''
-  const la = process.env.LOCALAPPDATA || ''
-  const candidates = [
-    pf86 && join(pf86, 'Microsoft', 'Edge', 'Application', 'msedge.exe'),
-    pf && join(pf, 'Microsoft', 'Edge', 'Application', 'msedge.exe'),
-    pf && join(pf, 'Google', 'Chrome', 'Application', 'chrome.exe'),
-    la && join(la, 'ms-playwright', 'chromium-1148', 'chrome-win', 'chrome.exe'),
-  ].filter(Boolean)
-  return candidates.find((p) => existsSync(p)) || ''
 }
 
 /**
@@ -367,7 +341,7 @@ async function renderAiPresenterToAlphaWebm({
   onProgress,
 }) {
   const template = AVATAR_TEMPLATES.find((t) => t.id === presetId) || AVATAR_TEMPLATES[0]
-  const browserBin = findLocalBrowserBinary()
+  const browserBin = resolveBrowserExecutable()
   const { ffmpeg } = resolveBinaries()
   const totalFrames = rmsEnvelope.length
   const totalSec = Number((totalFrames / fps).toFixed(3))

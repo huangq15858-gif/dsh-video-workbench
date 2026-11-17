@@ -6,7 +6,7 @@ import {
   readScriptJson,
   resolveBinaries,
   runCommandRedirected,
-} from '@dsh-video/shared'
+} from '../shared/index.js'
 
 function sanitizeSlug(raw) {
   return String(raw || 'dsh-video')

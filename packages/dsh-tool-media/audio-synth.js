@@ -5,9 +5,10 @@
  * - Generates beat-locked multi-instrument BGM (drums, analog bass, stereo pad, FM e-piano, arp pluck)
  * - Mixes Voice Narration + Procedural Reverb SFX Bus + User Custom SFX + Sidechain-Ducked BGM via FFmpeg into `output/master-audio.wav`
  */
+import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
-import { probeAudioDuration, resolveBinaries, runCommandRedirected } from '@dsh-video/shared'
+import { probeAudioDuration, resolveBinaries, runCommandRedirected } from '../shared/index.js'
 import {
   buildBeatGrid,
   DSP_SR,
@@ -25,6 +26,31 @@ import {
 } from './beat-analyzer.js'
 
 const SR = DSP_SR
+
+const amixNormalizeCache = new Map()
+function supportsAmixNormalize(ffmpegBin) {
+  if (amixNormalizeCache.has(ffmpegBin)) return amixNormalizeCache.get(ffmpegBin)
+  let ok = true
+  try {
+    const out = execFileSync(ffmpegBin, ['-hide_banner', '-h', 'filter=amix'], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true,
+      timeout: 5000,
+    })
+    ok = /\bnormalize\b/i.test(out || '')
+  } catch {
+    ok = false
+  }
+  amixNormalizeCache.set(ffmpegBin, ok)
+  return ok
+}
+
+function formatAmixChain(inputs, durationMode, ffmpegBin) {
+  return supportsAmixNormalize(ffmpegBin)
+    ? `amix=inputs=${inputs}:normalize=0:duration=${durationMode}`
+    : `amix=inputs=${inputs}:duration=${durationMode},volume=${inputs}`
+}
 
 export {
   analyzeAudioBeatStructure,
@@ -291,7 +317,7 @@ export async function mixVideoAudio({ projectDir, script, assetsManifest, output
     if (voiceLabels.length === 1) {
       filters.push(`${voiceLabels[0]}apad,atrim=0:${totalSec}[voices]`)
     } else {
-      filters.push(`${voiceLabels.join('')}amix=inputs=${voiceLabels.length}:normalize=0:duration=longest,apad,atrim=0:${totalSec}[voices]`)
+      filters.push(`${voiceLabels.join('')}${formatAmixChain(voiceLabels.length, 'longest', ffmpeg)},apad,atrim=0:${totalSec}[voices]`)
     }
     if (hasBgm) {
       filters.push('[voices]asplit=2[v_out][v_sc]')
@@ -308,7 +334,7 @@ export async function mixVideoAudio({ projectDir, script, assetsManifest, output
     if (sfxLabels.length === 1) {
       filters.push(`${sfxLabels[0]}apad,atrim=0:${totalSec},volume=${sfxBoost},alimiter=limit=0.78:level=disabled:attack=2:release=50[sfx_bus]`)
     } else {
-      filters.push(`${sfxLabels.join('')}amix=inputs=${sfxLabels.length}:normalize=0:duration=longest,apad,atrim=0:${totalSec},volume=${sfxBoost},alimiter=limit=0.78:level=disabled:attack=2:release=50[sfx_bus]`)
+      filters.push(`${sfxLabels.join('')}${formatAmixChain(sfxLabels.length, 'longest', ffmpeg)},apad,atrim=0:${totalSec},volume=${sfxBoost},alimiter=limit=0.78:level=disabled:attack=2:release=50[sfx_bus]`)
     }
     if (hasBgm && bgmStreamForMix) {
       // Transient micro-duck BGM ~2-4dB on impact/transition SFX bursts so cuts punch crisply across any music genre
@@ -324,7 +350,7 @@ export async function mixVideoAudio({ projectDir, script, assetsManifest, output
     mixInputs.push(bgmStreamForMix)
   }
 
-  filters.push(`${mixInputs.join('')}amix=inputs=${mixInputs.length}:normalize=0:duration=first,alimiter=limit=0.74:level=disabled:attack=2:release=50[master]`)
+  filters.push(`${mixInputs.join('')}${formatAmixChain(mixInputs.length, 'first', ffmpeg)},alimiter=limit=0.74:level=disabled:attack=2:release=50[master]`)
   args.push('-filter_complex', filters.join(';'), '-map', '[master]', '-c:a', 'pcm_s16le', '-ar', String(SR), '-t', String(totalSec), outWav)
 
   const res = await runCommandRedirected(ffmpeg, args, { timeoutMs: 120_000, signal, onChild })

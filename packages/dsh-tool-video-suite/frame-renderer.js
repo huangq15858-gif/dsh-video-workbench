@@ -26,12 +26,14 @@ import { pathToFileURL } from 'node:url'
 import {
   REPO_ROOT,
   createAbortError,
+  ensureRemotionJunction,
   killProcessTree,
   readScriptJson,
   resolveBinaries,
-  resolveEnvPath,
+  resolveBrowserExecutable,
+  resolveRemotionRuntime,
   runCommandRedirected,
-} from '@dsh-video/shared'
+} from '../shared/index.js'
 import { renderHtmlSegmentsWithCache } from './segment-cache.js'
 
 const MIME = {
@@ -522,9 +524,13 @@ export async function renderHtmlVideoToMp4({
   return { ok: true, framesRendered: totalFrames, outputPath: outMp4Path }
 }
 
-function findRemotionBrowser(templateRoot) {
-  const remotionCache = join(templateRoot, 'node_modules', '.remotion', 'chrome-headless-shell')
-  if (existsSync(remotionCache)) {
+function findRemotionBrowser(remotionRuntime) {
+  const candidates = [
+    remotionRuntime?.nodeModulesDir && join(remotionRuntime.nodeModulesDir, '.remotion', 'chrome-headless-shell'),
+    remotionRuntime?.templateRoot && join(remotionRuntime.templateRoot, 'node_modules', '.remotion', 'chrome-headless-shell'),
+  ].filter(Boolean)
+  for (const remotionCache of candidates) {
+    if (!existsSync(remotionCache)) continue
     const win64 = join(remotionCache, 'win64')
     if (existsSync(win64)) {
       for (const sub of readdirSync(win64)) {
@@ -536,34 +542,27 @@ function findRemotionBrowser(templateRoot) {
   return null
 }
 
-function ensureRemotionNodeModules(projectDir, templateRoot) {
-  const projNm = join(projectDir, 'node_modules')
-  const tplNm = join(templateRoot, 'node_modules')
-  if (!existsSync(projNm) && existsSync(tplNm)) {
-    try {
-      symlinkSync(tplNm, projNm, 'junction')
-    } catch {}
-  }
-}
-
 export async function renderRemotionProject({ projectDir, outMp4Path, snapshotFrames = [], snapshotDir = '', onlySnapshots = false, signal }) {
   if (signal?.aborted) throw createAbortError()
-  const tplRoot = resolveEnvPath('REMOTION_TEMPLATE_ROOT', '')
-  if (!tplRoot || !existsSync(join(tplRoot, 'node_modules', '@remotion', 'renderer'))) {
-    return { ok: false, reason: 'REMOTION_TEMPLATE_ROOT not configured or missing @remotion/renderer' }
+  const runtime = resolveRemotionRuntime()
+  if (!runtime || !existsSync(runtime.rendererEntry) || !existsSync(runtime.bundlerEntry)) {
+    return {
+      ok: false,
+      reason: 'Remotion runtime not found (install plugin dependencies or configure REMOTION_TEMPLATE_ROOT)',
+    }
   }
 
   const absProject = resolve(projectDir)
-  ensureRemotionNodeModules(absProject, tplRoot)
+  ensureRemotionJunction(absProject)
 
-  const bundlerMod = await import(pathToFileURL(join(tplRoot, 'node_modules', '@remotion', 'bundler', 'dist', 'index.js')).href)
-  const rendererMod = await import(pathToFileURL(join(tplRoot, 'node_modules', '@remotion', 'renderer', 'dist', 'index.js')).href)
+  const bundlerMod = await import(pathToFileURL(runtime.bundlerEntry).href)
+  const rendererMod = await import(pathToFileURL(runtime.rendererEntry).href)
 
   const entryPoint = existsSync(join(absProject, 'src', 'index.ts'))
     ? join(absProject, 'src', 'index.ts')
     : join(absProject, 'src', 'Root.tsx')
   const publicDir = join(absProject, 'public')
-  const browserExecutable = findRemotionBrowser(tplRoot) || undefined
+  const browserExecutable = findRemotionBrowser(runtime) || resolveBrowserExecutable() || undefined
 
   const serveUrl = await bundlerMod.bundle({
     entryPoint,

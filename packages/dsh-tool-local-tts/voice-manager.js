@@ -14,6 +14,7 @@ import {
 import { basename, dirname, extname, isAbsolute, join, resolve } from 'node:path'
 import {
   loadEnv,
+  PACKAGE_ROOT,
   probeAudioDuration,
   readScriptJson,
   REPO_ROOT,
@@ -21,7 +22,7 @@ import {
   resolveEnvPath,
   runCommandRedirected,
   writeScriptJson,
-} from '@dsh-video/shared'
+} from '../shared/index.js'
 
 const VOICE_FILENAME_PRESETS = {
   '女主播': {
@@ -227,6 +228,15 @@ export function getVoicePacksDir() {
   const dir = resolveEnvPath('VOICE_PACKS_DIR', './voice-packs')
   if (!existsSync(dir)) {
     mkdirSync(dir, { recursive: true })
+  }
+  if (REPO_ROOT !== PACKAGE_ROOT) {
+    const pkgEx = join(PACKAGE_ROOT, 'voice-packs', 'catalog.example.json')
+    const dstEx = join(dir, 'catalog.example.json')
+    if (existsSync(pkgEx) && !existsSync(dstEx)) {
+      try {
+        copyFileSync(pkgEx, dstEx)
+      } catch {}
+    }
   }
   return dir
 }

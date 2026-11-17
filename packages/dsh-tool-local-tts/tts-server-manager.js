@@ -5,7 +5,7 @@
 import { spawn } from 'node:child_process'
 import { existsSync, mkdirSync, openSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
-import { loadEnv, REPO_ROOT, resolveEnvPath } from '@dsh-video/shared'
+import { loadEnv, REPO_ROOT, resolveEnvPath, resolvePackagePath } from '../shared/index.js'
 import { resolveTtsEngineSpec } from './tts-config.js'
 
 let startingPromise = null
@@ -192,7 +192,7 @@ function spawnServer(engineId = 'indextts25') {
     XFORMERS_FORCE_DISABLE_TRITON: '1',
     PATH: [...pyPaths, process.env.PATH || ''].join(';'),
   }
-  const child = spawn(python, ['-s', join(REPO_ROOT, 'scripts', 'tts-server.py'), '--root', root, '--port', String(port)], {
+  const child = spawn(python, ['-s', resolvePackagePath('scripts', 'tts-server.py'), '--root', root, '--port', String(port)], {
     cwd: root,
     env,
     detached: true,

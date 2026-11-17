@@ -13,7 +13,7 @@ import {
   buildComplianceNoticeText,
   resolveSafeZoneSpec,
   syncProjectFonts,
-} from '@dsh-video/shared'
+} from '../shared/index.js'
 import { resolvePalette } from './html-generator.js'
 import { writeNarrativeDioramaRemotionLib } from './narrative-diorama.js'
 import { writeShotcraftRemotionLib } from './shotcraft-lib.js'

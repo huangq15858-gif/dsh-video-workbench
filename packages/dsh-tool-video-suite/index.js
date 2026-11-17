@@ -13,18 +13,19 @@ import {
   readScriptJson,
   REPO_ROOT,
   resolveBinaries,
+  resolveBrowserExecutable,
   resolveEnvPath,
   RESTRICTED_COMMERCIAL_FONT_PATTERNS,
   runCommandRedirected,
   syncProjectFonts,
   writeScriptJson,
-} from '@dsh-video/shared'
-import { readAssets } from '@dsh-video/tool-media/asset-manager.js'
-import { mixVideoAudio } from '@dsh-video/tool-media/audio-synth.js'
+} from '../shared/index.js'
+import { readAssets } from '../dsh-tool-media/asset-manager.js'
+import { mixVideoAudio } from '../dsh-tool-media/audio-synth.js'
 import {
   syncRemotionPublicAssets,
   writeRemotionProjectFiles,
-} from '@dsh-video/tool-media/remotion-generator.js'
+} from '../dsh-tool-media/remotion-generator.js'
 import {
   captureHtmlSnapshots,
   renderHtmlVideoToMp4,
@@ -36,7 +37,7 @@ import {
   scanAiGeneratedCodeSandbox,
 } from './qa-checker.js'
 
-export { runPostRenderQa, runTypecheckOnProject, scanAiGeneratedCodeSandbox }
+export { resolveBrowserExecutable, runPostRenderQa, runTypecheckOnProject, scanAiGeneratedCodeSandbox }
 
 /**
  * Parse hex color (#RRGGBB or #RGB) to relative luminance per WCAG 2.1.
@@ -70,43 +71,6 @@ export function computeContrastRatio(hexA, hexB) {
   const lighter = Math.max(lumA, lumB)
   const darker = Math.min(lumA, lumB)
   return Number(((lighter + 0.05) / (darker + 0.05)).toFixed(2))
-}
-
-/**
- * Resolve local Chromium / Chrome / Edge binary for HTML frame capture.
- */
-export function resolveBrowserExecutable() {
-  loadEnv()
-  const explicit = resolveEnvPath('BROWSER_EXECUTABLE_PATH', '')
-  if (explicit && existsSync(explicit)) return explicit
-
-  const pwPath = resolveEnvPath('PLAYWRIGHT_BROWSERS_PATH', '')
-  if (pwPath && existsSync(pwPath)) {
-    try {
-      for (const entry of readdirSync(pwPath)) {
-        if (entry.startsWith('chromium-')) {
-          const candidate = join(pwPath, entry, 'chrome-win', 'chrome.exe')
-          if (existsSync(candidate)) return candidate
-        }
-      }
-    } catch {}
-  }
-
-  // Fallback to standard Windows Edge / Chrome paths via environment variables (no personal username hardcoded)
-  const progFilesX86 = process.env['ProgramFiles(x86)'] || ''
-  const progFiles = process.env.ProgramFiles || ''
-  const localAppData = process.env.LOCALAPPDATA || ''
-  const candidates = [
-    progFilesX86 && join(progFilesX86, 'Microsoft', 'Edge', 'Application', 'msedge.exe'),
-    progFiles && join(progFiles, 'Microsoft', 'Edge', 'Application', 'msedge.exe'),
-    progFiles && join(progFiles, 'Google', 'Chrome', 'Application', 'chrome.exe'),
-    localAppData && join(localAppData, 'ms-playwright', 'chromium-1148', 'chrome-win', 'chrome.exe'),
-  ].filter(Boolean)
-
-  for (const c of candidates) {
-    if (existsSync(c)) return c
-  }
-  return ''
 }
 
 /**

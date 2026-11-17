@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { loadEnv, REPO_ROOT, resolveEnvPath } from '@dsh-video/shared'
+import { loadEnv, REPO_ROOT, resolveEnvPath } from '../shared/index.js'
 
 export const TTS_CONFIG_FILENAME = '.dsh-video-tts-config.json'
 

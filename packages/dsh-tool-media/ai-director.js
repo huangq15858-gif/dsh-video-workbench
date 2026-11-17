@@ -6,8 +6,8 @@
  */
 import { existsSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
-import { deriveVerbalSubtitleParts, normalizeVideoStyle, readScriptJson, resolveVideoDimensions, VIDEO_STYLES, writeScriptJson } from '@dsh-video/shared'
-import { matchAllScenesInScript } from '@dsh-video/tool-local-tts'
+import { deriveVerbalSubtitleParts, normalizeVideoStyle, readScriptJson, resolveVideoDimensions, VIDEO_STYLES, writeScriptJson } from '../shared/index.js'
+import { matchAllScenesInScript } from '../dsh-tool-local-tts/index.js'
 import { importAssets, readAssets } from './asset-manager.js'
 import { buildRichHtmlVideo, resolvePalette } from './html-generator.js'
 import { writeRemotionProjectFiles } from './remotion-generator.js'

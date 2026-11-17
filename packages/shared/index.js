@@ -1,26 +1,88 @@
 import { spawn } from 'node:child_process'
+import { createRequire } from 'node:module'
+import { homedir } from 'node:os'
 import {
   existsSync,
+  lstatSync,
   mkdirSync,
   openSync,
   closeSync,
+  readdirSync,
   readFileSync,
+  rmSync,
+  symlinkSync,
   writeFileSync,
   unlinkSync,
   statSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, isAbsolute, join, resolve } from 'node:path'
+import { basename, dirname, isAbsolute, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { syncProjectFonts } from './compliance.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
-export const REPO_ROOT = resolve(__dirname, '..', '..')
+/** Read-only plugin installation root (`packages/`, `scripts/`, bundled OFL fonts & npm deps). */
+export const PACKAGE_ROOT = resolve(__dirname, '..', '..')
+
+const isInstalledInNodeModules = /[\\/]node_modules[\\/]/i.test(PACKAGE_ROOT)
+const isDevWorkspace =
+  !isInstalledInNodeModules &&
+  (existsSync(join(PACKAGE_ROOT, '.git')) || existsSync(join(PACKAGE_ROOT, 'start-workbench.cmd')))
+
+/**
+ * Writable runtime workspace/config root:
+ * - In local git checkout dev mode: points to repo checkout (`D:\dsh-video-workbench`)
+ * - When installed into DSH `node_modules`: defaults to `$DSH_VIDEO_HOME` or `~/.dsh/video-workbench`
+ *   so updates never overwrite user configs/projects and pnpm's read-only store stays untouched.
+ */
+export const REPO_ROOT = isDevWorkspace
+  ? PACKAGE_ROOT
+  : resolve(
+      (process.env.DSH_VIDEO_HOME || '').trim() ||
+        join((process.env.DSH_HOME || '').trim() || join(homedir(), '.dsh'), 'video-workbench'),
+    )
+
+try {
+  if (!existsSync(REPO_ROOT)) mkdirSync(REPO_ROOT, { recursive: true })
+} catch {}
+
+/**
+ * Resolve a read-only file shipped inside the plugin package (e.g. `scripts/tts-bridge.py`).
+ */
+export function resolvePackagePath(...segments) {
+  const inPkg = join(PACKAGE_ROOT, ...segments)
+  if (existsSync(inPkg)) return inPkg
+  return join(REPO_ROOT, ...segments)
+}
+
+function getPkgRequire() {
+  try {
+    return createRequire(join(PACKAGE_ROOT, 'package.json'))
+  } catch {
+    return null
+  }
+}
+
+function findExecutableOnPath(cmdName) {
+  const pathStr = process.env.PATH || process.env.Path || ''
+  if (!pathStr) return ''
+  const sep = process.platform === 'win32' ? ';' : ':'
+  const exts = process.platform === 'win32' ? ['.exe', '.cmd', ''] : ['']
+  for (const dir of pathStr.split(sep)) {
+    const cleanDir = dir.trim().replace(/^"+|"+$/g, '')
+    if (!cleanDir) continue
+    for (const ext of exts) {
+      const candidate = join(cleanDir, cmdName.endsWith(ext) ? cmdName : `${cmdName}${ext}`)
+      if (existsSync(candidate)) return candidate
+    }
+  }
+  return ''
+}
 
 let envLoaded = false
 
 /**
- * Load `.env` from repository root without hardcoding any machine-specific paths.
+ * Load `.env` from writable workspace root (never hardcodes personal paths).
  */
 export function loadEnv(force = false) {
   if (envLoaded && !force) return process.env
@@ -45,7 +107,7 @@ export function loadEnv(force = false) {
       }
     }
   }
-  // Ensure temporary directories default to repo `.tmp` on the project drive (preventing C: drive temp bloat)
+  // Ensure temporary directories default to writable `.tmp` (preventing C: drive temp bloat)
   const localTmp = join(REPO_ROOT, '.tmp')
   try {
     if (!existsSync(localTmp)) mkdirSync(localTmp, { recursive: true })
@@ -58,7 +120,7 @@ export function loadEnv(force = false) {
 }
 
 /**
- * Resolve a path from env (supports relative paths anchored to REPO_ROOT).
+ * Resolve a path from env (supports relative paths anchored to writable REPO_ROOT).
  */
 export function resolveEnvPath(envKey, fallbackRelative = '') {
   loadEnv()
@@ -68,23 +130,199 @@ export function resolveEnvPath(envKey, fallbackRelative = '') {
 }
 
 /**
- * Resolve ffmpeg & ffprobe binaries from `.env` (FFMPEG_PATH / FFPROBE_PATH) or system PATH.
- * Adapted from MIT-licensed `dsh-video-studio/dsh/ffmpeg.js`.
+ * Resolve Remotion runtime (`remotion`, `@remotion/renderer`, `@remotion/bundler`, `typescript`)
+ * cleanly across `.env REMOTION_TEMPLATE_ROOT` override, flat npm, and pnpm virtual stores.
+ */
+export function resolveRemotionRuntime() {
+  loadEnv()
+  const explicitRoot = resolveEnvPath('REMOTION_TEMPLATE_ROOT', '')
+  if (explicitRoot && existsSync(join(explicitRoot, 'node_modules', '@remotion', 'renderer', 'package.json'))) {
+    const nmDir = join(explicitRoot, 'node_modules')
+    const tscCand = join(nmDir, 'typescript', 'bin', 'tsc')
+    return {
+      templateRoot: explicitRoot,
+      nodeModulesDir: nmDir,
+      rendererEntry: join(nmDir, '@remotion', 'renderer', 'dist', 'index.js'),
+      bundlerEntry: join(nmDir, '@remotion', 'bundler', 'dist', 'index.js'),
+      tscBin: existsSync(tscCand) ? tscCand : '',
+    }
+  }
+
+  const nmCandidates = [
+    join(PACKAGE_ROOT, 'node_modules'),
+    basename(dirname(PACKAGE_ROOT)) === 'node_modules' ? dirname(PACKAGE_ROOT) : '',
+    basename(dirname(dirname(PACKAGE_ROOT))) === 'node_modules' ? dirname(dirname(PACKAGE_ROOT)) : '',
+  ].filter(Boolean)
+
+  for (const nmDir of nmCandidates) {
+    const rendererDir = join(nmDir, '@remotion', 'renderer')
+    const bundlerDir = join(nmDir, '@remotion', 'bundler')
+    const remotionDir = join(nmDir, 'remotion')
+    if (
+      existsSync(join(rendererDir, 'package.json')) &&
+      existsSync(join(bundlerDir, 'package.json')) &&
+      existsSync(join(remotionDir, 'package.json'))
+    ) {
+      const tscCand = join(nmDir, 'typescript', 'bin', 'tsc')
+      return {
+        templateRoot: nmDir === join(PACKAGE_ROOT, 'node_modules') ? PACKAGE_ROOT : dirname(nmDir),
+        nodeModulesDir: nmDir,
+        rendererEntry: join(rendererDir, 'dist', 'index.js'),
+        bundlerEntry: join(bundlerDir, 'dist', 'index.js'),
+        tscBin: existsSync(tscCand) ? tscCand : '',
+      }
+    }
+  }
+  return null
+}
+
+/**
+ * Link bundled `node_modules` (Remotion, React, TypeScript) into a generated video project
+ * so `tsc --noEmit` and `@remotion/bundler` work with zero manual `npm install`.
+ */
+export function ensureRemotionJunction(projectDir) {
+  const absDir = resolve(projectDir)
+  const runtime = resolveRemotionRuntime()
+  const projNm = join(absDir, 'node_modules')
+  if (runtime?.nodeModulesDir && existsSync(runtime.nodeModulesDir)) {
+    let hasProjNm = existsSync(projNm)
+    if (!hasProjNm) {
+      try {
+        // Remove dangling broken junction/symlink if target moved
+        lstatSync(projNm)
+        rmSync(projNm, { recursive: true, force: true })
+      } catch {}
+    }
+    if (!hasProjNm) {
+      try {
+        symlinkSync(runtime.nodeModulesDir, projNm, 'junction')
+      } catch {}
+    }
+  }
+  return { absDir, templateRoot: runtime?.templateRoot || '', runtime }
+}
+
+/**
+ * Resolve ffmpeg & ffprobe binaries cleanly:
+ * 1) Explicit custom `.env` `FFMPEG_PATH` / `FFPROBE_PATH`
+ * 2) Existing binary on system `PATH`
+ * 3) Bundled zero-script npm packages (`@ffmpeg-installer/ffmpeg`, `@ffprobe-installer/ffprobe`)
+ * 4) Fallback `@remotion/compositor-*` binaries
  */
 export function resolveBinaries() {
   loadEnv()
   const ffmpegEnv = (process.env.FFMPEG_PATH || '').trim()
   const ffprobeEnv = (process.env.FFPROBE_PATH || '').trim()
 
-  const ffmpeg = ffmpegEnv && existsSync(ffmpegEnv) ? ffmpegEnv : (ffmpegEnv || 'ffmpeg')
-  let ffprobe = ffprobeEnv && existsSync(ffprobeEnv) ? ffprobeEnv : ''
-  if (!ffprobe && ffmpegEnv && existsSync(ffmpegEnv)) {
-    const sibling = join(dirname(ffmpegEnv), process.platform === 'win32' ? 'ffprobe.exe' : 'ffprobe')
+  const req = getPkgRequire()
+  let bundledFfmpeg = ''
+  let bundledFfprobe = ''
+  if (req) {
+    try {
+      const m = req('@ffmpeg-installer/ffmpeg')
+      if (m?.path && existsSync(m.path)) bundledFfmpeg = m.path
+    } catch {}
+    try {
+      const p = req('@ffprobe-installer/ffprobe')
+      if (p?.path && existsSync(p.path)) bundledFfprobe = p.path
+    } catch {}
+  }
+
+  let ffmpeg = ''
+  if (ffmpegEnv && !/^ffmpeg(?:\.exe)?$/i.test(ffmpegEnv) && existsSync(ffmpegEnv)) {
+    ffmpeg = ffmpegEnv
+  } else if (findExecutableOnPath('ffmpeg')) {
+    ffmpeg = findExecutableOnPath('ffmpeg')
+  } else if (bundledFfmpeg) {
+    ffmpeg = bundledFfmpeg
+  }
+
+  let ffprobe = ''
+  if (ffprobeEnv && !/^ffprobe(?:\.exe)?$/i.test(ffprobeEnv) && existsSync(ffprobeEnv)) {
+    ffprobe = ffprobeEnv
+  } else if (ffmpeg) {
+    const sibling = join(dirname(ffmpeg), process.platform === 'win32' ? 'ffprobe.exe' : 'ffprobe')
     if (existsSync(sibling)) ffprobe = sibling
   }
-  if (!ffprobe) ffprobe = ffprobeEnv || 'ffprobe'
+  if (!ffprobe && findExecutableOnPath('ffprobe')) {
+    ffprobe = findExecutableOnPath('ffprobe')
+  }
+  if (!ffprobe && bundledFfprobe) {
+    ffprobe = bundledFfprobe
+  }
 
-  return { ffmpeg, ffprobe }
+  // Last-resort Remotion compositor native binaries if available
+  if ((!ffmpeg || !ffprobe) && req) {
+    try {
+      const rendererDir = dirname(req.resolve('@remotion/renderer/package.json'))
+      const nm = dirname(dirname(rendererDir))
+      const remDir = join(nm, '@remotion')
+      if (existsSync(remDir)) {
+        const compPkg = `@remotion/compositor-${process.platform}-${process.arch}${process.platform === 'win32' ? '-msvc' : ''}`
+        const compDir = join(nm, ...compPkg.split('/'))
+        const ffCand = join(compDir, process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg')
+        const fpCand = join(compDir, process.platform === 'win32' ? 'ffprobe.exe' : 'ffprobe')
+        if (!ffmpeg && existsSync(ffCand)) ffmpeg = ffCand
+        if (!ffprobe && existsSync(fpCand)) ffprobe = fpCand
+      }
+    } catch {}
+  }
+
+  return {
+    ffmpeg: ffmpeg || ffmpegEnv || 'ffmpeg',
+    ffprobe: ffprobe || ffprobeEnv || 'ffprobe',
+  }
+}
+
+/**
+ * Resolve local Chromium / Chrome / Edge binary for HTML frame capture and fallback Remotion rendering.
+ */
+export function resolveBrowserExecutable() {
+  loadEnv()
+  const explicit = resolveEnvPath('BROWSER_EXECUTABLE_PATH', '')
+  if (explicit && existsSync(explicit)) return explicit
+
+  const pwPath = resolveEnvPath('PLAYWRIGHT_BROWSERS_PATH', '')
+  if (pwPath && existsSync(pwPath)) {
+    try {
+      for (const entry of readdirSync(pwPath)) {
+        if (entry.startsWith('chromium-')) {
+          const candidate = join(pwPath, entry, 'chrome-win', 'chrome.exe')
+          if (existsSync(candidate)) return candidate
+        }
+      }
+    } catch {}
+  }
+
+  const progFilesX86 = process.env['ProgramFiles(x86)'] || ''
+  const progFiles = process.env.ProgramFiles || ''
+  const localAppData = process.env.LOCALAPPDATA || ''
+  const candidates =
+    process.platform === 'win32'
+      ? [
+          progFilesX86 && join(progFilesX86, 'Microsoft', 'Edge', 'Application', 'msedge.exe'),
+          progFiles && join(progFiles, 'Microsoft', 'Edge', 'Application', 'msedge.exe'),
+          progFiles && join(progFiles, 'Google', 'Chrome', 'Application', 'chrome.exe'),
+          progFilesX86 && join(progFilesX86, 'Google', 'Chrome', 'Application', 'chrome.exe'),
+          localAppData && join(localAppData, 'ms-playwright', 'chromium-1148', 'chrome-win', 'chrome.exe'),
+        ]
+      : process.platform === 'darwin'
+        ? [
+            '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge',
+            '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+            '/Applications/Chromium.app/Contents/MacOS/Chromium',
+          ]
+        : [
+            findExecutableOnPath('google-chrome'),
+            findExecutableOnPath('chromium'),
+            findExecutableOnPath('chromium-browser'),
+            findExecutableOnPath('microsoft-edge'),
+          ]
+
+  for (const c of candidates.filter(Boolean)) {
+    if (existsSync(c)) return c
+  }
+  return ''
 }
 
 /**

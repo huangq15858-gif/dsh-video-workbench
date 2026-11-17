@@ -15,6 +15,7 @@ import { fileURLToPath } from 'node:url'
 import {
   computeSafeZonePreflight,
   loadEnv,
+  PACKAGE_ROOT,
   probeAudioDuration,
   readScriptJson,
   REPO_ROOT,
@@ -23,14 +24,14 @@ import {
   resolveVideoDimensions,
   runCommandRedirected,
   writeScriptJson,
-} from '@dsh-video/shared'
+} from '../../shared/index.js'
 import {
   AVATAR_TEMPLATES,
   executeGenerateAvatar,
   getAvatarProviderSummary,
   probeVideoStream,
   saveAvatarConfig,
-} from '@dsh-video/tool-avatar'
+} from '../../dsh-tool-avatar/index.js'
 import {
   addOrUpdateCustomTtsEngine,
   cloneRecordedVoice,
@@ -45,14 +46,14 @@ import {
   resolveTtsEngineSpec,
   saveTtsConfig,
   setActiveTtsEngine,
-} from '@dsh-video/tool-local-tts'
+} from '../../dsh-tool-local-tts/index.js'
 import {
   executeVideoLint,
   executeVideoRender,
   executeVideoSnapshot,
   extractSceneThumbnails,
   runPostRenderQa,
-} from '@dsh-video/tool-video-suite'
+} from '../../dsh-tool-video-suite/index.js'
 import {
   analyzeAudioBeatStructure,
   callLlmChat,
@@ -82,11 +83,11 @@ import {
   executeCurateAndEditAssets,
   startPipelineBackground,
   taskManager,
-} from '@dsh-video/tool-media'
+} from '../../dsh-tool-media/index.js'
 import {
   scaffoldVideoProject,
   VIDEO_MAKER_SYSTEM_PROMPT,
-} from '@dsh-video/preset-video'
+} from '../../dsh-preset-video/index.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
@@ -136,7 +137,12 @@ async function parseRequestJson(req) {
 
 export function getWorkspaceRoot() {
   loadEnv()
-  const dir = resolveEnvPath('DSH_VIDEO_WORKSPACE', './examples')
+  if ((process.env.DSH_VIDEO_WORKSPACE || '').trim()) {
+    const dir = resolveEnvPath('DSH_VIDEO_WORKSPACE', '')
+    if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
+    return dir
+  }
+  const dir = REPO_ROOT === PACKAGE_ROOT ? join(PACKAGE_ROOT, 'examples') : join(REPO_ROOT, 'projects')
   if (!existsSync(dir)) {
     mkdirSync(dir, { recursive: true })
   }
@@ -1828,7 +1834,7 @@ export function apply(ctx) {
   try {
     ctx.inject(['webui'], (innerCtx) => {
       innerCtx?.webui?.addStaticModule?.({
-        id: 'dsh-web-video-workbench',
+        id: 'dsh-video-workbench',
         path: join(__dirname, 'client.js'),
       })
     })

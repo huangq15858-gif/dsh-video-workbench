@@ -6,7 +6,7 @@
  */
 import { existsSync, mkdirSync, readFileSync, unlinkSync } from 'node:fs'
 import { join, resolve } from 'node:path'
-import { REPO_ROOT, resolveBinaries, runCommandRedirected } from '@dsh-video/shared'
+import { REPO_ROOT, resolveBinaries, runCommandRedirected } from '../shared/index.js'
 
 /**
  * Analyze actual BPM, beat phase, bar downbeats, and structural drops from an audio file.

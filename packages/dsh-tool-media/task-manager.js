@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
-import { createAbortError, killProcessTree } from '@dsh-video/shared'
+import { createAbortError, killProcessTree } from '../shared/index.js'
 
 const AGENT_DEFS = [
   { id: 'director', name: '策划导演 Agent', subtitle: '口播文案 · 分镜规划 · 视觉方案' },

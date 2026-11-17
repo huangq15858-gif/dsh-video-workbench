@@ -4,8 +4,8 @@
  * multi-track audio mixing, AI storyboard planning, and one-click full video production.
  */
 import { join, resolve } from 'node:path'
-import { readScriptJson, writeScriptJson } from '@dsh-video/shared'
-import { executeGenerateSpeech } from '@dsh-video/tool-local-tts'
+import { readScriptJson, writeScriptJson } from '../shared/index.js'
+import { executeGenerateSpeech } from '../dsh-tool-local-tts/index.js'
 import {
   importAssets,
   readAssets,
@@ -218,7 +218,7 @@ export async function produceFullVideo(options = {}) {
   onProgress?.('3/5 正在生成双引擎画面工程（商用字体/安全区/动效/字幕）...')
   syncProjectCodeFromScript(absDir, curScript)
 
-  const { executeVideoLint, executeVideoRender } = await import('@dsh-video/tool-video-suite')
+  const { executeVideoLint, executeVideoRender } = await import('../dsh-tool-video-suite/index.js')
   const lint = await executeVideoLint({ projectDir: absDir, engine })
   if (!lint.ok) {
     throw new Error(`video_lint failed before render: ${lint.errors.join('; ')}`)
@@ -562,7 +562,7 @@ export function apply(ctx) {
     timeoutMs: 90_000,
     isConcurrencySafe: () => true,
     async execute(args) {
-      const { runPostRenderQa } = await import('@dsh-video/tool-video-suite')
+      const { runPostRenderQa } = await import('../dsh-tool-video-suite/index.js')
       const script = readScriptJson(args.projectDir).data
       return await runPostRenderQa({ projectDir: args.projectDir, mp4Path: args.mp4Path, script })
     },

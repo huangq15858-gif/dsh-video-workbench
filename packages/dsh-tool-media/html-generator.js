@@ -15,7 +15,7 @@ import {
   PRIMARY_MONO_STACK,
   PRIMARY_SANS_STACK,
   resolveSafeZoneSpec,
-} from '@dsh-video/shared'
+} from '../shared/index.js'
 
 const PALETTES = {
   tech: {

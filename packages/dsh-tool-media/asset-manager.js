@@ -20,7 +20,7 @@ import {
   REPO_ROOT,
   resolveBinaries,
   runCommandRedirected,
-} from '@dsh-video/shared'
+} from '../shared/index.js'
 
 export const IMAGE_EXTS = new Set(['.jpg', '.jpeg', '.png', '.webp', '.bmp', '.gif'])
 export const VIDEO_EXTS = new Set(['.mp4', '.mov', '.webm', '.mkv', '.avi', '.m4v'])
