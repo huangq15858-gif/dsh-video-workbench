@@ -681,3 +681,5 @@ export {
 }
 
 export default { name, inject, apply }
+export * from './genre-router.js'
+export { extractJsonFromLlmText } from './llm-client.js'

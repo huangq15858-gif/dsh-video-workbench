@@ -99,17 +99,21 @@ export async function executeCurateAndEditAssets(options = {}) {
     const roleHint = `${item.role || ''} ${item.name || ''} ${item.originalName || ''} ${item.path || ''}`.toLowerCase()
     const iw = Number(item.width || 0)
     const ih = Number(item.height || 0)
+    const isUiHiResShot = /ui|screen|app|shot|drawer|modal|step|warroom|task|hardware|tts|llm|light|dark|studio|board|polish/i.test(roleHint)
     const preserveAspect =
       item.fitMode === 'preserve' ||
       item.fitMode === 'contain' ||
       (item.type === 'image' && (
-        /ui|screen|app|shot|logo|brand|mark|comic|char|art|theme|compare|board|shelf|asset|render|export|task|studio/.test(roleHint) ||
+        isUiHiResShot ||
+        /logo|brand|mark|comic|char|art|theme|compare|shelf|asset|render|export/.test(roleHint) ||
         (iw > 0 && ih > 0 && iw !== ih && Math.abs(iw / ih - targetW / targetH) > 0.04)
       ))
 
+    const maxPresW = isUiHiResShot ? Math.max(targetW * 2, 3840) : targetW
+    const maxPresH = isUiHiResShot ? Math.max(targetH * 2, 2160) : targetH
     const vfChain = preserveAspect
       ? [
-          `scale='min(${targetW},iw)':'min(${targetH},ih)':force_original_aspect_ratio=decrease:flags=lanczos`,
+          `scale='min(${maxPresW},iw)':'min(${maxPresH},ih)':force_original_aspect_ratio=decrease:flags=lanczos`,
           `pad='ceil(iw/2)*2':'ceil(ih/2)*2'`,
           'setsar=1',
         ]
@@ -135,9 +139,14 @@ export async function executeCurateAndEditAssets(options = {}) {
         { timeoutMs: 45_000, signal, onChild },
       )
       if (res.code === 0 && existsSync(outAbs)) {
+        const scaleDown = preserveAspect && iw > 0 && ih > 0 ? Math.min(1, maxPresW / iw, maxPresH / ih) : 1
+        const actualW = preserveAspect && iw > 0 ? Math.ceil((iw * scaleDown) / 2) * 2 : targetW
+        const actualH = preserveAspect && ih > 0 ? Math.ceil((ih * scaleDown) / 2) * 2 : targetH
         item.editedPath = outRel
         item.editedWebPath = `./${outRel}`
-        item.editedSpec = { width: targetW, height: targetH, style: style || 'tech', chromaKeyColor: wantsChroma ? chromaKeyColor : '' }
+        item.editedWidth = actualW
+        item.editedHeight = actualH
+        item.editedSpec = { width: actualW, height: actualH, style: style || 'tech', chromaKeyColor: wantsChroma ? chromaKeyColor : '' }
         editedItems.push({ id: item.id, type: item.type, editedPath: outRel })
       }
     } else {

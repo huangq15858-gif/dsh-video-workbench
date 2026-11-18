@@ -14,6 +14,8 @@ import { basename, dirname, extname, isAbsolute, join, resolve } from 'node:path
 import { fileURLToPath } from 'node:url'
 import {
   computeSafeZonePreflight,
+  deriveDisplayTitle,
+  isMetaInstructionText,
   loadEnv,
   loadHardwarePreferences,
   PACKAGE_ROOT,
@@ -27,6 +29,7 @@ import {
   resolveVideoDimensions,
   runCommandRedirected,
   saveHardwarePreferences,
+  splitDirectorBrief,
   writeScriptJson,
 } from '../../shared/index.js'
 import {
@@ -61,6 +64,11 @@ import {
 import {
   analyzeAudioBeatStructure,
   callLlmChat,
+  detectGenre,
+  extractJsonFromLlmText,
+  getGenreProfile,
+  GENRE_PROFILES,
+  listGenresForPrompt,
   exportPublishPack,
   generateAiCodedBgmTrack,
   generateBgmWav,
@@ -224,7 +232,9 @@ function collectSceneThumbMap(projectDir) {
 }
 
 /**
- * Expand a short user video idea into a structured director prompt while preserving user assets and URLs.
+ * Expand a short user video idea into a STRUCTURED creative brief (genre-routed).
+ * The output separates what the audience sees/hears (displayTitle, contentOutline) from AI-only production
+ * directives (directorNotes) so that instructions can never be rendered or narrated in the final video.
  */
 export async function polishTopicPrompt(body = {}, { fetchImpl } = {}) {
   const rawPrompt = String(body.rawPrompt || body.topic || '').trim()
@@ -248,16 +258,33 @@ export async function polishTopicPrompt(body = {}, { fetchImpl } = {}) {
     .slice(0, 16)
   const musicList = (manifest.items || []).filter((it) => it.role === 'music').map((it) => it.originalName || it.name)
   const noteSnippets = (manifest.notes || []).map((n) => String(n.text || '').slice(0, 600)).filter(Boolean)
+  const guessedGenre = detectGenre(`${rawPrompt} ${noteSnippets.join(' ')}`, visualList.length > 0)
 
-  const systemPrompt = `你是深谙短视频爆款结构与产品发布的顶级视频总导演。
-用户只输入了一句简单直观的想法，请你帮他将其润色扩写为一段可直接驱动 AI 团队（策划导演 + 素材剪辑 + 配音混音 + Remotion/HTML动效）产出高质量成品的完整中文导演指令！
-要求：
-1. 直接输出润色后的纯文本导演指令正文，**禁止**附加开场寒暄（如“好的，以下是...”）、Markdown 标题前缀或代码块围栏。
-2. 结构紧凑有力（约 120~280 字），包含：核心叙事视角/开场黄金 3 秒钩子、结合实际可用素材（或无素材时定制纯代码动效）的分段结构、贴合题材的节奏基调、结尾号召/落款要点。
-3. 严禁虚构不存在的数据指标，若用户提供了具体产品名、链接或网址须原样保留，不要丢掉用户的原意。`
+  const systemPrompt = `你是全品类视频创作总导演，擅长把一句大白话想法扩写成 AI 制作团队可直接执行的结构化创作方案。
+先判断体裁（可从下列路由中选择，也可以自创最贴切的体裁——不要被列表限制）：
+${listGenresForPrompt()}
+
+严格只输出一个 JSON 对象（不要 Markdown、不要代码围栏、不要寒暄），字段如下：
+{
+  "genre": "体裁 id（上面列表中的 id；都不合适就写 other 并在 genreLabel 写自创体裁名）",
+  "genreLabel": "体裁中文名",
+  "displayTitle": "观众可见的作品标题，≤16 个字，只写作品名本身，不含任何制作要求",
+  "logline": "一句话说明这部片子讲什么（给导演看）",
+  "contentOutline": ["观众将看到/听到的内容要点 1", "要点 2", "..."],
+  "directorNotes": "仅供 AI 制作团队阅读：视觉语言/运镜/动画技法/节奏/配乐/配音音色与情绪方案/素材使用方式。120~260 字。",
+  "voiceStyle": "配音音色与情绪取向，如：富有张力史诗浑厚的纪录片男声 / 清亮亲切节奏明快的科技解说",
+  "suggestedStyle": "tech|cinematic|documentary|energetic|warm|emerald 之一"
+}
+硬性规则：
+1. directorNotes 里的任何文字都不会出现在视频中；displayTitle 与 contentOutline 才是观众可接触的信息。
+2. contentOutline 写事实/情节/步骤的要点（名词短语或短句），不要写成"本视频要求…""请制作…"之类指令。
+3. 结合 uploadedVisualAssets / uploadedNotes：有素材就写明如何使用；没有素材就由代码动画自由绘制（Three.js / SVG / Canvas）。
+4. 严禁虚构不存在的数据；用户给出的产品名、网址须原样保留在 contentOutline 中。
+5. 数字用阿拉伯数字书写（206 年、3000 人）。`
 
   const userMsg = JSON.stringify({
     userInput: rawPrompt,
+    guessedGenre,
     style: body.style || 'tech',
     aspectRatio: body.aspectRatio || 'auto',
     targetPlatform: body.targetPlatform || 'universal',
@@ -275,23 +302,76 @@ export async function polishTopicPrompt(body = {}, { fetchImpl } = {}) {
     system: systemPrompt,
     messages: [{ role: 'user', content: userMsg }],
     temperature: 0.45,
-    maxTokens: 1200,
-    timeoutMs: 60_000,
+    maxTokens: 2200,
+    timeoutMs: 90_000,
   })
-  const polishedTopic = String(reply?.text || '')
+  const rawText = String(reply?.text || '')
     .replace(/^```[\w]*\r?\n?/, '')
     .replace(/\r?\n?```$/, '')
     .trim()
-  if (!polishedTopic) {
+  if (!rawText) {
     const err = new Error('大模型未返回有效润色文本，请稍后重试。')
     err.status = 502
     throw err
   }
+
+  let parsed = null
+  try {
+    parsed = extractJsonFromLlmText(rawText)
+  } catch {}
+
+  const model = reply.model || overrideConfig?.model || llmSummary.model
+  const str = (v) => String(v ?? '').trim()
+  if (!parsed || typeof parsed !== 'object') {
+    // Legacy / free-text reply: keep it strictly as director notes, never as a title.
+    const split = splitDirectorBrief({ topic: rawText })
+    const title = deriveDisplayTitle(rawPrompt, '') || split.displayTitle
+    return {
+      ok: true,
+      polishedTopic: `【作品标题】${title}\n【体裁】${getGenreProfile(guessedGenre).label}\n【导演备注（仅供 AI 制作，不会出现在视频里）】\n${stripMetaFree(rawText)}`,
+      displayTitle: title,
+      genre: guessedGenre,
+      genreLabel: getGenreProfile(guessedGenre).label,
+      directorNotes: rawText,
+      contentOutline: [],
+      model,
+    }
+  }
+
+  const genreId = GENRE_PROFILES.some((g) => g.id === str(parsed.genre)) ? str(parsed.genre) : str(parsed.genre) ? 'other' : guessedGenre
+  const genreLabel = str(parsed.genreLabel) || getGenreProfile(genreId).label
+  const outline = (Array.isArray(parsed.contentOutline) ? parsed.contentOutline : str(parsed.contentOutline).split(/\n+/))
+    .map((x) => str(x).replace(/^[-\d.、\s]+/, ''))
+    .filter((x) => x && !isMetaInstructionText(x))
+  const displayTitle = str(parsed.displayTitle).slice(0, 24) || deriveDisplayTitle(rawPrompt, '作品')
+  const directorNotes = str(parsed.directorNotes)
+  const voiceStyle = str(parsed.voiceStyle)
+  const polishedTopic = [
+    `【作品标题】${displayTitle}`,
+    `【体裁】${genreLabel}`,
+    str(parsed.logline) ? `【一句话】${str(parsed.logline)}` : '',
+    outline.length ? `【内容要点】\n${outline.map((x, i) => `${i + 1}. ${x}`).join('\n')}` : '',
+    `【导演备注（仅供 AI 制作，不会出现在视频里）】\n${directorNotes}${voiceStyle ? `\n配音取向：${voiceStyle}` : ''}`,
+  ]
+    .filter(Boolean)
+    .join('\n')
   return {
     ok: true,
     polishedTopic,
-    model: reply.model || overrideConfig?.model || llmSummary.model,
+    displayTitle,
+    genre: genreId,
+    genreLabel,
+    logline: str(parsed.logline),
+    contentOutline: outline,
+    directorNotes: `${directorNotes}${voiceStyle ? `\n配音取向：${voiceStyle}` : ''}`,
+    voiceStyle,
+    suggestedStyle: str(parsed.suggestedStyle),
+    model,
   }
+}
+
+function stripMetaFree(text) {
+  return String(text || '').replace(/\s+/g, ' ').trim()
 }
 
 /**

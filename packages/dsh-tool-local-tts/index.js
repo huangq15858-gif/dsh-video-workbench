@@ -4,6 +4,7 @@ import {
   alignSubtitlesToSpeechAudio,
   buildSentenceSubtitles,
   loadEnv,
+  normalizeNumeralsForDisplay,
   probeAudioDuration,
   readScriptJson,
   REPO_ROOT,
@@ -11,15 +12,18 @@ import {
   resolveEnvPath,
   resolvePackagePath,
   runCommandRedirected,
+  toTtsText,
   writeScriptJson,
 } from '../shared/index.js'
 import {
+  castVoicesWithLlm,
   cloneRecordedVoice,
   findBestAvailableWavVoice,
   getVoiceCatalog,
   importVoicePack,
   matchAllScenesInScript,
   matchVoiceForScene,
+  syncVoiceLibraryJson,
 } from './voice-manager.js'
 import { ensureTtsServer, getTtsServerHealth } from './tts-server-manager.js'
 import {
@@ -36,11 +40,13 @@ import {
 } from './tts-config.js'
 
 export {
+  castVoicesWithLlm,
   cloneRecordedVoice,
   getVoiceCatalog,
   importVoicePack,
   matchAllScenesInScript,
   matchVoiceForScene,
+  syncVoiceLibraryJson,
   ensureTtsServer,
   getTtsServerHealth,
   loadTtsConfig,
@@ -364,6 +370,15 @@ export async function executeGenerateSpeech(args = {}) {
   const bridgeScript = resolvePackagePath('scripts', 'tts-bridge.py')
   const placeholderPythonBin = resolveEnvPath('INDEXTTS_PYTHON', '') || resolveEnvPath('GPTVOICE_PYTHON', '') || 'python'
 
+  const displayNarration = normalizeNumeralsForDisplay(String(text).trim())
+  const explicitTtsText = args.ttsText ? String(args.ttsText).trim() : ''
+  const cachedTargetTts =
+    targetScene?.ttsText && targetScene?.ttsNarrationRef === displayNarration
+      ? String(targetScene.ttsText).trim()
+      : ''
+  // Pronunciation-only text (digits → Chinese spoken reading + breath pauses); NEVER shown on screen
+  const spokenText = explicitTtsText || cachedTargetTts || toTtsText(displayNarration)
+
   const explicitSpeed = Number(args.speed)
   const explicitDurFactor = args.durationFactor !== undefined ? Number(args.durationFactor) : NaN
   const sceneSpeed = Number(targetScene?.speechRate)
@@ -383,10 +398,10 @@ export async function executeGenerateSpeech(args = {}) {
   let providerInfo = {}
 
   if (engineSpec.kind === 'windows-sapi') {
-    providerInfo = await synthesizeViaWindowsSapi(String(text).trim(), effectiveSpeed, effectiveVoice.gender || 'neutral', absOutputPath)
+    providerInfo = await synthesizeViaWindowsSapi(spokenText, effectiveSpeed, effectiveVoice.gender || 'neutral', absOutputPath)
   } else if (engineSpec.kind === 'openai-tts' || engineSpec.kind === 'http-json' || engineSpec.kind === 'cli-command') {
     const customVars = {
-      text: String(text).trim(),
+      text: spokenText,
       emotion: String(emotion || '平静'),
       lang: String(lang || 'zh'),
       speed: Number((effectiveSpeed * (Number(engineSpec.speed) || 1.0)).toFixed(3)) || 1.0,
@@ -411,7 +426,7 @@ export async function executeGenerateSpeech(args = {}) {
         [
           bridgeScript,
           '--engine', 'fallback',
-          '--text', String(text).trim(),
+          '--text', spokenText,
           '--output', absOutputPath,
           '--emotion', emotion,
           '--voice-id', effectiveVoice.id,
@@ -458,7 +473,7 @@ export async function executeGenerateSpeech(args = {}) {
     const bridgeArgs = [
       bridgeScript,
       '--engine', engineSpec.kind,
-      '--text', String(text).trim(),
+      '--text', spokenText,
       '--output', absOutputPath,
       '--emotion', emotion,
       '--lang', effectiveLang,
@@ -518,7 +533,7 @@ export async function executeGenerateSpeech(args = {}) {
           const leadSec = Number.isFinite(Number(scene.voiceLeadSec)) ? Number(scene.voiceLeadSec) : 0.35
           const tailSec = Number.isFinite(Number(scene.tailSec)) ? Number(scene.tailSec) : 0.65
           const sceneDurationSec = Number((leadSec + probe.durationSec + tailSec).toFixed(4))
-          const cleanNarration = String(text).trim()
+          const cleanNarration = displayNarration
           const subs = await alignSubtitlesToSpeechAudio({
             audioPath: absOutputPath,
             narration: cleanNarration,
@@ -544,6 +559,8 @@ export async function executeGenerateSpeech(args = {}) {
           return {
             ...scene,
             narration: cleanNarration,
+            ttsText: spokenText,
+            ttsNarrationRef: cleanNarration,
             subtitleText: finalSubs.map((s) => s.text).join(' '),
             subChunks: finalSubs.map((s) => s.text),
             emotion,

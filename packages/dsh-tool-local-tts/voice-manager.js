@@ -402,6 +402,64 @@ function scanDirectoryRecursive(dir, registerEntry, depth = 0, maxDepth = 4) {
  * Load user-saved catalog (`voice-packs/catalog.json`) + template + auto-discovered local voices
  * (including multi-level directories configured in `EXTRA_VOICE_SCAN_DIRS`).
  */
+function extractVoiceCastJson(raw = '') {
+  const txt = String(raw || '').trim()
+  if (!txt) return null
+  try { return JSON.parse(txt) } catch {}
+  const fenced = txt.match(/```(?:json)?\s*([\s\S]*?)```/i)
+  if (fenced?.[1]) {
+    try { return JSON.parse(fenced[1].trim()) } catch {}
+  }
+  const a = txt.indexOf('{')
+  const b = txt.lastIndexOf('}')
+  if (a >= 0 && b > a) {
+    try { return JSON.parse(txt.slice(a, b + 1)) } catch {}
+  }
+  return null
+}
+
+export function isVoiceQualityOk(v) {
+  if (!v || !v.available) return false
+  if (v.isAudioSample && v.durationSec !== null && v.durationSec < 3.0) return false
+  if (/(纯欲|叫卖|老鸨|太监|流氓|病娇|阴狠|恶毒)/.test(v.name || '') && v.durationSec !== null && v.durationSec < 3.5) {
+    return false
+  }
+  return true
+}
+
+export function syncVoiceLibraryJson(voices = [], categories = {}, packsDir = '') {
+  try {
+    const dir = packsDir || getVoicePacksDir()
+    const libPath = join(dir, 'voice_library.json')
+    const qualityVoices = (voices || []).map((v) => ({
+      id: v.id,
+      name: v.name,
+      category: v.category,
+      gender: v.gender,
+      ageGroup: v.ageGroup,
+      durationSec: v.durationSec,
+      tags: v.tags || [],
+      emotions: v.emotions || [],
+      roles: v.roles || [],
+      available: Boolean(v.available),
+      qualityOk: isVoiceQualityOk(v),
+      source: v.source || 'catalog',
+      refPath: v.resolvedRefPath || v.refPath || '',
+    }))
+    const payload = {
+      updatedAt: new Date().toISOString(),
+      totalVoices: qualityVoices.length,
+      qualityCount: qualityVoices.filter((x) => x.qualityOk).length,
+      categories,
+      voices: qualityVoices,
+    }
+    writeFileSync(libPath, JSON.stringify(payload, null, 2) + '\n', 'utf8')
+    return libPath
+  } catch {
+    return ''
+  }
+}
+
 export function getVoiceCatalog() {
   loadEnv()
   const packsDir = getVoicePacksDir()
@@ -512,11 +570,13 @@ export function getVoiceCatalog() {
   }
 
   const emotionReferences = discoverEmotionReferences()
+  const voiceLibraryPath = syncVoiceLibraryJson(voices, categories, packsDir)
   return {
     voices,
     categories,
     emotionReferences,
     catalogPath,
+    voiceLibraryPath,
   }
 }
 
@@ -726,10 +786,10 @@ export function matchVoiceForScene(scene = {}, projectMeta = {}, catalogVoices =
       voices.find((v) => v.id === requestedId || v.name === requestedId) ||
       voices.find((v) => v.id.toLowerCase().includes(kw) || v.name.toLowerCase().includes(kw))
     if (manualHit) {
-      const emoAudio = emotionReferences[scene.emotion] || emotionReferences['平静'] || ''
+      // Keep speaker's authentic timbre via native emo_vector / Qwen emo_text rather than foreign emotion clips
       return {
         voice: manualHit,
-        emotionAudio: emoAudio,
+        emotionAudio: '',
         mode: 'manual',
         score: 100,
         reason: `用户指定音色: [${manualHit.category}] ${manualHit.name} (${manualHit.id})`,
@@ -743,9 +803,11 @@ export function matchVoiceForScene(scene = {}, projectMeta = {}, catalogVoices =
     scene.narration || scene.text || '',
     scene.visualPrompt || '',
     scene.role || '',
+    projectMeta.genre || '',
     projectMeta.title || '',
     projectMeta.audience || '',
     projectMeta.goal || '',
+    projectMeta.directorNotes || '',
   ]
     .join(' ')
     .toLowerCase()
@@ -753,33 +815,40 @@ export function matchVoiceForScene(scene = {}, projectMeta = {}, catalogVoices =
   const sceneEmotion = (scene.emotion || '平静').trim()
   const sceneRole = (scene.role || 'narrator').trim().toLowerCase()
 
-  // Detect age / style hints from context
-  const wantsChild = /(孩童|儿童|少儿|小孩|男孩|女孩|宝宝|童年|小学|幼稚園|child|kid)/.test(contextText)
+  // Detect age / style / genre hints from context
+  const wantsChild = /(孩童|儿童|少儿|小孩|男孩|女孩|宝宝|童年|小学|幼儿园|child|kid)/.test(contextText)
   const wantsElderly = /(老年|老者|老爷爷|老奶奶|长老|太后|师太|岁月|沧桑|古稀|elder)/.test(contextText)
-  const wantsYouth = /(青年|少年|少女|up主|短视频|青春|学霸|师妹|师姐|侠客)/.test(contextText)
-  const isTechOrBiz = /(科技|架构|系统|代码|数据|引擎|产品|工作台|商业|ai|remotion|gsap|dsh)/.test(contextText)
-  const isTutorialOrGuide = /(教程|教学|实战|操作|指南|工作台|插件|功能板块|交互|流程|配置|使用|演示)/.test(contextText)
-  const isEpicOrDoc = /(历史|千年|戈壁|山河|传奇|史诗|文明|纪录|宣传片|风云|百慕大|悬疑|专题|党政)/.test(contextText)
-  const isWarmOrStory = /(故事|温暖|心灵|情感|夜晚|微光|漫步|治愈|回忆|文学|有声书)/.test(contextText)
+  const wantsYouth = /(青年|少年|少女|up主|短视频|青春|学霸|师妹|师姐|侠客|教程|上手)/.test(contextText)
+  const isTutorialOrGuide = projectMeta.genre === 'ui-tutorial' || /(教程|教学|实操|操作|指南|工作台|插件|上手|入门|功能演示|点击)/.test(contextText)
+  const isTechOrBiz = ['code-animation', 'product-promo', 'science-explainer'].includes(projectMeta.genre) || /(科技|架构|系统|代码|数据|引擎|产品|工作台|商业|ai|remotion|dsh)/.test(contextText)
+  const isEpicOrDoc = projectMeta.genre === 'history-theater' || /(历史|千年|戈壁|山河|传奇|史诗|文明|霍去病|项羽|秦汉|三国|战役)/.test(contextText)
+  const isWarmOrStory = ['brand-story', 'stickman-story'].includes(projectMeta.genre) || /(故事|温暖|心灵|情感|火柴人|漫步|治愈|回忆|文学|有声书)/.test(contextText)
   const primaryAnchorId = String(projectMeta?._primaryVoiceId || '').trim()
   const isStandardHostScene = !sceneRole || ['narrator', 'host', 'instructor', 'default'].includes(sceneRole)
 
   const scored = voices.map((v) => {
-    let score = 45
+    let score = 40
     const reasons = []
 
     if (v.available) {
       score += 15
     } else {
       // Never pick `.pt`-only legacy tensors or missing files over verified zero-shot WAVs
-      score -= v.requiresWav ? 75 : 55
+      score -= v.requiresWav ? 80 : 60
     }
-    if (v.isAudioSample && v.durationSec >= 3.5 && v.durationSec <= 12.5) {
-      score += 12
-      reasons.push(`黄金参考时长(${v.durationSec}s)`)
+    if (v.isAudioSample && v.durationSec !== null && v.durationSec < 3.0) {
+      score -= 48
+    } else if (v.isAudioSample && v.durationSec >= 4.0 && v.durationSec <= 25.0) {
+      score += 15
+      reasons.push(`高清晰参考时长(${v.durationSec}s)`)
+    } else if (v.isAudioSample && v.durationSec > 25.0) {
+      score += 10
     }
     if (v.source === 'env-default' && voices.some((x) => x.available && x.isAudioSample && x.source !== 'env-default')) {
-      score -= 22
+      score -= 28
+    }
+    if (v.source === 'user-imported-file' || v.category === '专属声纹克隆') {
+      score += 10
     }
 
     // Age group alignment (crucial when child/elderly voices are in catalog!)
@@ -798,22 +867,21 @@ export function matchVoiceForScene(scene = {}, projectMeta = {}, catalogVoices =
         score -= 10
       }
     } else {
-      // Standard narrator/host scenes shouldn't accidentally pick a 4-year-old child or extreme character voice
-      if (v.ageGroup === 'child') score -= 22
-      if (v.ageGroup === 'elderly') score -= 12
+      if (v.ageGroup === 'child') score -= 28
+      if (v.ageGroup === 'elderly') score -= 18
     }
 
-    if (wantsYouth && v.ageGroup === 'youth') {
+    if (wantsYouth && (v.ageGroup === 'youth' || /(青年|学霸|男青年|女青年|解说配音)/.test(v.name))) {
       score += 14
       reasons.push('青年活力声线')
     }
 
     // Penalize extreme villain/comic/domain-mismatch character archetypes on normal narration unless requested
-    if (/(太监|流氓|恶毒|病娇|叫卖|老鸨|狐狸精)/.test(v.name) && !/(反派|太监|流氓|叫卖|剧情)/.test(contextText)) {
-      score -= 25
+    if (/(太监|流氓|恶毒|病娇|叫卖|老鸨|狐狸精|公公|傻|弱智)/.test(v.name) && !/(反派|太监|流氓|叫卖|剧情|搞笑)/.test(contextText)) {
+      score -= 32
     }
-    if (/(党政|动物|野史|古代帝王)/.test(v.name) && !/(党政|政务|动物|古代帝王)/.test(contextText)) {
-      score -= 24
+    if (/(党政|动物|野史|古代帝王|老古板|刻薄)/.test(v.name) && !/(党政|政务|动物|古代帝王)/.test(contextText)) {
+      score -= 28
     }
     if (primaryAnchorId && v.id === primaryAnchorId && isStandardHostScene) {
       score += 24
@@ -822,8 +890,7 @@ export function matchVoiceForScene(scene = {}, projectMeta = {}, catalogVoices =
 
     // Role & gender alignment
     if (v.roles && v.roles.some((r) => r.toLowerCase() === sceneRole)) {
-      score += 12
-      reasons.push(`角色契合(${sceneRole})`)
+      score += 10
     }
     if ((sceneRole.includes('female') || sceneRole.includes('女')) && v.gender === 'female') {
       score += 18
@@ -835,38 +902,43 @@ export function matchVoiceForScene(scene = {}, projectMeta = {}, catalogVoices =
 
     // Emotion affinity
     if (Array.isArray(v.emotions) && v.emotions.includes(sceneEmotion)) {
-      score += 8
-      reasons.push(`情绪支持(${sceneEmotion})`)
+      score += 6
     }
 
-    // Tag keyword matching against scene + project context
+    // Tag keyword matching (cap contribution so generic tags like "专题/旁白" don't monopolize)
     const matchedTags = (v.tags || []).filter(
       (tag) => tag.length >= 2 && contextText.includes(String(tag).toLowerCase()),
     )
     if (matchedTags.length > 0) {
-      score += Math.min(28, matchedTags.length * 9)
+      score += Math.min(18, matchedTags.length * 7)
       reasons.push(`标签命中(${matchedTags.slice(0, 3).join('/')})`)
     }
 
-    if (isTutorialOrGuide && (v.tags?.some((t) => ['解说', '主播', '旁白', '无底噪', '温柔', '清晰'].includes(t)) || /(专业解说|温柔青年|温柔女青年|解说青年|女主播)/.test(v.name))) {
-      score += 16
-      reasons.push('教程实战讲解语境')
-    }
-    if (isTechOrBiz && v.tags?.some((t) => ['女主播', '科技', '无底噪', '商业', '专业感', '专业解说', '解说', '宣传片'].includes(t))) {
-      score += 15
-      reasons.push('科技/专业解说语境')
-    }
-    if (/(专业解说|纪录片宣传片|广播|旁白|宣传|广告感)/.test(v.name)) {
-      score += 14
-      reasons.push('广播级解说音色')
-    }
-    if (isEpicOrDoc && v.tags?.some((t) => ['纪录片', '评书', '历史', '沉稳', '浑厚', '宣传片', '专题'].includes(t))) {
-      score += 18
-      reasons.push('宏大纪录/历史叙事语境')
-    }
-    if (isWarmOrStory && v.tags?.some((t) => ['苏瑶', '温婉', '故事', '治愈', '人文', '温柔', '有声书', '文学'].includes(t))) {
-      score += 16
-      reasons.push('人文情感叙事语境')
+    // Expressive genre scoring (breaks the monotone 男-专题 纪录 旁白 bias!)
+    if (isTutorialOrGuide) {
+      if (/(短视频解说青年男声|短视频温柔女青年解说|专业解说配音|阳光有趣的学霸小哥|大羊磁性舒适音|温软姐姐|温柔青年音)/.test(v.name)) {
+        score += 26
+        reasons.push('高活力教程讲解音色')
+      } else if (/(男-专题 纪录 旁白|古板)/.test(v.name)) {
+        score -= 12
+      } else if (v.tags?.some((t) => ['解说', '主播', '无底噪', '清晰'].includes(t))) {
+        score += 14
+      }
+    } else if (isEpicOrDoc) {
+      if (/(男-低沉 厚重 历历在目|纪录片宣传片高质男音|文学旁白解说|若天歌|男-正经专注 流畅饱满|中年男烟酒嗓独白|男-专题 纪录 旁白)/.test(v.name)) {
+        score += 26
+        reasons.push('史诗浑厚纪录旁白')
+      }
+    } else if (isTechOrBiz) {
+      if (/(专业解说配音|短视频解说青年男声|大羊磁性舒适音|纪录片宣传片高质男音|男-正经专注 流畅饱满|女主播|无底噪)/.test(v.name)) {
+        score += 22
+        reasons.push('科技商业专业解说')
+      }
+    } else if (isWarmOrStory) {
+      if (/(苏瑶|台湾男青年音故事讲述|有声书主播|温柔贤淑|温和|温软姐姐|中音磁性女声旁白|文学旁白解说)/.test(v.name)) {
+        score += 22
+        reasons.push('故事情感叙事音色')
+      }
     }
 
     return {
@@ -878,13 +950,13 @@ export function matchVoiceForScene(scene = {}, projectMeta = {}, catalogVoices =
 
   scored.sort((a, b) => b.score - a.score)
   const best = scored[0]
-  const emoAudio = emotionReferences[sceneEmotion] || ''
+  // Keep authentic speaker timbre without blending third-party emotion reference audio
   const reasonSummary =
     best.reasons.length > 0 ? best.reasons.join(' + ') : '综合语境最优音色'
 
   return {
     voice: best.voice,
-    emotionAudio: emoAudio,
+    emotionAudio: '',
     mode: 'auto',
     score: best.score,
     reason: `AI 自动匹配: [${best.voice.category}] ${best.voice.name} [匹配度 ${best.score}% — ${reasonSummary}]`,
@@ -985,6 +1057,166 @@ export function matchAllScenesInScript(projectOrFile, options = {}) {
     voiceMode: saved.data.voiceMode,
     defaultVoiceId: saved.data.defaultVoiceId,
     matches: results,
+  }
+}
+
+function curateCandidatesForLlm(voices = [], maxTotal = 55) {
+  const clean = (voices || []).filter((v) => isVoiceQualityOk(v) && v.source !== 'env-default')
+  const pool = clean.length >= 4 ? clean : (voices || []).filter((v) => v.available)
+  // Prioritize narrator/host/story/expressive voices while preserving diverse character roles across categories
+  const scored = pool.map((v) => {
+    let w = 10
+    if (v.source === 'user-imported-file' || v.category === '专属声纹克隆') w += 45
+    if (/(解说|旁白|纪录片|宣传片|青年|学霸|主播|故事|有声|磁性|温柔|帝王|将军|大叔|青年音|少女|少儿|评书|苏瑶)/.test(v.name)) w += 25
+    if (v.durationSec >= 4.5 && v.durationSec <= 25) w += 12
+    if (/(太监|流氓|老鸨|叫卖|恶毒|病娇)/.test(v.name)) w -= 18
+    return { v, w }
+  })
+  scored.sort((a, b) => b.w - a.w)
+  return scored.slice(0, maxTotal).map(({ v }) => ({
+    id: v.id,
+    name: v.name,
+    category: v.category,
+    gender: v.gender,
+    ageGroup: v.ageGroup,
+    durationSec: v.durationSec,
+    tags: (v.tags || []).filter((t) => t !== v.category).slice(0, 6),
+  }))
+}
+
+/**
+ * LLM Semantic Voice Casting:
+ * Exposes curated high-quality voices from the local voice pack to the AI LLM so it picks
+ * the best speaker(s), per-scene emotion & expressive speed instead of picking hardcoded defaults.
+ */
+export async function castVoicesWithLlm({
+  projectDir,
+  scriptData = null,
+  genre = '',
+  genreGuidance = '',
+  callLlmChatFn,
+} = {}) {
+  if (typeof callLlmChatFn !== 'function') {
+    return { ok: false, reason: 'missing callLlmChatFn' }
+  }
+  const data = scriptData || (projectDir ? readScriptJson(projectDir).data : null)
+  if (!data || !Array.isArray(data.scenes) || data.scenes.length === 0) {
+    return { ok: false, reason: 'no scenes' }
+  }
+  if (data.voiceMode === 'manual' && data.defaultVoiceId && data.defaultVoiceId !== 'auto') {
+    return { ok: false, skipped: true, reason: 'manual defaultVoiceId locked' }
+  }
+
+  const { voices, categories } = getVoiceCatalog()
+  const candidates = curateCandidatesForLlm(voices, 56)
+  if (candidates.length === 0) {
+    return { ok: false, reason: 'no quality candidates available' }
+  }
+  const byId = new Map(voices.map((v) => [v.id, v]))
+
+  const system = `你是顶级音频配音选角导演（Voice Casting Director）。
+你的职责：从用户的本地精品音色库中，根据创作主题、题材（教程/代码演示/历史剧场/火柴人故事/科普/宣发等）和每一幕的口播语境，为全片挑选**真实有感染力、抑扬顿挫**的配音音色，并为每一幕设定情绪词 \`voiceEmotion\` 与轻快自然的语速 \`speechRate\`。
+
+硬性原则：
+1. 只能从 \`availableVoices\` 的 \`id\` 中选取真实存在的音色！
+2. 选角品味：
+   - 实操教程 / 科技产品讲解：优先选“充满活力、清亮亲切、节奏明快”的解说音色（例如 短视频解说青年男声、短视频温柔女青年解说、专业解说配音、阳光有趣的学霸小哥、大羊磁性舒适音、温软姐姐 等），**严禁选用刻板沉闷老旧风格**，教程语速默认控制在 **1.06 ~ 1.14** 保持明快不拖沓！
+   - 历史剧场 / 纪实传奇：主讲选“史诗浑厚、富有张力、抑扬顿挫”的中青年或纪录片旁白（如 男-低沉 厚重 历历在目、纪录片宣传片高质男音、文学旁白解说、若天歌 青叔音 等），人物台词可按角色（青年将领/帝王/老年谋士等）切换对应角色音色！
+   - 角色动画 / 火柴人故事：按主角/旁白/反派分角色选音，富于戏剧张力！
+3. 每幕必须填 \`voiceEmotion\`（推荐取值：高兴、欢快热情、激昂有力、自信、重点强调、温和、亲切、严肃强调、悬念低沉、深沉、悲壮、兴奋、期待），避免整片全写“平静”导致平淡无味！
+4. 输出严格 JSON（无 Markdown 围栏）：
+{
+  "primaryVoiceId": "选中的主讲音色 id",
+  "primaryReason": "为什么选该音色",
+  "sceneCasting": [
+    { "id": "scene-01", "voiceId": "可用同一主讲或切换角色音色 id", "voiceEmotion": "欢快热情", "speechRate": 1.08, "rationale": "一句选角理由" }
+  ]
+}`
+
+  const user = JSON.stringify(
+    {
+      title: data.displayTitle || data.title || data.topic || '',
+      genre: genre || data.genre || '',
+      genreGuidance: genreGuidance || '',
+      directorNotes: data.directorNotes || '',
+      voiceCategoriesSummary: categories,
+      availableVoices: candidates,
+      scenes: data.scenes.map((s) => ({
+        id: s.id,
+        title: s.title,
+        role: s.role || 'narrator',
+        narration: s.narration || '',
+        currentEmotion: s.emotion || '平静',
+      })),
+    },
+    null,
+    2,
+  )
+
+  const reply = await callLlmChatFn({
+    system,
+    messages: [{ role: 'user', content: user }],
+    temperature: 0.35,
+    maxTokens: 3200,
+    timeoutMs: 90_000,
+  })
+
+  const parsed = extractVoiceCastJson(reply?.text || '')
+  if (!parsed || typeof parsed !== 'object') {
+    return { ok: false, reason: 'LLM voice casting JSON parse failed' }
+  }
+
+  const primaryVoice = byId.get(parsed.primaryVoiceId) && isVoiceQualityOk(byId.get(parsed.primaryVoiceId))
+    ? byId.get(parsed.primaryVoiceId)
+    : byId.get(candidates[0]?.id)
+  if (!primaryVoice) return { ok: false, reason: 'no valid primary voice resolved' }
+
+  const castMap = new Map()
+  for (const row of Array.isArray(parsed.sceneCasting) ? parsed.sceneCasting : []) {
+    if (row?.id) castMap.set(String(row.id), row)
+  }
+
+  const isUpbeatGenre = ['ui-tutorial', 'code-animation', 'product-promo', 'stickman-story', 'talking-head', 'digital-human'].includes(genre || data.genre || '')
+  const speedMin = isUpbeatGenre ? 1.03 : 0.94
+  const speedMax = isUpbeatGenre ? 1.16 : 1.14
+
+  data.defaultVoiceId = primaryVoice.id
+  data.scenes = data.scenes.map((sc) => {
+    const row = castMap.get(sc.id)
+    const picked = row?.voiceId && byId.get(row.voiceId)?.available ? byId.get(row.voiceId) : primaryVoice
+    const rawRate = Number(row?.speechRate || sc.speechRate || (isUpbeatGenre ? 1.07 : 1.02))
+    const speechRate = Number(Math.max(speedMin, Math.min(speedMax, Number.isFinite(rawRate) ? rawRate : 1.06)).toFixed(2))
+    const voiceEmotion = String(row?.voiceEmotion || row?.emotion || sc.emotion || '自信').trim()
+    const finalEmo = voiceEmotion === '平静' && isUpbeatGenre ? '自信' : voiceEmotion
+
+    if (sc.voiceLocked && sc.voiceId && sc.voiceId !== 'auto' && sc.voiceCastBy === 'manual') {
+      return sc
+    }
+    return {
+      ...sc,
+      voiceId: picked.id,
+      voiceName: picked.name,
+      voiceCategory: picked.category,
+      voiceEmotion: finalEmo,
+      emotion: finalEmo,
+      speechRate,
+      voiceCastBy: 'llm',
+      voiceLocked: true,
+      voiceMatchReason: `AI 导演选角 (${picked.name} · ${finalEmo} · ${speechRate}x): ${row?.rationale || parsed.primaryReason || '贴合题材与情绪节奏'}`,
+    }
+  })
+
+  if (projectDir) {
+    writeScriptJson(projectDir, data)
+  }
+
+  return {
+    ok: true,
+    primaryVoiceId: primaryVoice.id,
+    primaryVoiceName: primaryVoice.name,
+    primaryReason: parsed.primaryReason || '',
+    castCount: data.scenes.length,
+    script: data,
   }
 }
 

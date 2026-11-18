@@ -6,7 +6,20 @@
  */
 import { existsSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
-import { deriveVerbalSubtitleParts, normalizeVideoStyle, readScriptJson, resolveVideoDimensions, VIDEO_STYLES, writeScriptJson } from '../shared/index.js'
+import {
+  cleanSubtitleChunk,
+  deriveVerbalSubtitleParts,
+  normalizeNumeralsForDisplay,
+  normalizeVideoStyle,
+  readScriptJson,
+  resolveVideoDimensions,
+  splitDirectorBrief,
+  stripMetaInstructions,
+  toTtsText,
+  VIDEO_STYLES,
+  writeScriptJson,
+} from '../shared/index.js'
+import { detectGenre } from './genre-router.js'
 import { matchAllScenesInScript } from '../dsh-tool-local-tts/index.js'
 import { importAssets, readAssets } from './asset-manager.js'
 import { buildRichHtmlVideo, resolvePalette } from './html-generator.js'
@@ -104,19 +117,23 @@ export function syncProjectCodeFromScript(projectDir, scriptData, { forceOverwri
 }
 
 function condenseSubtitleText(narration, fallback = '') {
-  const clean = String(narration || '')
-    .trim()
-    .replace(/[。！？!?]+$/g, '')
-    .replace(/\s+/g, ' ')
-    .trim()
-  return clean || String(fallback || '').trim()
+  const clean = cleanSubtitleChunk(normalizeNumeralsForDisplay(stripMetaInstructions(narration || '')))
+  return clean || cleanSubtitleChunk(normalizeNumeralsForDisplay(stripMetaInstructions(fallback || '')))
 }
 
 function buildSceneSubChunks(narration, subtitleText, specSubChunks = null, maxLineWidth = 16) {
-  return deriveVerbalSubtitleParts(narration, specSubChunks, subtitleText, maxLineWidth)
+  const cleanSpecChunks = Array.isArray(specSubChunks)
+    ? specSubChunks.map((c) => cleanSubtitleChunk(normalizeNumeralsForDisplay(stripMetaInstructions(c)))).filter(Boolean)
+    : null
+  return deriveVerbalSubtitleParts(
+    normalizeNumeralsForDisplay(stripMetaInstructions(narration || '')),
+    cleanSpecChunks && cleanSpecChunks.length > 0 ? cleanSpecChunks : null,
+    normalizeNumeralsForDisplay(stripMetaInstructions(subtitleText || '')),
+    maxLineWidth,
+  )
 }
 
-function buildSceneSfxCues({ idx, total, layout, dur, sfxPick }) {
+export function buildSceneSfxCues({ idx, total, layout, dur, sfxPick, cursors = [], visualBlueprint = '', genre = '' }) {
   const cues = []
   if (idx === 0) {
     cues.push({ type: 'hit', path: sfxPick('hit'), offsetSec: 0, volume: 0.62, pan: 0 })
@@ -129,6 +146,33 @@ function buildSceneSfxCues({ idx, total, layout, dur, sfxPick }) {
       volume: 0.52,
       pan: 0,
     })
+  }
+
+  // Interactive cursor clicks / drawer transitions / typing cues (synced to UI cursor keyframes)
+  if (Array.isArray(cursors) && cursors.length > 0) {
+    for (const c of cursors) {
+      const clickAtSec = Number.isFinite(Number(c?.clickAt))
+        ? Number(c.clickAt)
+        : c?.click
+          ? (Number(c?.t) > 1.01 ? Number(c.t) : (Number(c?.t) || 0.45) * dur)
+          : NaN
+      if (Number.isFinite(clickAtSec) && clickAtSec >= 0) {
+        const clickAt = Math.min(Math.max(0.15, clickAtSec), Math.max(0.25, dur - 0.14))
+        const pan = Number.isFinite(Number(c?.fx)) ? Math.max(-0.4, Math.min(0.4, (Number(c.fx) - 0.5) * 0.7)) : 0
+        cues.push({ type: 'click', path: sfxPick('click'), offsetSec: Number(clickAt.toFixed(2)), volume: 0.68, pan })
+        const lbl = `${c?.label || ''} ${visualBlueprint || ''}`
+        if (/抽屉|展开|打开|弹窗|新建|菜单|切换|滑出/.test(lbl)) {
+          cues.push({ type: 'whoosh', path: sfxPick('whoosh'), offsetSec: Number(Math.min(dur - 0.1, clickAt + 0.16).toFixed(2)), volume: 0.46, pan: pan * 0.5 })
+        }
+        if (/输入|打字|填写|润色|提示词/.test(lbl)) {
+          cues.push({ type: 'typing', path: sfxPick('typing'), offsetSec: Number(Math.min(dur - 0.35, clickAt + 0.28).toFixed(2)), volume: 0.36, pan: 0, d: 0.6 })
+        }
+      }
+    }
+  } else if (genre === 'ui-tutorial' && /输入|打字|点击|抽屉/.test(visualBlueprint || '')) {
+    if (/点击/.test(visualBlueprint)) cues.push({ type: 'click', path: sfxPick('click'), offsetSec: Math.min(dur - 0.25, 0.95), volume: 0.62, pan: 0 })
+    if (/抽屉|展开|弹窗/.test(visualBlueprint)) cues.push({ type: 'whoosh', path: sfxPick('whoosh'), offsetSec: Math.min(dur - 0.2, 1.15), volume: 0.46, pan: 0 })
+    if (/输入|打字/.test(visualBlueprint)) cues.push({ type: 'typing', path: sfxPick('typing'), offsetSec: Math.min(dur - 0.4, 1.4), volume: 0.34, pan: 0, d: 0.6 })
   }
 
   if (layout === 'card-fan-opener') {
@@ -238,14 +282,32 @@ export async function planVideoFromAssets(options = {}) {
 
   const normalizedStyle = normalizeVideoStyle(style)
   const st = STYLE_CONFIG[normalizedStyle] || STYLE_CONFIG.tech
-  const projectTitle = title || existing.title || topic || 'AI 动效视听作品'
-  const coreTopic = topic || projectTitle
+  // Production briefs are director notes ONLY — never a title / narration / on-screen text
+  const briefSplit = splitDirectorBrief({
+    topic,
+    title: title || '',
+    displayTitle: options.displayTitle,
+    directorNotes: options.directorNotes || existing.directorNotes,
+    contentOutline: options.contentOutline || existing.contentOutline,
+    genre: options.genre || existing.genre,
+  })
+  const projectTitle = briefSplit.title || existing.title || briefSplit.topic || 'AI 动效视听作品'
+  const coreTopic = briefSplit.topic || projectTitle
   const fps = Number(requestedFps) || Number(existing.fps) || 30
+
+  const resolvedGenre =
+    String(briefSplit.genre || existing.genre || '').trim() ||
+    detectGenre({
+      topic: coreTopic,
+      goal: `${briefSplit.directorNotes || ''} ${goal || ''}`,
+      style: normalizedStyle,
+      hasMedia: visuals.length > 0,
+    })
 
   const noteChunks = notesText
     ? notesText
         .split(/[。\n！？!?]+/)
-        .map((s) => s.trim())
+        .map((s) => normalizeNumeralsForDisplay(stripMetaInstructions(s)))
         .filter((s) => s.length >= 6)
     : []
 
@@ -413,50 +475,60 @@ export async function planVideoFromAssets(options = {}) {
       }
     }
 
-    let sceneTitle = spec?.title || ''
-    let narration = spec?.narration || ''
-    let tag = spec?.tag || st.label
-    let subtitleLine = spec?.subtitleLine || ''
+    let sceneTitle = normalizeNumeralsForDisplay(stripMetaInstructions(spec?.title || ''))
+    let narration = normalizeNumeralsForDisplay(stripMetaInstructions(spec?.narration || ''))
+    let tag = normalizeNumeralsForDisplay(stripMetaInstructions(spec?.tag || st.label))
+    let subtitleLine = normalizeNumeralsForDisplay(stripMetaInstructions(spec?.subtitleLine || ''))
 
     if (!narration) {
       if (isFirst) {
-        sceneTitle = sceneTitle || extractChapterTitle(title || existing.title || coreTopic, '高能开篇')
+        sceneTitle = sceneTitle || extractChapterTitle(briefSplit.displayTitle || existing.title || coreTopic, '高能开篇')
         narration =
           noteChunks[0] ||
-          `${coreTopic}正式开启。随着光影、空间节奏与立体音效同步爆发，带你进入极具张力的视听体验。`
+          `${coreTopic}正式开启。光影层次与音效节拍同步推进，带你直观感受核心魅力。`
         tag = spec?.tag || st.label
-        subtitleLine = subtitleLine || (topic && topic.length <= 28 ? topic : '')
+        subtitleLine = subtitleLine || (coreTopic && coreTopic.length <= 28 ? coreTopic : '')
       } else if (isLast) {
         narration =
           noteChunks[i] ||
-          `把每一份创意与画面瞬间定格成高品质成片，现在就开始属于你的节奏表达。`
+          `把每一份创意与画面瞬间定格成高品质成片，现在就开始你的创作旅程。`
         sceneTitle = sceneTitle || extractChapterTitle(narration, projectTitle)
         tag = spec?.tag || '高燃收尾'
       } else {
         narration =
           noteChunks[i] ||
-          `透过动态镜头层次、弹性字效与细腻转场节拍，将画面质感与关键观点立体放大呈现。`
-        sceneTitle = sceneTitle || extractChapterTitle(narration, `高能篇章 ${String(i + 1).padStart(2, '0')}`)
+          `透过动态镜头推拉、清晰步骤演示与细腻声画配合，让每一个核心要点一目了然。`
+        sceneTitle = sceneTitle || extractChapterTitle(narration, `核心篇章 ${String(i + 1).padStart(2, '0')}`)
         tag = spec?.tag || `第 ${i + 1} 幕`
       }
     } else if (!sceneTitle) {
       sceneTitle = extractChapterTitle(narration, `第 ${i + 1} 幕`)
     }
+    narration = normalizeNumeralsForDisplay(stripMetaInstructions(narration))
+    sceneTitle = normalizeNumeralsForDisplay(stripMetaInstructions(sceneTitle)) || `第 ${i + 1} 幕`
 
     const subMaxW = requestedWidth && requestedHeight && requestedWidth < requestedHeight ? 11 : 16
     const subChunks = buildSceneSubChunks(narration, spec?.subtitleText || '', spec?.subChunks, subMaxW)
     const subtitleText = subChunks.join(' ') || condenseSubtitleText(narration, sceneTitle)
-    const highlights = Array.isArray(spec?.highlights) && spec.highlights.length > 0 ? spec.highlights : extractSemanticHighlights(narration, tag, sceneTitle)
+    const highlights = Array.isArray(spec?.highlights) && spec.highlights.length > 0
+      ? spec.highlights.map((h) => normalizeNumeralsForDisplay(stripMetaInstructions(h))).filter(Boolean)
+      : extractSemanticHighlights(narration, tag, sceneTitle)
     const compareLeft = spec?.compareLeft || { label: '传统方案', text: highlights[0] || '繁琐手动操作' }
     const compareRight = spec?.compareRight || { label: '智能重构', text: highlights[1] || '一键高效直出' }
 
     const defaultCams =
       layout === 'app-focus-shot' && !spec?.cams
-        ? [
-            { t: 0, fx: 0.5, fy: 0.5, z: 1.03 },
-            { t: 0.35, fx: 0.48, fy: 0.46, z: 1.24 },
-            { t: 0.86, fx: 0.5, fy: 0.5, z: 1.06 },
-          ]
+        ? resolvedGenre === 'ui-tutorial'
+          ? [
+              { t: 0, fx: 0.5, fy: 0.46, z: 1.06 },
+              { t: 0.55, fx: 0.36, fy: 0.32, z: 1.92 },
+              { t: 2.6, fx: 0.45, fy: 0.42, z: 1.75 },
+            ]
+          : [
+              { t: 0, fx: 0.5, fy: 0.5, z: 1.03 },
+              { t: 0.35, fx: 0.48, fy: 0.46, z: 1.24 },
+              { t: 0.86, fx: 0.5, fy: 0.5, z: 1.06 },
+            ]
         : spec?.cams
 
     const rawSteps =
@@ -492,11 +564,21 @@ export async function planVideoFromAssets(options = {}) {
       : Math.max(sceneCount >= 8 ? 3.2 : 4.0, Number((narration.length / 4.8 + 0.95).toFixed(2)))
     const sfxCues = Array.isArray(spec?.sfxCues) && spec.sfxCues.length > 0
       ? spec.sfxCues
-      : buildSceneSfxCues({ idx: i, total: sceneCount, layout, dur: estDur, sfxPick })
+      : buildSceneSfxCues({
+          idx: i,
+          total: sceneCount,
+          layout,
+          dur: estDur,
+          sfxPick,
+          cursors: spec?.cursors,
+          visualBlueprint: spec?.visualBlueprint || '',
+          genre: resolvedGenre,
+        })
 
     const uiSafeLayouts = ['card-fan-opener', 'app-focus-shot', 'workflow-steps', 'split-wipe-compare', 'metric-dashboard', 'multi-window-trio']
     const cleanTransitions = ['light-wipe', 'iris-circle', 'zoom-punch']
     const transitionPool = normalizedStyle === 'emerald' || uiSafeLayouts.includes(layout) ? cleanTransitions : TRANSITIONS
+    const chosenSceneEmotion = spec?.voiceEmotion || spec?.emotion || (isFirst ? '欢快热情' : isLast ? '激昂有力' : resolvedGenre === 'ui-tutorial' ? '自信明快' : st.emotion)
     scenes.push({
       id: spec?.id || `scene-${String(i + 1).padStart(2, '0')}`,
       title: sceneTitle,
@@ -504,9 +586,10 @@ export async function planVideoFromAssets(options = {}) {
       subtitleText,
       subChunks,
       subtitleLine,
-      emotion: spec?.emotion || (isFirst || isLast ? '激昂' : st.emotion),
+      emotion: chosenSceneEmotion,
+      voiceEmotion: chosenSceneEmotion,
       role: spec?.role || st.role,
-      speechRate: Number(spec?.speechRate || (isFirst || isLast ? 1.05 : 1.0)),
+      speechRate: Number(spec?.speechRate || (resolvedGenre === 'ui-tutorial' ? (isFirst || isLast ? 1.08 : 1.05) : isFirst || isLast ? 1.05 : 1.0)),
       voiceId: spec?.voiceId || voiceId || 'auto',
       voiceLeadSec: Number.isFinite(Number(spec?.voiceLeadSec)) ? Number(spec.voiceLeadSec) : sceneCount >= 6 ? 0.22 : 0.35,
       tailSec: Number.isFinite(Number(spec?.tailSec)) ? Number(spec.tailSec) : sceneCount >= 6 ? 0.32 : 0.65,
@@ -526,10 +609,13 @@ export async function planVideoFromAssets(options = {}) {
       trioLabels: spec?.trioLabels,
       windowLayout: spec?.windowLayout,
       windowTitle: spec?.windowTitle || (layout === 'app-focus-shot' ? projectTitle : undefined),
-      windowTheme: spec?.windowTheme,
+      windowTheme: spec?.windowTheme || (resolvedGenre === 'ui-tutorial' && mediaArr.length > 0 ? 'light' : undefined),
       cams: defaultCams,
       marks: spec?.marks,
+      cursors: spec?.cursors,
       loupe: spec?.loupe,
+      visualBlueprint: spec?.visualBlueprint,
+      motionNotes: spec?.motionNotes || spec?.visualBlueprint,
       hudStep: Number.isFinite(Number(spec?.hudStep)) ? Number(spec.hudStep) : undefined,
       stageSpec: resolvedStageSpec,
       beatCount: Number.isFinite(Number(spec?.beatCount)) ? Number(spec.beatCount) : undefined,
@@ -570,6 +656,10 @@ export async function planVideoFromAssets(options = {}) {
     authoringMode: 'local-draft',
     title: projectTitle,
     topic: coreTopic,
+    displayTitle: briefSplit.displayTitle,
+    directorNotes: briefSplit.directorNotes || existing.directorNotes || '',
+    contentOutline: briefSplit.contentOutline || existing.contentOutline || '',
+    genre: resolvedGenre,
     style: normalizedStyle,
     engine: engine === 'remotion' ? 'remotion' : 'html',
     fps,

@@ -24,6 +24,18 @@ export const FONT_SANS = "'Noto Sans SC', 'Source Han Sans SC', 'PingFang SC', '
 export const FONT_SERIF = "'Source Han Serif SC Heavy', 'Noto Serif SC', 'Noto Sans SC', serif"
 export const FONT_MONO = "'JetBrains Mono', 'Cascadia Mono', 'Liberation Mono', ui-monospace, monospace"
 
+/** Normalize asset paths before calling Remotion staticFile(), preventing accidental double staticFile() / leading public/ crashes. */
+export function resolveStaticSrc(src: string): string {
+  const raw = String(src || '').trim()
+  if (!raw) return ''
+  if (/^(?:https?:|data:|blob:)/i.test(raw)) return raw
+  const clean = raw
+    .replace(/^(?:\.?[\\/]+)+/, '')
+    .replace(/\\/g, '/')
+    .replace(/^public\//i, '')
+  return staticFile(clean)
+}
+
 export interface PageCamProps {
   children: React.ReactNode
   startFrame?: number
@@ -449,7 +461,7 @@ export const AppWindow: React.FC<{
             <span style={{ width: 11, height: 11, borderRadius: 99, background: '#27C93F' }} />
           </div>
           {cleanLogo ? (
-            <Img src={staticFile(cleanLogo)} style={{ width: 18, height: 18, borderRadius: 4, objectFit: 'cover', marginLeft: 4 }} />
+            <Img src={resolveStaticSrc(cleanLogo)} style={{ width: 18, height: 18, borderRadius: 4, objectFit: 'cover', marginLeft: 4 }} />
           ) : null}
           {title ? (
             <span
@@ -554,6 +566,7 @@ export const FocusShot: React.FC<{
   src: string
   cams?: CamKeyframe[]
   marks?: HotspotMarkItem[]
+  cursors?: Array<{ t?: number; fx?: number; fy?: number; x?: number; y?: number; click?: boolean; label?: string }>
   mediaWidth?: number
   mediaHeight?: number
   fitMode?: 'contain' | 'cover'
@@ -563,6 +576,7 @@ export const FocusShot: React.FC<{
   src,
   cams = [],
   marks = [],
+  cursors = [],
   mediaWidth = 0,
   mediaHeight = 0,
   fitMode = 'contain',
@@ -570,16 +584,22 @@ export const FocusShot: React.FC<{
   goldColor = '#F6BA6F',
 }) => {
   const frame = useCurrentFrame()
-  const { durationInFrames } = useVideoConfig()
-  const cleanRel = String(src || '').replace(/^\.?[\\/]+/, '').replace(/\\/g, '/')
+  const { durationInFrames, fps } = useVideoConfig()
+  const durSec = Math.max(1, durationInFrames / Math.max(1, fps || 30))
+  const resolvedMediaUrl = resolveStaticSrc(src)
   const p = Math.min(1, frame / Math.max(1, durationInFrames - 1))
+  const maxCamT = Array.isArray(cams)
+    ? Math.max(0, ...cams.map((k: any) => Number(k?.t ?? k?.at ?? 0)).filter(Number.isFinite))
+    : 0
+  const camTimeDiv = maxCamT > 1.01 ? Math.max(durSec, maxCamT) : 1
   const normKey = (rawKey: any, idx: number, totalLen: number) => {
     const r = rawKey || {}
-    const tVal = Number.isFinite(Number(r.t))
+    const rawT = Number.isFinite(Number(r.t))
       ? Number(r.t)
       : Number.isFinite(Number(r.at))
         ? Number(r.at)
         : idx / Math.max(1, totalLen - 1)
+    const tVal = camTimeDiv > 1 ? Math.max(0, Math.min(1, rawT / camTimeDiv)) : Math.max(0, Math.min(1, rawT))
     const fxVal = Number.isFinite(Number(r.fx))
       ? Number(r.fx)
       : Number.isFinite(Number(r.x))
@@ -624,7 +644,7 @@ export const FocusShot: React.FC<{
   }
   const tx = Math.max(1 - z, Math.min(0, 0.5 - fx * z)) * 100
   const ty = Math.max(1 - z, Math.min(0, 0.5 - fy * z)) * 100
-  const isVid = /\.(mp4|mov|webm|mkv)$/i.test(cleanRel)
+  const isVid = /\.(mp4|mov|webm|mkv)$/i.test(String(src || ''))
   const hasAspect = Number(mediaWidth) > 0 && Number(mediaHeight) > 0
   const stageStyle: React.CSSProperties = hasAspect
     ? {
@@ -650,16 +670,233 @@ export const FocusShot: React.FC<{
   return (
     <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
       <div style={stageStyle}>
-        {cleanRel ? (
+        {resolvedMediaUrl ? (
           isVid ? (
-            <OffthreadVideo src={staticFile(cleanRel)} style={{ width: '100%', height: '100%', objectFit: imgFit }} muted />
+            <OffthreadVideo src={resolvedMediaUrl} style={{ width: '100%', height: '100%', objectFit: imgFit }} muted />
           ) : (
-            <Img src={staticFile(cleanRel)} style={{ width: '100%', height: '100%', objectFit: imgFit }} />
+            <Img src={resolvedMediaUrl} style={{ width: '100%', height: '100%', objectFit: imgFit }} />
           )
         ) : null}
         {(marks || []).map((m, mi) => (
           <HotspotMark key={mi} item={m} accentColor={accentColor} goldColor={goldColor} />
         ))}
+        {Array.isArray(cursors) && cursors.length > 0 ? (
+          <InteractiveCursor cursors={cursors} zoomScale={z} accentColor={accentColor} goldColor={goldColor} />
+        ) : null}
+      </div>
+    </div>
+  )
+}
+
+export const InteractiveCursor: React.FC<{
+  cursors?: Array<{ t?: number; fx?: number; fy?: number; x?: number; y?: number; click?: boolean; clickAt?: number; label?: string }>
+  zoomScale?: number
+  accentColor?: string
+  goldColor?: string
+}> = ({ cursors = [], zoomScale = 1, accentColor = '#0284C7', goldColor = '#D97706' }) => {
+  const frame = useCurrentFrame()
+  const { durationInFrames, fps } = useVideoConfig()
+  const durSec = Math.max(1, durationInFrames / Math.max(1, fps || 30))
+  const maxCurT = Array.isArray(cursors)
+    ? Math.max(0, ...cursors.map((c: any) => Number(c?.t ?? c?.clickAt ?? 0)).filter(Number.isFinite))
+    : 0
+  const curTimeDiv = maxCurT > 1.01 ? Math.max(durSec, maxCurT) : 1
+  const rawList = Array.isArray(cursors)
+    ? cursors
+        .map((c: any, ci: number) => {
+          const rawT = Number.isFinite(Number(c?.t))
+            ? Number(c.t)
+            : Number.isFinite(Number(c?.clickAt))
+              ? Number(c.clickAt)
+              : (ci / Math.max(1, cursors.length - 1)) * curTimeDiv
+          const tNorm = Math.max(0, Math.min(1, rawT / curTimeDiv))
+          const clickFlag = Boolean(c?.click) || Number.isFinite(Number(c?.clickAt))
+          return {
+            t: tNorm,
+            fx: Number.isFinite(Number(c?.fx)) ? Number(c.fx) : Number.isFinite(Number(c?.x)) ? Number(c.x) : 0.5,
+            fy: Number.isFinite(Number(c?.fy)) ? Number(c.fy) : Number.isFinite(Number(c?.y)) ? Number(c.y) : 0.5,
+            click: clickFlag,
+            label: String(c?.label || '').trim(),
+          }
+        })
+        .sort((a, b) => a.t - b.t)
+    : []
+  if (rawList.length === 0) return null
+  const list =
+    rawList.length === 1 && rawList[0].t > 0.14
+      ? [{ t: 0.06, fx: 0.52, fy: 0.52, click: false, label: '' }, rawList[0]]
+      : rawList
+  const p = Math.min(1, frame / Math.max(1, durationInFrames - 1))
+  let cx = list[0].fx
+  let cy = list[0].fy
+  for (let i = 0; i < list.length - 1; i++) {
+    const a = list[i]
+    const b = list[i + 1]
+    if (p >= a.t && p <= b.t) {
+      const local = (p - a.t) / Math.max(0.001, b.t - a.t)
+      const ease = local < 0.5 ? 4 * local * local * local : 1 - Math.pow(-2 * local + 2, 3) / 2
+      cx = a.fx + (b.fx - a.fx) * ease
+      cy = a.fy + (b.fy - a.fy) * ease
+      break
+    }
+    if (p > b.t) {
+      cx = b.fx
+      cy = b.fy
+    }
+  }
+  const activeClick = list.find((c) => c.click && p >= c.t - 0.02 && p <= c.t + 0.14)
+  const clickProgress = activeClick ? Math.max(0, Math.min(1, (p - activeClick.t + 0.02) / 0.16)) : 0
+  const invZ = 1 / Math.max(1, Number(zoomScale) || 1)
+  const squeeze = activeClick && clickProgress < 0.35 ? 0.84 : 1.0
+  const nearestLabel = [...list].reverse().find((c) => c.label && p >= c.t - 0.03 && p <= c.t + 0.34)?.label || ''
+
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        left: `${(cx * 100).toFixed(2)}%`,
+        top: `${(cy * 100).toFixed(2)}%`,
+        transform: `scale(${(invZ * squeeze).toFixed(3)})`,
+        transformOrigin: '0 0',
+        pointerEvents: 'none',
+        zIndex: 35,
+      }}
+    >
+      {activeClick ? (
+        <>
+          <div
+            style={{
+              position: 'absolute',
+              left: 0,
+              top: 0,
+              width: 18 + clickProgress * 72,
+              height: 18 + clickProgress * 72,
+              borderRadius: 999,
+              border: `3px solid ${goldColor}`,
+              transform: 'translate(-50%, -50%)',
+              opacity: Math.max(0, 1 - clickProgress),
+            }}
+          />
+          <div
+            style={{
+              position: 'absolute',
+              left: 0,
+              top: 0,
+              width: 10 + clickProgress * 44,
+              height: 10 + clickProgress * 44,
+              borderRadius: 999,
+              background: `${accentColor}44`,
+              border: `2px solid ${accentColor}`,
+              transform: 'translate(-50%, -50%)',
+              opacity: Math.max(0, 1 - clickProgress * 1.15),
+            }}
+          />
+        </>
+      ) : null}
+      <svg width={38} height={42} viewBox="0 0 28 32" style={{ filter: 'drop-shadow(0 4px 10px rgba(0,0,0,0.42))' }}>
+        <path d="M2 2 L10 26 L14 17 L24 16 Z" fill="#FFFFFF" stroke="#0F172A" strokeWidth={2.2} strokeLinejoin="round" />
+      </svg>
+      {nearestLabel ? (
+        <div
+          style={{
+            position: 'absolute',
+            left: 26,
+            top: 22,
+            whiteSpace: 'nowrap',
+            padding: '5px 12px',
+            borderRadius: 999,
+            background: '#0F172A',
+            color: '#F8FAFC',
+            border: `1.5px solid ${goldColor}`,
+            fontFamily: FONT_SANS,
+            fontSize: 15,
+            fontWeight: 800,
+            boxShadow: '0 10px 26px rgba(15,23,42,0.35)',
+          }}
+        >
+          {nearestLabel}
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+export const UiDrawerSlide: React.FC<{
+  beforeSrc: string
+  afterSrc: string
+  revealAt?: number
+  direction?: 'left' | 'right' | 'modal'
+  camsBefore?: CamKeyframe[]
+  camsAfter?: CamKeyframe[]
+  cursors?: any[]
+  accentColor?: string
+  goldColor?: string
+}> = ({
+  beforeSrc,
+  afterSrc,
+  revealAt = 0.36,
+  direction = 'left',
+  camsBefore = [],
+  camsAfter = [],
+  cursors = [],
+  accentColor = '#0284C7',
+  goldColor = '#D97706',
+}) => {
+  const frame = useCurrentFrame()
+  const { fps, durationInFrames } = useVideoConfig()
+  const triggerFrame = Math.round(revealAt * Math.max(1, durationInFrames - 1))
+  const revealSp = spring({ frame: Math.max(0, frame - triggerFrame), fps, config: { damping: 16, stiffness: 150 } })
+  const txPct = direction === 'left' ? (1 - revealSp) * -100 : direction === 'right' ? (1 - revealSp) * 100 : 0
+  const modalScale = direction === 'modal' ? 0.88 + 0.12 * revealSp : 1
+
+  return (
+    <div style={{ position: 'relative', width: '100%', height: '100%', overflow: 'hidden', background: '#F8FAFC' }}>
+      <FocusShot src={beforeSrc} cams={camsBefore} cursors={frame < triggerFrame ? cursors : []} accentColor={accentColor} goldColor={goldColor} />
+      {frame >= triggerFrame ? (
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            opacity: revealSp,
+            transform: `translateX(${txPct.toFixed(2)}%) scale(${modalScale.toFixed(4)})`,
+          }}
+        >
+          <FocusShot src={afterSrc} cams={camsAfter} cursors={cursors} accentColor={accentColor} goldColor={goldColor} />
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+export const UiTypingOverlay: React.FC<{
+  text: string
+  startPct?: number
+  endPct?: number
+  label?: string
+  accentColor?: string
+}> = ({ text, startPct = 0.25, endPct = 0.78, label = '正在输入指令', accentColor = '#0284C7' }) => {
+  const frame = useCurrentFrame()
+  const { durationInFrames } = useVideoConfig()
+  const p = Math.min(1, frame / Math.max(1, durationInFrames - 1))
+  const u = Math.max(0, Math.min(1, (p - startPct) / Math.max(0.05, endPct - startPct)))
+  const count = Math.floor(u * String(text || '').length)
+  const shown = String(text || '').slice(0, count)
+  const caretOn = frame % 18 < 10
+  return (
+    <div
+      style={{
+        padding: '14px 18px',
+        borderRadius: 14,
+        background: 'rgba(255, 255, 255, 0.96)',
+        border: `2px solid ${accentColor}`,
+        boxShadow: '0 16px 40px rgba(15, 23, 42, 0.18)',
+        fontFamily: FONT_SANS,
+      }}
+    >
+      <div style={{ fontSize: 13, fontWeight: 800, color: accentColor, marginBottom: 6 }}>{label}</div>
+      <div style={{ fontSize: 20, fontWeight: 600, color: '#0F172A', lineHeight: 1.5, minHeight: 30 }}>
+        {shown}
+        <span style={{ opacity: caretOn ? 1 : 0, color: accentColor, fontWeight: 900 }}>|</span>
       </div>
     </div>
   )
@@ -737,14 +974,14 @@ export const BeforeAfterWipe: React.FC<{
   const { durationInFrames } = useVideoConfig()
   const p = Math.min(1, frame / Math.max(1, durationInFrames - 1))
   const split = 0.5 + 0.34 * Math.sin(p * Math.PI * 2 - Math.PI / 2)
-  const bRel = String(beforeSrc || '').replace(/^\.?[\\/]+/, '').replace(/\\/g, '/')
-  const aRel = String(afterSrc || '').replace(/^\.?[\\/]+/, '').replace(/\\/g, '/')
+  const bUrl = resolveStaticSrc(beforeSrc)
+  const aUrl = resolveStaticSrc(afterSrc)
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%', overflow: 'hidden', background: '#07100F' }}>
-      {bRel ? <Img src={staticFile(bRel)} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain' }} /> : null}
-      {aRel ? (
+      {bUrl ? <Img src={bUrl} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain' }} /> : null}
+      {aUrl ? (
         <div style={{ position: 'absolute', inset: 0, clipPath: `inset(0 0 0 ${(split * 100).toFixed(2)}%)` }}>
-          <Img src={staticFile(aRel)} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+          <Img src={aUrl} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
         </div>
       ) : null}
       <div
@@ -913,13 +1150,13 @@ export const AvatarOverlay: React.FC<AvatarOverlayProps> = ({
   const { width, height } = useVideoConfig()
   if (!clipPath || layout === 'off') return null
   const isPortrait = width < height
-  const cleanRel = String(clipPath).replace(/^\.?[\\/]+/, '').replace(/\\/g, '/')
+  const resolvedClipUrl = resolveStaticSrc(clipPath)
 
   if (layout === 'fullscreen') {
     return (
       <AbsoluteFill style={{ pointerEvents: 'none', zIndex: 25, justifyContent: 'flex-end', alignItems: 'center' }}>
         <OffthreadVideo
-          src={staticFile(cleanRel)}
+          src={resolvedClipUrl}
           transparent
           muted={muted}
           style={{ width: '100%', height: '100%', objectFit: 'contain' }}
@@ -952,7 +1189,7 @@ export const AvatarOverlay: React.FC<AvatarOverlayProps> = ({
       }}
     >
       <OffthreadVideo
-        src={staticFile(cleanRel)}
+        src={resolvedClipUrl}
         transparent
         muted={muted}
         style={{ width: '100%', height: '100%', objectFit: 'cover' }}

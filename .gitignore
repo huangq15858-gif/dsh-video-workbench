@@ -44,6 +44,7 @@ examples/*/node_modules/
 
 # Local Imported Voice Packs & User Assets (keep only example template)
 voice-packs/catalog.json
+voice-packs/voice_library.json
 voice-packs/imported/
 voice-packs/samples/
 

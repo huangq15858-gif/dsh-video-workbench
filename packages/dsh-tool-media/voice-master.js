@@ -10,6 +10,7 @@ import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
 import {
   alignSubtitlesToSpeechAudio,
+  normalizeNumeralsForDisplay,
   probeAudioDuration,
   readScriptJson,
   resolveBinaries,
@@ -377,9 +378,11 @@ export async function masterVoiceTracks({
     const subMaxW =
       Number(script.width) < Number(script.height) ? 11 : Number(script.width) === Number(script.height) ? 13 : 16
     if (sc.narration || sc.subtitleText || (Array.isArray(sc.subChunks) && sc.subChunks.length > 0)) {
+      const displayNar = sc.narration ? normalizeNumeralsForDisplay(sc.narration) : sc.narration
+      if (displayNar) sc.narration = displayNar
       const syncedSubs = await alignSubtitlesToSpeechAudio({
         audioPath: dstAbs,
-        narration: sc.narration,
+        narration: displayNar,
         subtitleText: sc.subtitleText,
         subChunks: sc.subChunks,
         leadSec,
@@ -390,6 +393,7 @@ export async function masterVoiceTracks({
       if (syncedSubs.length > 0) {
         sc.subtitles = syncedSubs
         sc.subChunks = syncedSubs.map((s) => s.text)
+        sc.subtitleText = syncedSubs.map((s) => s.text).join(' ')
       }
     }
 

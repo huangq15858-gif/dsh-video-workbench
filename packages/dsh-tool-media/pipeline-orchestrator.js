@@ -2,8 +2,10 @@ import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { isAbsolute, join, resolve } from 'node:path'
 import {
   buildSentenceSubtitles,
+  cleanSubtitleChunk,
   createAbortError,
   loadEnv,
+  normalizeNumeralsForDisplay,
   probeAudioDuration,
   probeHardwareProfile,
   readScriptJson,
@@ -12,9 +14,12 @@ import {
   resolveLowSpecPolicy,
   runCommandRedirected,
   sanitizeSpokenNarration,
+  splitDirectorBrief,
+  stripMetaInstructions,
+  toTtsText,
   writeScriptJson,
 } from '../shared/index.js'
-import { executeGenerateSpeech, getActiveTtsEngineId, matchAllScenesInScript, resolveTtsEngineSpec } from '../dsh-tool-local-tts/index.js'
+import { castVoicesWithLlm, executeGenerateSpeech, getActiveTtsEngineId, matchAllScenesInScript, resolveTtsEngineSpec } from '../dsh-tool-local-tts/index.js'
 import { executeGenerateAvatar } from '../dsh-tool-avatar/index.js'
 import {
   executeVideoLint,
@@ -26,6 +31,7 @@ import { planVideoFromAssets, syncProjectCodeFromScript } from './ai-director.js
 import { buildRichHtmlVideo } from './html-generator.js'
 import { authorBatchedRemotionScenes, runCodeAutoRepairLoop } from './ai-coder.js'
 import { executeCurateAndEditAssets } from './media-editor.js'
+import { buildGenreGuidance, detectGenre } from './genre-router.js'
 import { generateAiCodedBgmTrack, generateAiCodedSfxCues, synthesizeTtsEngineAudioCue } from './audio-coder.js'
 import {
   analyzeAudioBeatStructure,
@@ -155,6 +161,17 @@ async function executeMultiAgentRunner(run, helpers) {
   loadEnv()
   const { signal, onChild, waitIfPaused, updateTask, appendLog } = helpers
   const spec = run.spec || {}
+  // Split any (AI-polished) brief into audience-safe title/topic + AI-only director notes
+  {
+    const brief = splitDirectorBrief(spec)
+    spec.rawTopic = spec.rawTopic || spec.topic || ''
+    spec.directorNotes = brief.directorNotes
+    spec.contentOutline = brief.contentOutline || spec.contentOutline || ''
+    spec.genre = brief.genre || spec.genre || ''
+    spec.displayTitle = brief.displayTitle
+    spec.topic = brief.topic
+    spec.title = brief.title
+  }
   const absDir = resolve(spec.projectDir || run.projectDir)
   const { isDraftMode, effectiveMode: mode } = resolvePipelineMode(spec.mode)
   const engine = spec.engine === 'remotion' ? 'remotion' : 'html'
@@ -206,6 +223,10 @@ async function executeMultiAgentRunner(run, helpers) {
         projectDir: absDir,
         topic: spec.topic || '',
         title: spec.title || spec.topic || '',
+        displayTitle: spec.displayTitle,
+        directorNotes: spec.directorNotes,
+        contentOutline: spec.contentOutline,
+        genre: spec.genre,
         style,
         engine,
         aspectRatio,
@@ -278,6 +299,9 @@ async function executeMultiAgentRunner(run, helpers) {
         const schemaRes = await runSchemaDirectorWithDegradation({
           projectDir: absDir,
           topic: spec.topic || curScript.topic || curScript.title,
+          directorNotes: spec.directorNotes || curScript.directorNotes || '',
+          contentOutline: spec.contentOutline || curScript.contentOutline || '',
+          genre: spec.genre || curScript.genre || '',
           style,
           targetPlatform,
           scriptData: curScript,
@@ -306,39 +330,71 @@ async function executeMultiAgentRunner(run, helpers) {
                     : fallbackAsset
                       ? [{ assetId: fallbackAsset.id, path: fallbackAsset.path, webPath: fallbackAsset.webPath || '', type: fallbackAsset.type, width: Number(fallbackAsset.width || 0), height: Number(fallbackAsset.height || 0) }]
                       : []
-            const nextNarration = sanitizeSpokenNarration(shot.narration || oldSc.narration || shot.title || '') || sanitizeSpokenNarration(shot.title || '') || `镜头 ${i + 1}`
-            const narrationChanged = Boolean(oldSc.narration && nextNarration && nextNarration !== sanitizeSpokenNarration(oldSc.narration))
+            const nextNarration =
+              normalizeNumeralsForDisplay(
+                stripMetaInstructions(sanitizeSpokenNarration(shot.narration || oldSc.narration || shot.title || '')),
+              ) ||
+              normalizeNumeralsForDisplay(stripMetaInstructions(sanitizeSpokenNarration(shot.title || ''))) ||
+              `镜头 ${i + 1}`
+            const narrationChanged = Boolean(
+              oldSc.narration &&
+                nextNarration &&
+                nextNarration !== normalizeNumeralsForDisplay(stripMetaInstructions(sanitizeSpokenNarration(oldSc.narration))),
+            )
+            const cleanTitle =
+              normalizeNumeralsForDisplay(stripMetaInstructions(sanitizeSpokenNarration(shot.title || oldSc.title || `镜头 ${i + 1}`))) ||
+              `镜头 ${i + 1}`
+            const cleanSubChunks =
+              Array.isArray(shot.subChunks) && shot.subChunks.length > 0
+                ? shot.subChunks
+                    .map((c) => cleanSubtitleChunk(normalizeNumeralsForDisplay(stripMetaInstructions(sanitizeSpokenNarration(c)))))
+                    .filter(Boolean)
+                : narrationChanged
+                  ? undefined
+                  : Array.isArray(oldSc.subChunks)
+                    ? oldSc.subChunks
+                        .map((c) => cleanSubtitleChunk(normalizeNumeralsForDisplay(stripMetaInstructions(c))))
+                        .filter(Boolean)
+                    : undefined
+            const resolvedEmotion = shot.voiceEmotion || shot.emotion || oldSc.voiceEmotion || oldSc.emotion || '自信明快'
             return {
               ...oldSc,
               id: shot.id || oldSc.id || `scene-${String(i + 1).padStart(2, '0')}`,
               index: i + 1,
-              title: sanitizeSpokenNarration(shot.title || oldSc.title || `镜头 ${i + 1}`) || `镜头 ${i + 1}`,
+              title: cleanTitle,
               narration: nextNarration,
-              subtitleText: narrationChanged ? nextNarration : sanitizeSpokenNarration(shot.subtitleText || nextNarration),
-              subChunks: Array.isArray(shot.subChunks) && shot.subChunks.length > 0 ? shot.subChunks.map((c) => sanitizeSpokenNarration(c)).filter(Boolean) : (narrationChanged ? undefined : oldSc.subChunks),
+              subtitleText: cleanSubChunks?.length ? cleanSubChunks.join(' ') : nextNarration,
+              subChunks: cleanSubChunks,
               accentWords: Array.isArray(shot.accentWords) ? shot.accentWords : oldSc.accentWords,
               threePreset: shot.threePreset || shot?.stageSpec?.threePreset || oldSc.threePreset,
               stageSpec: shot.stageSpec || oldSc.stageSpec,
               beatCount: Number.isFinite(Number(shot.beatCount)) ? Number(shot.beatCount) : oldSc.beatCount,
               visualBlueprint: shot.visualBlueprint || oldSc.visualBlueprint,
               motionNotes: shot.motionNotes || shot.visualBlueprint || oldSc.motionNotes,
-              emotion: shot.emotion || oldSc.emotion || '平静',
+              emotion: resolvedEmotion,
+              voiceEmotion: resolvedEmotion,
               role: shot.role || oldSc.role || 'narrator',
-              speechRate: Number(shot.speechRate || oldSc.speechRate || 1.0),
+              speechRate: Number(shot.speechRate || oldSc.speechRate || 1.04),
               layout:
                 shot.layout ||
                 oldSc.layout ||
                 (visualPool.length === 0
-                  ? (/历史|霸王|项羽|秦|汉|楚|三国|唐|宋|明|古风|武侠|战役|将军|帝王|演义/i.test(`${spec.topic || ''} ${curScript.title || ''}`)
+                  ? (/历史|霸王|项羽|霍去病|卫青|汉武|秦|汉|楚|三国|唐|宋|明|古风|武侠|战役|将军|帝王|演义/i.test(`${spec.topic || ''} ${curScript.title || ''}`)
                       ? 'narrative-diorama'
                       : '3d-stage-opener')
                   : 'app-focus-shot'),
               kenBurns: shot.kenBurns || oldSc.kenBurns || 'zoom-in',
               transition: shot.transition || oldSc.transition || (visualPool.length === 0 ? 'flash-cut' : 'iris-circle'),
-              highlights: Array.isArray(shot.highlights) && shot.highlights.length > 0 ? shot.highlights : oldSc.highlights || [],
+              highlights: Array.isArray(shot.highlights) && shot.highlights.length > 0
+                ? shot.highlights.map((h) => normalizeNumeralsForDisplay(stripMetaInstructions(h))).filter(Boolean)
+                : oldSc.highlights || [],
               hudStep: Number.isFinite(Number(shot.hudStep)) ? Number(shot.hudStep) : oldSc.hudStep,
               cams: Array.isArray(shot.cams) && shot.cams.length > 0 ? shot.cams : oldSc.cams,
               marks: Array.isArray(shot.marks) && shot.marks.length > 0 ? shot.marks : oldSc.marks,
+              cursors: Array.isArray(shot.cursors) && shot.cursors.length > 0 ? shot.cursors : oldSc.cursors,
+              loupe: shot.loupe || oldSc.loupe,
+              windowTheme: shot.windowTheme || oldSc.windowTheme || (schemaRes.plan?.genre === 'ui-tutorial' && mediaList.length > 0 ? 'light' : undefined),
+              windowTitle: shot.windowTitle || oldSc.windowTitle,
               durationSec: Number(shot.durationSec) || oldSc.durationSec || 4.0,
               durationInFrames: undefined,
               media: mediaList,
@@ -346,7 +402,13 @@ async function executeMultiAgentRunner(run, helpers) {
             }
           })
           curScript.scenes = updatedScenes
-          curScript.title = schemaRes.plan?.title || curScript.title
+          curScript.genre =
+            schemaRes.plan?.genre ||
+            curScript.genre ||
+            detectGenre({ topic: spec.topic || curScript.title, goal: curScript.directorNotes || curScript.goal, style, hasMedia: visualPool.length > 0 })
+          curScript.title =
+            normalizeNumeralsForDisplay(stripMetaInstructions(schemaRes.plan?.title || curScript.displayTitle || curScript.title)) ||
+            curScript.title
           curScript.targetPlatform = targetPlatform
           if (visualPool.length === 0 || spec.narrationMode === 'subtitle-mv') {
             curScript.subtitleStyle = 'cinematic'
@@ -546,7 +608,36 @@ async function executeMultiAgentRunner(run, helpers) {
       })
       writeScriptJson(absDir, scriptNow)
     } else {
-      matchAllScenesInScript(absDir, { voiceId, forceAuto: false })
+      let llmCastOk = false
+      if (mode === 'ai-coded' && llmSummary.configured && (!voiceId || voiceId === 'auto')) {
+        updateTask('t-audio', {
+          status: 'running',
+          progress: 14,
+          message: `正在召唤大模型 (${llmSummary.model}) 根据主题与情绪语义挑选精品音色...`,
+        })
+        try {
+          const curGenre =
+            scriptNow.genre ||
+            spec.genre ||
+            detectGenre({ topic: scriptNow.title || spec.topic, goal: scriptNow.directorNotes || scriptNow.goal, style, hasMedia: visualItemsNow.length > 0 })
+          const castRes = await castVoicesWithLlm({
+            projectDir: absDir,
+            scriptData: scriptNow,
+            genre: curGenre,
+            genreGuidance: buildGenreGuidance(curGenre),
+            callLlmChatFn: (p) => callLlmChat({ ...p, signal }),
+          })
+          if (castRes?.ok) {
+            llmCastOk = true
+            appendLog('audio', `AI 语义选音完成: 主讲 [${castRes.primaryVoiceName || castRes.primaryVoiceId}] · ${castRes.primaryReason || ''}`)
+          }
+        } catch (castErr) {
+          appendLog('audio', `AI 语义选音回退规则匹配: ${castErr?.message || castErr}`, 'warn')
+        }
+      }
+      if (!llmCastOk) {
+        matchAllScenesInScript(absDir, { voiceId, forceAuto: false })
+      }
       scriptNow = readScriptJson(absDir).data
 
       const scenesToTts = (scriptNow.scenes || []).filter((sc) => {
@@ -565,10 +656,13 @@ async function executeMultiAgentRunner(run, helpers) {
           message: `正在合成第 ${i + 1}/${scenesToTts.length} 幕配音 (${sc.title || sc.id})...`,
           log: false,
         })
-        const sceneSpeed = Number(((Number(sc.speechRate) || 1.0) * speechTempo).toFixed(2))
+        const sceneSpeed = Number(((Number(sc.speechRate) || 1.04) * speechTempo).toFixed(2))
+        const displayText = sc.narration || sc.title || '欢迎来到 AI 视频创作工坊'
+        const spokenTtsText = sc.ttsText || toTtsText(displayText)
         await executeGenerateSpeech({
-          text: sc.narration || sc.title || '欢迎来到 AI 视频创作工坊',
-          emotion: sc.emotion || '平静',
+          text: displayText,
+          ttsText: spokenTtsText,
+          emotion: sc.voiceEmotion || sc.emotion || '自信明快',
           speed: sceneSpeed,
           outputPath: `audio/${sc.id}.wav`,
           fps,
@@ -721,10 +815,65 @@ async function executeMultiAgentRunner(run, helpers) {
       appendLog('audio', `已对 AI 配乐/节拍轨执行音画踩点绑定 (${qMode} · ${postBgmScript.bgm?.bpm || 120} BPM · ${postBgmScript.scenes.length} 幕)`)
     }
 
-    await ensureProjectAudioAssets(absDir, readScriptJson(absDir).data, assetsNow)
+    const scriptForMix = readScriptJson(absDir).data
+    let sfxInjected = false
+    for (const sc of scriptForMix.scenes || []) {
+      const scDur = Math.max(1.0, Number(sc.durationSec) || 4.0)
+      sc.sfxCues = Array.isArray(sc.sfxCues) ? [...sc.sfxCues] : []
+      if (Array.isArray(sc.cursors) && sc.cursors.length > 0) {
+        for (const c of sc.cursors) {
+          const clickAtRaw = Number.isFinite(Number(c?.clickAt))
+            ? Number(c.clickAt)
+            : c?.click
+              ? (Number(c?.t) > 1.01 ? Number(c.t) : (Number(c?.t) || 0.45) * scDur)
+              : NaN
+          if (!Number.isFinite(clickAtRaw) || clickAtRaw < 0) continue
+          const clickAt = Number(Math.min(Math.max(0.15, clickAtRaw), Math.max(0.25, scDur - 0.14)).toFixed(2))
+          const pan = Number.isFinite(Number(c?.fx)) ? Math.max(-0.4, Math.min(0.4, (Number(c.fx) - 0.5) * 0.7)) : 0
+          if (!sc.sfxCues.some((q) => q.type === 'click' && Math.abs(Number(q.offsetSec || 0) - clickAt) < 0.25)) {
+            sc.sfxCues.push({ type: 'click', path: 'audio/sfx/click.wav', offsetSec: clickAt, volume: 0.68, pan })
+            sfxInjected = true
+          }
+          const lbl = `${c?.label || ''} ${sc.visualBlueprint || ''}`
+          if (/抽屉|展开|打开|弹窗|新建|菜单|切换|滑出/.test(lbl)) {
+            const wAt = Number(Math.min(scDur - 0.1, clickAt + 0.16).toFixed(2))
+            if (!sc.sfxCues.some((q) => q.type === 'whoosh' && Math.abs(Number(q.offsetSec || 0) - wAt) < 0.35)) {
+              sc.sfxCues.push({ type: 'whoosh', path: 'audio/sfx/whoosh.wav', offsetSec: wAt, volume: 0.46, pan: pan * 0.5 })
+              sfxInjected = true
+            }
+          }
+          if (/输入|打字|填写|润色|提示词/.test(lbl)) {
+            const tAt = Number(Math.min(scDur - 0.35, clickAt + 0.26).toFixed(2))
+            if (!sc.sfxCues.some((q) => q.type === 'typing' && Math.abs(Number(q.offsetSec || 0) - tAt) < 0.45)) {
+              sc.sfxCues.push({ type: 'typing', path: 'audio/sfx/typing.wav', offsetSec: tAt, volume: 0.36, pan: 0, d: 0.6 })
+              sfxInjected = true
+            }
+          }
+        }
+      } else if (scriptForMix.genre === 'ui-tutorial' && (Array.isArray(sc.media) && sc.media.length > 0)) {
+        const bp = `${sc.title || ''} ${sc.visualBlueprint || ''} ${sc.narration || ''}`
+        if (/点击|新建|打开|抽屉|按钮|切换|启动/.test(bp) && !sc.sfxCues.some((q) => q.type === 'click')) {
+          sc.sfxCues.push({ type: 'click', path: 'audio/sfx/click.wav', offsetSec: Number(Math.min(scDur - 0.25, 1.05).toFixed(2)), volume: 0.64, pan: 0 })
+          sfxInjected = true
+        }
+        if (/抽屉|展开|打开|滑出|弹窗|页面/.test(bp) && !sc.sfxCues.some((q) => q.type === 'whoosh')) {
+          sc.sfxCues.push({ type: 'whoosh', path: 'audio/sfx/whoosh.wav', offsetSec: Number(Math.min(scDur - 0.2, 1.22).toFixed(2)), volume: 0.45, pan: 0 })
+          sfxInjected = true
+        }
+        if (/输入|打字|填写|润色|提示词/.test(bp) && !sc.sfxCues.some((q) => q.type === 'typing')) {
+          sc.sfxCues.push({ type: 'typing', path: 'audio/sfx/typing.wav', offsetSec: Number(Math.min(scDur - 0.4, 1.45).toFixed(2)), volume: 0.35, pan: 0, d: 0.6 })
+          sfxInjected = true
+        }
+      }
+    }
+    if (sfxInjected) {
+      writeScriptJson(absDir, scriptForMix)
+    }
+
+    await ensureProjectAudioAssets(absDir, scriptForMix, assetsNow)
     await mixVideoAudio({
       projectDir: absDir,
-      script: readScriptJson(absDir).data,
+      script: scriptForMix,
       assetsManifest: assetsNow,
       outputPath: join(absDir, 'output', 'master-audio.wav'),
       signal,
@@ -1017,10 +1166,11 @@ taskManager.setDefaultRunnerFactory(() => executeMultiAgentRunner)
 function createNormalizedPipelineRun(spec = {}) {
   if (!spec.projectDir) throw new Error('projectDir is required')
   const { modeLabel, mode } = resolvePipelineMode(spec.mode)
+  const briefView = splitDirectorBrief(spec)
   return taskManager.createRun({
     projectDir: spec.projectDir,
-    title: spec.title || `${modeLabel} · ${spec.topic || '视觉作品'}`,
-    topic: spec.topic || '',
+    title: `${modeLabel} · ${briefView.displayTitle || '视觉作品'}`,
+    topic: briefView.topic || '',
     mode,
     spec,
   })

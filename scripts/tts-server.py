@@ -104,20 +104,58 @@ def load_engine(root):
 
 EMOTION_PROMPT_MAP = {
     "高兴": "开心明快、热情饱满地分享介绍",
+    "欢快热情": "开心明快、热情饱满、充满活力地分享",
     "开心": "开心明快、热情饱满地分享介绍",
     "兴奋": "兴奋惊喜、节奏明快地讲解亮点",
     "激昂": "充满激情与感染力、坚定自信地演讲号召",
+    "激昂有力": "充满激情与感染力、铿锵有力地号召讲述",
     "热血": "热血激昂、铿锵有力地讲述",
-    "温和": "温柔亲切、耐心细致地讲解",
+    "温和": "温柔亲切、耐心细致、略带微笑地讲解",
     "温柔": "温柔亲切、舒缓自然地娓娓道来",
-    "亲切": "亲切友好、自然微笑着讲解",
-    "自信": "专业自信、条理清晰地阐述原理",
+    "亲切": "亲切友好、自然微笑着清晰讲解",
+    "自信": "专业自信、条理清晰、朝气饱满地阐述",
+    "热情": "热情有感染力、明快饱满地讲述",
     "专业": "专业自信、条理清晰地阐述原理",
     "严肃": "严肃认真、稳重清晰地提醒注意事项",
+    "严肃强调": "郑重严肃、吐字笃定地强调重点",
+    "重点强调": "重心加重、惊喜笃定地强调关键结论",
     "期待": "满怀期待、生机勃勃地引出下文",
+    "悬念": "悬念低沉、制造神秘紧张感地推进",
+    "悬念低沉": "压低声线、富有悬念与张力地讲述",
     "伤心": "低沉感伤、真挚动情地诉说",
+    "悲壮": "悲壮苍凉、厚重深沉地叹述",
     "深沉": "沉稳低沉、富有磁性和仪式感地讲述",
+    "沧桑": "历经沧桑、厚重凝练地追忆讲述",
     "害怕": "紧张警惕、压低嗓音提醒风险",
+}
+
+# IndexTTS-2.5 8-dim emotion vector: [happy, angry, sad, afraid, disgusted, melancholic, surprised, calm]
+EMOTION_VECTOR_MAP = {
+    "高兴": [0.64, 0.0, 0.0, 0.0, 0.0, 0.0, 0.14, 0.0],
+    "欢快热情": [0.68, 0.0, 0.0, 0.0, 0.0, 0.0, 0.12, 0.0],
+    "开心": [0.64, 0.0, 0.0, 0.0, 0.0, 0.0, 0.14, 0.0],
+    "兴奋": [0.48, 0.0, 0.0, 0.0, 0.0, 0.0, 0.30, 0.0],
+    "激昂": [0.46, 0.14, 0.0, 0.0, 0.0, 0.0, 0.18, 0.0],
+    "激昂有力": [0.46, 0.16, 0.0, 0.0, 0.0, 0.0, 0.18, 0.0],
+    "热血": [0.42, 0.18, 0.0, 0.0, 0.0, 0.0, 0.18, 0.0],
+    "重点强调": [0.28, 0.10, 0.0, 0.0, 0.0, 0.0, 0.28, 0.12],
+    "自信": [0.34, 0.0, 0.0, 0.0, 0.0, 0.0, 0.12, 0.32],
+    "热情": [0.54, 0.0, 0.0, 0.0, 0.0, 0.0, 0.12, 0.12],
+    "专业": [0.26, 0.0, 0.0, 0.0, 0.0, 0.0, 0.08, 0.42],
+    "温和": [0.26, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.48],
+    "温柔": [0.24, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.50],
+    "亲切": [0.36, 0.0, 0.0, 0.0, 0.0, 0.0, 0.06, 0.34],
+    "期待": [0.42, 0.0, 0.0, 0.0, 0.0, 0.0, 0.22, 0.14],
+    "严肃": [0.0, 0.16, 0.0, 0.0, 0.0, 0.10, 0.0, 0.48],
+    "严肃强调": [0.0, 0.22, 0.0, 0.0, 0.0, 0.12, 0.0, 0.42],
+    "悬念": [0.0, 0.0, 0.0, 0.22, 0.0, 0.28, 0.14, 0.14],
+    "悬念低沉": [0.0, 0.0, 0.06, 0.20, 0.0, 0.34, 0.08, 0.10],
+    "深沉": [0.0, 0.06, 0.14, 0.0, 0.0, 0.34, 0.0, 0.24],
+    "沧桑": [0.0, 0.04, 0.18, 0.0, 0.0, 0.38, 0.0, 0.18],
+    "伤心": [0.0, 0.0, 0.50, 0.0, 0.0, 0.28, 0.0, 0.0],
+    "悲壮": [0.0, 0.12, 0.40, 0.0, 0.0, 0.26, 0.0, 0.0],
+    "害怕": [0.0, 0.0, 0.0, 0.58, 0.0, 0.12, 0.08, 0.0],
+    "生气": [0.0, 0.62, 0.0, 0.0, 0.10, 0.0, 0.06, 0.0],
 }
 
 
@@ -127,7 +165,8 @@ def synthesize(payload):
     out = payload.get("output_path") or ""
     spk = payload.get("spk_audio_prompt") or payload.get("ref_audio_path") or ""
     emo_audio = payload.get("emo_audio_prompt") or ""
-    emotion = payload.get("emotion") or ""
+    emotion = (payload.get("emotion") or "").strip()
+    emo_vector = payload.get("emo_vector")
     if not text or not out:
         raise ValueError("text and output_path are required")
     if not spk or not os.path.exists(spk):
@@ -151,13 +190,21 @@ def synthesize(payload):
         if dur_factor is not None:
             kwargs["duration_factor"] = max(0.5, min(2.0, float(dur_factor)))
 
-    if emo_audio and os.path.exists(emo_audio):
+    emo_alpha = float(payload.get("emo_alpha", 0.85))
+    if isinstance(emo_vector, list) and len(emo_vector) == 8:
+        kwargs["emo_vector"] = [float(x) for x in emo_vector]
+        kwargs["emo_alpha"] = emo_alpha
+    elif emo_audio and os.path.exists(emo_audio):
         kwargs["emo_audio_prompt"] = emo_audio
-        kwargs["emo_alpha"] = float(payload.get("emo_alpha", 0.65))
-    elif emotion and emotion not in ("平静", "neutral") and STATE["use_qwen_emo"]:
-        kwargs["use_emo_text"] = True
-        kwargs["emo_text"] = EMOTION_PROMPT_MAP.get(emotion.strip(), emotion.strip())
-        kwargs["emo_alpha"] = float(payload.get("emo_alpha", 0.65))
+        kwargs["emo_alpha"] = float(payload.get("emo_alpha", 0.7))
+    elif emotion and emotion not in ("平静", "neutral"):
+        if emotion in EMOTION_VECTOR_MAP and STATE["version"] == "2.5":
+            kwargs["emo_vector"] = list(EMOTION_VECTOR_MAP[emotion])
+            kwargs["emo_alpha"] = emo_alpha
+        elif STATE["use_qwen_emo"]:
+            kwargs["use_emo_text"] = True
+            kwargs["emo_text"] = EMOTION_PROMPT_MAP.get(emotion, emotion)
+            kwargs["emo_alpha"] = emo_alpha
 
     with LOCK:
         tts.infer(**kwargs)

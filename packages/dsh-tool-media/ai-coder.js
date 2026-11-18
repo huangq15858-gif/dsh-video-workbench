@@ -10,18 +10,24 @@ import {
 } from 'node:fs'
 import { dirname, join, normalize, resolve } from 'node:path'
 import {
+  cleanSubtitleChunk,
   createAbortError,
+  normalizeNumeralsForDisplay,
   probeAudioDuration,
   probeHardwareProfile,
   readScriptJson,
   REPO_ROOT,
   resolveLowSpecPolicy,
   resolveVideoDimensions,
+  splitDirectorBrief,
+  stripMetaInstructions,
+  toTtsText,
   writeScriptJson,
 } from '../shared/index.js'
-import { executeGenerateSpeech, getActiveTtsEngineId, matchAllScenesInScript } from '../dsh-tool-local-tts/index.js'
+import { castVoicesWithLlm, executeGenerateSpeech, getActiveTtsEngineId, matchAllScenesInScript } from '../dsh-tool-local-tts/index.js'
 import { executeVideoLint, executeVideoRender, runTypecheckOnProject, scanAiGeneratedCodeSandbox } from '../dsh-tool-video-suite/index.js'
 import { importAssets, readAssets } from './asset-manager.js'
+import { buildGenreGuidance, detectGenre } from './genre-router.js'
 import {
   analyzeAudioBeatStructure,
   buildBeatGrid,
@@ -425,8 +431,11 @@ export async function authorBatchedRemotionScenes({
         fps: lockedScript.fps || 30,
         aspectRatio: lockedScript.aspectRatio || '16:9',
         theme: resolvePalette(lockedScript),
-        topic: lockedScript.topic || lockedScript.title || '',
+        topic: lockedScript.displayTitle || lockedScript.topic || lockedScript.title || '',
         style: lockedScript.style || 'cinematic',
+        genre: lockedScript.genre || '',
+        directorNotes: lockedScript.directorNotes || '',
+        contentOutline: Array.isArray(lockedScript.contentOutline) ? lockedScript.contentOutline : [],
         bgmMeta: lockedScript.bgm,
       })
       item.systemPrompt = pkg.system
@@ -481,6 +490,7 @@ export async function authorBatchedRemotionScenes({
   const persistAllAndBuildComp = () => {
     const filesMap = {}
     for (const info of batchInfos) {
+      info.code = String(info.code || '').replace(/staticFile\(\s*(['"`])(?:\.?[\\/]+)*public\//gi, 'staticFile($1')
       writeFileSync(join(absDir, info.filePath), info.code, 'utf8')
       filesMap[info.filePath] = info.code
     }
@@ -703,7 +713,20 @@ export async function runAiStudioPipeline(options = {}) {
   const assetsManifest = readAssets(absDir)
   const visuals = (assetsManifest.items || []).filter((i) => i.type === 'image' || i.type === 'video')
   const importedMusic = (assetsManifest.items || []).filter((i) => i.role === 'music')
-  const coreTopic = topic || existingScript?.topic || existingScript?.title || 'AI 视觉大片'
+  const rawBriefSplit = splitDirectorBrief({
+    topic: topic || existingScript?.topic || existingScript?.title || '',
+    title: existingScript?.title || '',
+    displayTitle: options.displayTitle || existingScript?.displayTitle,
+    directorNotes: options.directorNotes || existingScript?.directorNotes || userPrompt || '',
+    contentOutline: options.contentOutline || existingScript?.contentOutline || [],
+    genre: options.genre || existingScript?.genre || '',
+  })
+  const coreTopic = rawBriefSplit.topic || rawBriefSplit.title || 'AI 视觉大片'
+  const directorNotes = rawBriefSplit.directorNotes || ''
+  const contentOutline = rawBriefSplit.contentOutline || []
+  const resolvedGenre =
+    String(rawBriefSplit.genre || existingScript?.genre || '').trim() ||
+    detectGenre({ topic: coreTopic, goal: `${directorNotes} ${userPrompt || ''}`, style: existingScript?.style || 'tech', hasMedia: visuals.length > 0 })
   const resolvedPlatform = targetPlatform || existingScript?.targetPlatform || 'universal'
   const resolvedBgmMode = bgmMode || existingScript?.audioSpec?.bgmMode || 'llm-coded'
   const resolvedCreationMode = creationMode === 'schema-plan' ? 'schema-plan' : 'ai-coded'
@@ -736,7 +759,7 @@ export async function runAiStudioPipeline(options = {}) {
     quality: baseHwPolicy.effectiveQuality || quality,
     width,
     height,
-    topic: `${coreTopic} ${userPrompt}`,
+    topic: `${coreTopic} ${directorNotes || ''}`,
     assets: visuals,
   })
 
@@ -749,6 +772,9 @@ export async function runAiStudioPipeline(options = {}) {
     const schemaRes = await runSchemaDirectorWithDegradation({
       projectDir: absDir,
       topic: coreTopic,
+      genre: resolvedGenre,
+      directorNotes,
+      contentOutline,
       style: existingScript?.style || 'tech',
       targetPlatform: resolvedPlatform,
       scriptData: existingScript || {},
@@ -771,6 +797,7 @@ export async function runAiStudioPipeline(options = {}) {
     }
     plan = {
       title: schemaRes.plan.title,
+      genre: schemaRes.plan.genre || resolvedGenre,
       style: schemaRes.plan.style,
       audioSpec: { mood: schemaRes.plan.style, bpm: analyzedBgmMeta?.bpm || schemaRes.plan.bpm, bgmMode: resolvedBgmMode },
       scenes: schemaRes.resolved.resolvedShots.map((s) => ({
@@ -781,7 +808,16 @@ export async function runAiStudioPipeline(options = {}) {
         accentWords: s.accentWords,
         stageSpec: s.stageSpec,
         beatCount: s.beatCount,
-        emotion: s.emotion,
+        emotion: s.voiceEmotion || s.emotion,
+        speechRate: s.speechRate,
+        visualBlueprint: s.visualBlueprint,
+        motionNotes: s.motionNotes,
+        cams: s.cams,
+        marks: s.marks,
+        cursors: s.cursors,
+        loupe: s.loupe,
+        windowTheme: s.windowTheme,
+        windowTitle: s.windowTitle,
         layout: s.layout,
         kenBurns: s.kenBurns,
         transition: s.transition,
@@ -794,6 +830,9 @@ export async function runAiStudioPipeline(options = {}) {
     emit('architect', 14, `2/7 正在调用大模型 (${llmCfg.model || '未指定模型'}) 构思分镜、文案与定制配乐...`)
     const directorPkg = buildDirectorPromptPackage({
       topic: coreTopic,
+      genre: resolvedGenre,
+      directorNotes,
+      contentOutline,
       userPrompt: userPrompt || existingScript?.goal || coreTopic,
       aspectRatio: baseDims.aspectRatio,
       quality: baseDims.quality,
@@ -840,7 +879,10 @@ export async function runAiStudioPipeline(options = {}) {
   const plannedScenes = plan.scenes.map((sc, idx) => {
     const id = sc.id || `scene-${String(idx + 1).padStart(2, '0')}`
     const prev = existingById.get(id)
-    const narration = String(sc.narration || '').trim() || `第 ${idx + 1} 幕`
+    const narration =
+      normalizeNumeralsForDisplay(stripMetaInstructions(String(sc.narration || '').trim())) ||
+      normalizeNumeralsForDisplay(stripMetaInstructions(String(sc.title || '').trim())) ||
+      `第 ${idx + 1} 幕`
     const chosenVoice = voiceId && voiceId !== 'auto' ? voiceId : prev?.voiceId || 'auto'
     const canReuseWav =
       prev &&
@@ -902,10 +944,19 @@ export async function runAiStudioPipeline(options = {}) {
           shotLayoutMap[sc.shotType] ||
           zeroAssetFallbackLayout
 
+    const cleanTitle =
+      normalizeNumeralsForDisplay(stripMetaInstructions(String(sc.title || `分镜 ${idx + 1}`))) || `分镜 ${idx + 1}`
+    const cleanSubChunks = Array.isArray(sc.subChunks)
+      ? sc.subChunks.map((c) => cleanSubtitleChunk(normalizeNumeralsForDisplay(stripMetaInstructions(c)))).filter(Boolean)
+      : Array.isArray(prev?.subChunks)
+        ? prev.subChunks.map((c) => cleanSubtitleChunk(normalizeNumeralsForDisplay(stripMetaInstructions(c)))).filter(Boolean)
+        : undefined
+    const cleanEmotion = String(sc.voiceEmotion || sc.emotion || prev?.voiceEmotion || prev?.emotion || '自信明快').trim()
+
     return {
       id,
       index: idx + 1,
-      title: String(sc.title || `分镜 ${idx + 1}`),
+      title: cleanTitle,
       layout: mappedLayout,
       threePreset: sc.threePreset || sc?.stageSpec?.threePreset || prev?.threePreset || ['orbital-core', 'cyber-terrain', 'particle-vortex', 'floating-monoliths', 'chrono-helix', 'matrix-cubes'][idx % 6],
       shotType: sc.shotType || (visuals.length === 0 ? 'narrative-diorama' : 'app-focus-shot'),
@@ -914,34 +965,38 @@ export async function runAiStudioPipeline(options = {}) {
       beatCount: Number.isFinite(Number(sc.beatCount)) ? Number(sc.beatCount) : prev?.beatCount,
       visualBlueprint: sc.visualBlueprint || prev?.visualBlueprint || undefined,
       accentWords: Array.isArray(sc.accentWords) ? sc.accentWords : prev?.accentWords || undefined,
-      headline: sc.headline || sc.title || '',
+      headline: normalizeNumeralsForDisplay(stripMetaInstructions(sc.headline || cleanTitle)) || cleanTitle,
       kicker: sc.kicker || `SCENE 0${idx + 1}`,
-      highlights: Array.isArray(sc.highlights) ? sc.highlights : prev?.highlights || [],
-      subtitleText: sc.subtitleText || prev?.subtitleText || '',
-      subChunks: Array.isArray(sc.subChunks) ? sc.subChunks : prev?.subChunks || undefined,
+      highlights: Array.isArray(sc.highlights)
+        ? sc.highlights.map((h) => normalizeNumeralsForDisplay(stripMetaInstructions(h))).filter(Boolean)
+        : prev?.highlights || [],
+      subtitleText: cleanSubChunks?.length ? cleanSubChunks.join(' ') : normalizeNumeralsForDisplay(stripMetaInstructions(sc.subtitleText || prev?.subtitleText || '')),
+      subChunks: cleanSubChunks,
       hudStep: Number.isFinite(Number(sc.hudStep)) ? Number(sc.hudStep) : prev?.hudStep,
       cams: Array.isArray(sc.cams) ? sc.cams : prev?.cams || undefined,
       marks: Array.isArray(sc.marks) ? sc.marks : prev?.marks || undefined,
+      cursors: Array.isArray(sc.cursors) ? sc.cursors : prev?.cursors || undefined,
       loupe: sc.loupe || prev?.loupe || undefined,
       steps: Array.isArray(sc.steps) ? sc.steps : prev?.steps || undefined,
       fanMedia: Array.isArray(sc.fanMedia) ? sc.fanMedia : prev?.fanMedia || undefined,
       trioLabels: Array.isArray(sc.trioLabels) ? sc.trioLabels : prev?.trioLabels || undefined,
       windowLayout: sc.windowLayout || prev?.windowLayout || undefined,
       windowTitle: sc.windowTitle || prev?.windowTitle || undefined,
-      windowTheme: sc.windowTheme || prev?.windowTheme || undefined,
+      windowTheme: sc.windowTheme || prev?.windowTheme || (resolvedGenre === 'ui-tutorial' && matchedMedia.length > 0 ? 'light' : undefined),
       compareLeft: sc.compareLeft || prev?.compareLeft || undefined,
       compareRight: sc.compareRight || prev?.compareRight || undefined,
       metrics: Array.isArray(sc.metrics) ? sc.metrics : [],
       motionNotes: sc.motionNotes || '',
       narration,
-      emotion: sc.emotion || '平静',
+      emotion: cleanEmotion,
+      voiceEmotion: cleanEmotion,
       role: sc.role || 'narrator',
-      speechRate: Number(sc.speechRate || prev?.speechRate || 1.0),
+      speechRate: Number(sc.speechRate || prev?.speechRate || (resolvedGenre === 'ui-tutorial' ? 1.06 : 1.02)),
       voiceId: chosenVoice,
       media: matchedMedia,
       assetPaths: matchedMedia.map((m) => m.path),
       sfxCues: Array.isArray(sc.sfxCues) ? sc.sfxCues : [],
-      visualPrompt: sc.motionNotes || sc.title || '',
+      visualPrompt: sc.motionNotes || cleanTitle || '',
       audioFile: canReuseWav ? prev.audioFile : '',
       durationSec: canReuseWav ? prev.durationSec : estDur,
     }
@@ -952,8 +1007,12 @@ export async function runAiStudioPipeline(options = {}) {
     authoringMode: resolvedCreationMode === 'schema-plan' ? 'schema-plan' : 'ai-coded',
     creationMode: resolvedCreationMode,
     targetPlatform: resolvedPlatform,
-    title: plan.title || existingScript?.title || coreTopic,
+    title: normalizeNumeralsForDisplay(stripMetaInstructions(plan.title || existingScript?.title || coreTopic)) || coreTopic,
     topic: coreTopic,
+    displayTitle: rawBriefSplit.displayTitle,
+    directorNotes,
+    contentOutline,
+    genre: plan.genre || resolvedGenre,
     style: plan.style || existingScript?.style || 'tech',
     workflowSteps: Array.isArray(plan.workflowSteps) ? plan.workflowSteps : existingScript?.workflowSteps || [],
     brandMark: plan.brandMark || existingScript?.brandMark || '',
@@ -997,10 +1056,25 @@ export async function runAiStudioPipeline(options = {}) {
   if (resolvedNarrationMode === 'subtitle-mv') {
     emit('tts', 36, '3-4/7 纯音乐卡点 MV 模式：跳过 TTS 朗读，正在对齐分镜与字幕至音乐真实节拍...')
   } else {
-    matchAllScenesInScript(absDir, { voiceId: voiceId || 'auto', forceAuto: voiceId === 'auto' })
+    let castOk = false
+    if ((!voiceId || voiceId === 'auto') && llmCfg?.apiKey) {
+      try {
+        emit('tts', 24, `3/7 正在召唤大模型 (${llmCfg.model}) 为全片挑选贴合气质的配音音色与情感节奏...`)
+        const castRes = await castVoicesWithLlm({
+          projectDir: absDir,
+          genre: resolvedGenre,
+          genreGuidance: buildGenreGuidance(resolvedGenre),
+          callLlmChatFn: async (p) => callLlmChat({ overrideConfig: llmCfg, fetchImpl, ...p }),
+        })
+        castOk = Boolean(castRes?.ok)
+      } catch {}
+    }
+    if (!castOk) {
+      matchAllScenesInScript(absDir, { voiceId: voiceId || 'auto', forceAuto: voiceId === 'auto' })
+    }
     let midScript = readScriptJson(absDir).data
 
-    emit('tts', 28, '3/7 正在通过本地 IndexTTS-2.5 音色库合成真人配音...')
+    emit('tts', 28, '3/7 正在通过本地 IndexTTS-2.5 音色库合成真人情感配音...')
     for (let i = 0; i < (midScript.scenes || []).length; i++) {
       const s = midScript.scenes[i]
       const reused = plannedScenes[i]?.audioFile && existsSync(join(absDir, plannedScenes[i].audioFile))
@@ -1010,10 +1084,12 @@ export async function runAiStudioPipeline(options = {}) {
         s.durationInFrames = Math.max(1, Math.ceil(s.durationSec * fps))
         continue
       }
+      const spokenTtsText = s.ttsText || toTtsText(s.narration || s.title || '')
       await executeGenerateSpeech({
         text: s.narration,
-        emotion: s.emotion || '平静',
-        speed: Number(s.speechRate) || 1.0,
+        ttsText: spokenTtsText,
+        emotion: s.voiceEmotion || s.emotion || '自信明快',
+        speed: Number(s.speechRate) || 1.04,
         voiceId: s.voiceId || voiceId || 'auto',
         engine: ttsEngine || getActiveTtsEngineId(),
         fps,
@@ -1131,6 +1207,8 @@ export async function runAiStudioPipeline(options = {}) {
     width: lockedScript.width,
     height: lockedScript.height,
     aspectRatio: lockedScript.aspectRatio,
+    genre: lockedScript.genre || resolvedGenre,
+    directorNotes: lockedScript.directorNotes || directorNotes || '',
     totalDurationSec: lockedScript.totalDurationSec,
     totalDurationInFrames: lockedScript.totalDurationInFrames,
     aiBadge: Boolean(lockedScript.aiBadgeEnabled ?? lockedScript.aiBadge),
@@ -1151,6 +1229,12 @@ export async function runAiStudioPipeline(options = {}) {
       visualBlueprint: s.visualBlueprint || s.motionNotes || s.visualPrompt || s.title,
       stageSpec: s.stageSpec || undefined,
       accentWords: s.accentWords || undefined,
+      windowTheme: s.windowTheme || undefined,
+      windowTitle: s.windowTitle || undefined,
+      cams: s.cams || undefined,
+      marks: s.marks || undefined,
+      cursors: s.cursors || undefined,
+      loupe: s.loupe || undefined,
       startFrame: s.startFrame,
       durationInFrames: s.durationInFrames,
       durationSec: s.durationSec,

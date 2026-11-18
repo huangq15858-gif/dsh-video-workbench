@@ -1,5 +1,6 @@
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
+import { buildGenreGuidance, detectGenre } from './genre-router.js'
 
 /**
  * Distilled Shotcraft Primitives & LLM Skills Prompt Builder
@@ -36,6 +37,18 @@ export { THREE, ThreeCanvas }
 export const FONT_SANS = "'Noto Sans SC', 'Source Han Sans SC', 'PingFang SC', 'HarmonyOS Sans SC', sans-serif"
 export const FONT_SERIF = "'Source Han Serif SC Heavy', 'Noto Serif SC', 'Noto Sans SC', serif"
 export const FONT_MONO = "'JetBrains Mono', 'Cascadia Mono', 'Liberation Mono', ui-monospace, monospace"
+
+/** Normalize asset paths before calling Remotion staticFile(), preventing accidental double staticFile() / leading public/ crashes. */
+export function resolveStaticSrc(src: string): string {
+  const raw = String(src || '').trim()
+  if (!raw) return ''
+  if (/^(?:https?:|data:|blob:)/i.test(raw)) return raw
+  const clean = raw
+    .replace(/^(?:\\.?[\\\\/]+)+/, '')
+    .replace(/\\\\/g, '/')
+    .replace(/^public\\//i, '')
+  return staticFile(clean)
+}
 
 export interface PageCamProps {
   children: React.ReactNode
@@ -462,7 +475,7 @@ export const AppWindow: React.FC<{
             <span style={{ width: 11, height: 11, borderRadius: 99, background: '#27C93F' }} />
           </div>
           {cleanLogo ? (
-            <Img src={staticFile(cleanLogo)} style={{ width: 18, height: 18, borderRadius: 4, objectFit: 'cover', marginLeft: 4 }} />
+            <Img src={resolveStaticSrc(cleanLogo)} style={{ width: 18, height: 18, borderRadius: 4, objectFit: 'cover', marginLeft: 4 }} />
           ) : null}
           {title ? (
             <span
@@ -567,6 +580,7 @@ export const FocusShot: React.FC<{
   src: string
   cams?: CamKeyframe[]
   marks?: HotspotMarkItem[]
+  cursors?: Array<{ t?: number; fx?: number; fy?: number; x?: number; y?: number; click?: boolean; label?: string }>
   mediaWidth?: number
   mediaHeight?: number
   fitMode?: 'contain' | 'cover'
@@ -576,6 +590,7 @@ export const FocusShot: React.FC<{
   src,
   cams = [],
   marks = [],
+  cursors = [],
   mediaWidth = 0,
   mediaHeight = 0,
   fitMode = 'contain',
@@ -583,16 +598,22 @@ export const FocusShot: React.FC<{
   goldColor = '#F6BA6F',
 }) => {
   const frame = useCurrentFrame()
-  const { durationInFrames } = useVideoConfig()
-  const cleanRel = String(src || '').replace(/^\\.?[\\\\/]+/, '').replace(/\\\\/g, '/')
+  const { durationInFrames, fps } = useVideoConfig()
+  const durSec = Math.max(1, durationInFrames / Math.max(1, fps || 30))
+  const resolvedMediaUrl = resolveStaticSrc(src)
   const p = Math.min(1, frame / Math.max(1, durationInFrames - 1))
+  const maxCamT = Array.isArray(cams)
+    ? Math.max(0, ...cams.map((k: any) => Number(k?.t ?? k?.at ?? 0)).filter(Number.isFinite))
+    : 0
+  const camTimeDiv = maxCamT > 1.01 ? Math.max(durSec, maxCamT) : 1
   const normKey = (rawKey: any, idx: number, totalLen: number) => {
     const r = rawKey || {}
-    const tVal = Number.isFinite(Number(r.t))
+    const rawT = Number.isFinite(Number(r.t))
       ? Number(r.t)
       : Number.isFinite(Number(r.at))
         ? Number(r.at)
         : idx / Math.max(1, totalLen - 1)
+    const tVal = camTimeDiv > 1 ? Math.max(0, Math.min(1, rawT / camTimeDiv)) : Math.max(0, Math.min(1, rawT))
     const fxVal = Number.isFinite(Number(r.fx))
       ? Number(r.fx)
       : Number.isFinite(Number(r.x))
@@ -637,7 +658,7 @@ export const FocusShot: React.FC<{
   }
   const tx = Math.max(1 - z, Math.min(0, 0.5 - fx * z)) * 100
   const ty = Math.max(1 - z, Math.min(0, 0.5 - fy * z)) * 100
-  const isVid = /\\.(mp4|mov|webm|mkv)$/i.test(cleanRel)
+  const isVid = /\\.(mp4|mov|webm|mkv)$/i.test(String(src || ''))
   const hasAspect = Number(mediaWidth) > 0 && Number(mediaHeight) > 0
   const stageStyle: React.CSSProperties = hasAspect
     ? {
@@ -663,16 +684,233 @@ export const FocusShot: React.FC<{
   return (
     <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
       <div style={stageStyle}>
-        {cleanRel ? (
+        {resolvedMediaUrl ? (
           isVid ? (
-            <OffthreadVideo src={staticFile(cleanRel)} style={{ width: '100%', height: '100%', objectFit: imgFit }} muted />
+            <OffthreadVideo src={resolvedMediaUrl} style={{ width: '100%', height: '100%', objectFit: imgFit }} muted />
           ) : (
-            <Img src={staticFile(cleanRel)} style={{ width: '100%', height: '100%', objectFit: imgFit }} />
+            <Img src={resolvedMediaUrl} style={{ width: '100%', height: '100%', objectFit: imgFit }} />
           )
         ) : null}
         {(marks || []).map((m, mi) => (
           <HotspotMark key={mi} item={m} accentColor={accentColor} goldColor={goldColor} />
         ))}
+        {Array.isArray(cursors) && cursors.length > 0 ? (
+          <InteractiveCursor cursors={cursors} zoomScale={z} accentColor={accentColor} goldColor={goldColor} />
+        ) : null}
+      </div>
+    </div>
+  )
+}
+
+export const InteractiveCursor: React.FC<{
+  cursors?: Array<{ t?: number; fx?: number; fy?: number; x?: number; y?: number; click?: boolean; clickAt?: number; label?: string }>
+  zoomScale?: number
+  accentColor?: string
+  goldColor?: string
+}> = ({ cursors = [], zoomScale = 1, accentColor = '#0284C7', goldColor = '#D97706' }) => {
+  const frame = useCurrentFrame()
+  const { durationInFrames, fps } = useVideoConfig()
+  const durSec = Math.max(1, durationInFrames / Math.max(1, fps || 30))
+  const maxCurT = Array.isArray(cursors)
+    ? Math.max(0, ...cursors.map((c: any) => Number(c?.t ?? c?.clickAt ?? 0)).filter(Number.isFinite))
+    : 0
+  const curTimeDiv = maxCurT > 1.01 ? Math.max(durSec, maxCurT) : 1
+  const rawList = Array.isArray(cursors)
+    ? cursors
+        .map((c: any, ci: number) => {
+          const rawT = Number.isFinite(Number(c?.t))
+            ? Number(c.t)
+            : Number.isFinite(Number(c?.clickAt))
+              ? Number(c.clickAt)
+              : (ci / Math.max(1, cursors.length - 1)) * curTimeDiv
+          const tNorm = Math.max(0, Math.min(1, rawT / curTimeDiv))
+          const clickFlag = Boolean(c?.click) || Number.isFinite(Number(c?.clickAt))
+          return {
+            t: tNorm,
+            fx: Number.isFinite(Number(c?.fx)) ? Number(c.fx) : Number.isFinite(Number(c?.x)) ? Number(c.x) : 0.5,
+            fy: Number.isFinite(Number(c?.fy)) ? Number(c.fy) : Number.isFinite(Number(c?.y)) ? Number(c.y) : 0.5,
+            click: clickFlag,
+            label: String(c?.label || '').trim(),
+          }
+        })
+        .sort((a, b) => a.t - b.t)
+    : []
+  if (rawList.length === 0) return null
+  const list =
+    rawList.length === 1 && rawList[0].t > 0.14
+      ? [{ t: 0.06, fx: 0.52, fy: 0.52, click: false, label: '' }, rawList[0]]
+      : rawList
+  const p = Math.min(1, frame / Math.max(1, durationInFrames - 1))
+  let cx = list[0].fx
+  let cy = list[0].fy
+  for (let i = 0; i < list.length - 1; i++) {
+    const a = list[i]
+    const b = list[i + 1]
+    if (p >= a.t && p <= b.t) {
+      const local = (p - a.t) / Math.max(0.001, b.t - a.t)
+      const ease = local < 0.5 ? 4 * local * local * local : 1 - Math.pow(-2 * local + 2, 3) / 2
+      cx = a.fx + (b.fx - a.fx) * ease
+      cy = a.fy + (b.fy - a.fy) * ease
+      break
+    }
+    if (p > b.t) {
+      cx = b.fx
+      cy = b.fy
+    }
+  }
+  const activeClick = list.find((c) => c.click && p >= c.t - 0.02 && p <= c.t + 0.14)
+  const clickProgress = activeClick ? Math.max(0, Math.min(1, (p - activeClick.t + 0.02) / 0.16)) : 0
+  const invZ = 1 / Math.max(1, Number(zoomScale) || 1)
+  const squeeze = activeClick && clickProgress < 0.35 ? 0.84 : 1.0
+  const nearestLabel = [...list].reverse().find((c) => c.label && p >= c.t - 0.03 && p <= c.t + 0.34)?.label || ''
+
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        left: \`\${(cx * 100).toFixed(2)}%\`,
+        top: \`\${(cy * 100).toFixed(2)}%\`,
+        transform: \`scale(\${(invZ * squeeze).toFixed(3)})\`,
+        transformOrigin: '0 0',
+        pointerEvents: 'none',
+        zIndex: 35,
+      }}
+    >
+      {activeClick ? (
+        <>
+          <div
+            style={{
+              position: 'absolute',
+              left: 0,
+              top: 0,
+              width: 18 + clickProgress * 72,
+              height: 18 + clickProgress * 72,
+              borderRadius: 999,
+              border: \`3px solid \${goldColor}\`,
+              transform: 'translate(-50%, -50%)',
+              opacity: Math.max(0, 1 - clickProgress),
+            }}
+          />
+          <div
+            style={{
+              position: 'absolute',
+              left: 0,
+              top: 0,
+              width: 10 + clickProgress * 44,
+              height: 10 + clickProgress * 44,
+              borderRadius: 999,
+              background: \`\${accentColor}44\`,
+              border: \`2px solid \${accentColor}\`,
+              transform: 'translate(-50%, -50%)',
+              opacity: Math.max(0, 1 - clickProgress * 1.15),
+            }}
+          />
+        </>
+      ) : null}
+      <svg width={38} height={42} viewBox="0 0 28 32" style={{ filter: 'drop-shadow(0 4px 10px rgba(0,0,0,0.42))' }}>
+        <path d="M2 2 L10 26 L14 17 L24 16 Z" fill="#FFFFFF" stroke="#0F172A" strokeWidth={2.2} strokeLinejoin="round" />
+      </svg>
+      {nearestLabel ? (
+        <div
+          style={{
+            position: 'absolute',
+            left: 26,
+            top: 22,
+            whiteSpace: 'nowrap',
+            padding: '5px 12px',
+            borderRadius: 999,
+            background: '#0F172A',
+            color: '#F8FAFC',
+            border: \`1.5px solid \${goldColor}\`,
+            fontFamily: FONT_SANS,
+            fontSize: 15,
+            fontWeight: 800,
+            boxShadow: '0 10px 26px rgba(15,23,42,0.35)',
+          }}
+        >
+          {nearestLabel}
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+export const UiDrawerSlide: React.FC<{
+  beforeSrc: string
+  afterSrc: string
+  revealAt?: number
+  direction?: 'left' | 'right' | 'modal'
+  camsBefore?: CamKeyframe[]
+  camsAfter?: CamKeyframe[]
+  cursors?: any[]
+  accentColor?: string
+  goldColor?: string
+}> = ({
+  beforeSrc,
+  afterSrc,
+  revealAt = 0.36,
+  direction = 'left',
+  camsBefore = [],
+  camsAfter = [],
+  cursors = [],
+  accentColor = '#0284C7',
+  goldColor = '#D97706',
+}) => {
+  const frame = useCurrentFrame()
+  const { fps, durationInFrames } = useVideoConfig()
+  const triggerFrame = Math.round(revealAt * Math.max(1, durationInFrames - 1))
+  const revealSp = spring({ frame: Math.max(0, frame - triggerFrame), fps, config: { damping: 16, stiffness: 150 } })
+  const txPct = direction === 'left' ? (1 - revealSp) * -100 : direction === 'right' ? (1 - revealSp) * 100 : 0
+  const modalScale = direction === 'modal' ? 0.88 + 0.12 * revealSp : 1
+
+  return (
+    <div style={{ position: 'relative', width: '100%', height: '100%', overflow: 'hidden', background: '#F8FAFC' }}>
+      <FocusShot src={beforeSrc} cams={camsBefore} cursors={frame < triggerFrame ? cursors : []} accentColor={accentColor} goldColor={goldColor} />
+      {frame >= triggerFrame ? (
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            opacity: revealSp,
+            transform: \`translateX(\${txPct.toFixed(2)}%) scale(\${modalScale.toFixed(4)})\`,
+          }}
+        >
+          <FocusShot src={afterSrc} cams={camsAfter} cursors={cursors} accentColor={accentColor} goldColor={goldColor} />
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+export const UiTypingOverlay: React.FC<{
+  text: string
+  startPct?: number
+  endPct?: number
+  label?: string
+  accentColor?: string
+}> = ({ text, startPct = 0.25, endPct = 0.78, label = '正在输入指令', accentColor = '#0284C7' }) => {
+  const frame = useCurrentFrame()
+  const { durationInFrames } = useVideoConfig()
+  const p = Math.min(1, frame / Math.max(1, durationInFrames - 1))
+  const u = Math.max(0, Math.min(1, (p - startPct) / Math.max(0.05, endPct - startPct)))
+  const count = Math.floor(u * String(text || '').length)
+  const shown = String(text || '').slice(0, count)
+  const caretOn = frame % 18 < 10
+  return (
+    <div
+      style={{
+        padding: '14px 18px',
+        borderRadius: 14,
+        background: 'rgba(255, 255, 255, 0.96)',
+        border: \`2px solid \${accentColor}\`,
+        boxShadow: '0 16px 40px rgba(15, 23, 42, 0.18)',
+        fontFamily: FONT_SANS,
+      }}
+    >
+      <div style={{ fontSize: 13, fontWeight: 800, color: accentColor, marginBottom: 6 }}>{label}</div>
+      <div style={{ fontSize: 20, fontWeight: 600, color: '#0F172A', lineHeight: 1.5, minHeight: 30 }}>
+        {shown}
+        <span style={{ opacity: caretOn ? 1 : 0, color: accentColor, fontWeight: 900 }}>|</span>
       </div>
     </div>
   )
@@ -750,14 +988,14 @@ export const BeforeAfterWipe: React.FC<{
   const { durationInFrames } = useVideoConfig()
   const p = Math.min(1, frame / Math.max(1, durationInFrames - 1))
   const split = 0.5 + 0.34 * Math.sin(p * Math.PI * 2 - Math.PI / 2)
-  const bRel = String(beforeSrc || '').replace(/^\\.?[\\\\/]+/, '').replace(/\\\\/g, '/')
-  const aRel = String(afterSrc || '').replace(/^\\.?[\\\\/]+/, '').replace(/\\\\/g, '/')
+  const bUrl = resolveStaticSrc(beforeSrc)
+  const aUrl = resolveStaticSrc(afterSrc)
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%', overflow: 'hidden', background: '#07100F' }}>
-      {bRel ? <Img src={staticFile(bRel)} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain' }} /> : null}
-      {aRel ? (
+      {bUrl ? <Img src={bUrl} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain' }} /> : null}
+      {aUrl ? (
         <div style={{ position: 'absolute', inset: 0, clipPath: \`inset(0 0 0 \${(split * 100).toFixed(2)}%)\` }}>
-          <Img src={staticFile(aRel)} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+          <Img src={aUrl} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
         </div>
       ) : null}
       <div
@@ -926,13 +1164,13 @@ export const AvatarOverlay: React.FC<AvatarOverlayProps> = ({
   const { width, height } = useVideoConfig()
   if (!clipPath || layout === 'off') return null
   const isPortrait = width < height
-  const cleanRel = String(clipPath).replace(/^\\.?[\\\\/]+/, '').replace(/\\\\/g, '/')
+  const resolvedClipUrl = resolveStaticSrc(clipPath)
 
   if (layout === 'fullscreen') {
     return (
       <AbsoluteFill style={{ pointerEvents: 'none', zIndex: 25, justifyContent: 'flex-end', alignItems: 'center' }}>
         <OffthreadVideo
-          src={staticFile(cleanRel)}
+          src={resolvedClipUrl}
           transparent
           muted={muted}
           style={{ width: '100%', height: '100%', objectFit: 'contain' }}
@@ -965,7 +1203,7 @@ export const AvatarOverlay: React.FC<AvatarOverlayProps> = ({
       }}
     >
       <OffthreadVideo
-        src={staticFile(cleanRel)}
+        src={resolvedClipUrl}
         transparent
         muted={muted}
         style={{ width: '100%', height: '100%', objectFit: 'cover' }}
@@ -3012,6 +3250,9 @@ export function writeShotcraftRemotionLib(projectDir) {
 export function buildDirectorPromptPackage({
   topic,
   userPrompt,
+  directorNotes = '',
+  contentOutline = [],
+  genre = '',
   aspectRatio,
   quality,
   width,
@@ -3024,11 +3265,13 @@ export function buildDirectorPromptPackage({
   pacingMode = 'auto',
 }) {
   const zeroVisualAssets = !Array.isArray(assets) || assets.length === 0
+  const resolvedGenre = genre || detectGenre(`${topic || ''} ${userPrompt || ''} ${directorNotes || ''}`, !zeroVisualAssets)
+  const genreGuide = buildGenreGuidance(resolvedGenre)
   const normPacing = ['calm', 'balanced', 'dynamic'].includes(String(pacingMode || '').toLowerCase())
     ? String(pacingMode).toLowerCase()
-    : narrationMode === 'subtitle-mv' || /历史|霸王|史诗|演义|战役|卡点|快闪|混剪|高燃|\bMV\b/i.test(`${topic || ''} ${userPrompt || ''}`)
+    : narrationMode === 'subtitle-mv' || resolvedGenre === 'history-theater' || /历史|霸王|史诗|演义|战役|卡点|快闪|混剪|高燃|\bMV\b/i.test(`${topic || ''} ${userPrompt || ''}`)
       ? 'dynamic'
-      : /故事|品牌|温情|人物|访谈|纪实|心路|传记|文化/i.test(`${topic || ''} ${userPrompt || ''}`)
+      : resolvedGenre === 'brand-story' || /故事|品牌|温情|人物|访谈|纪实|心路|传记|文化/i.test(`${topic || ''} ${userPrompt || ''}`)
         ? 'calm'
         : zeroVisualAssets && narrationMode !== 'tts'
           ? 'dynamic'
@@ -3042,49 +3285,31 @@ export function buildDirectorPromptPackage({
   const beatInfoText = bgmMeta?.analyzed
     ? `实测音乐节奏：BPM=${bgmMeta.bpm}，首拍偏移 phaseSec=${bgmMeta.phaseSec}s，单拍=${bgmMeta.beatSec}s，音乐总长=${bgmMeta.durationSec}s，高潮突降点 drops=${JSON.stringify((bgmMeta.drops || []).slice(0, 10))}。请让分镜数与每镜 beatCount（1/2/4/8 拍）贴合音乐起承转合！`
     : ''
-  const isHistoricalTheme = /历史|霸王|项羽|秦|汉|楚|三国|唐|宋|明|古风|武侠|战役|将军|帝王|演义/i.test(`${topic || ''} ${userPrompt || ''}`)
+  const isHistoricalTheme = resolvedGenre === 'history-theater' || /历史|霸王|项羽|秦|汉|楚|三国|唐|宋|明|古风|武侠|战役|将军|帝王|演义/i.test(`${topic || ''} ${userPrompt || ''}`)
   const system = zeroVisualAssets
-    ? `你是顶级全题材动态视觉导演兼音画卡点总监 (AI Dynamic Visual & Beat-Sync Director)，精通人物传记/历史史诗、软件原理/架构科普、产品商业发布、数据科学图解、财经商业分析、生物医疗科普与抽象律动短片。
-当前没有任何现成图片/视频素材 (zeroVisualAssets=true)，全部画面将由下游 AI 主程根据你为每一幕撰写的 \`visualBlueprint\`，通过 **\`<FreeformThreeStage>\` (原生 Three.js 3D 自由造景) + 原生动态 \`<svg>\` + 弹簧物理** 从零编写专属代码，不受任何固定预设限制！（禁止编造任何 \`assets/xxx.png\` 文件名或软件窗口占位图！）
+    ? `你是顶级全题材动态视觉导演兼音画卡点总监 (AI Dynamic Visual & Beat-Sync Director)，兼容代码动画、历史剧场、火柴人角色动画、真人口播包装、数字人、科普图解与任意自创题材。
+${genreGuide}
+${directorNotes ? `\n【导演创作指导（仅供策划与下游主程参考，严禁将“本视频要求…”“镜头语言…”之类指令原文放入 title / narration / subChunks！】】：\n${String(directorNotes).slice(0, 900)}` : ''}
+当前没有任何现成图片/视频素材 (zeroVisualAssets=true)，全部画面将由下游 AI 主程根据你撰写的 \`visualBlueprint\`，使用 \`<FreeformThreeStage />\` (React + Three.js 3D) + 动态 SVG / Canvas 从零自由写码绘制，不受任何固定模板限制！
 ${beatInfoText}
 
 必须遵循以下规范：
-1. 你只输出严格的 JSON 对象，不要包含额外 Markdown 文字。
-2. **依题材适配节奏（${zeroPacingSpec.label}）**：根据主题语境与音乐起承转合拆分为 **${zeroPacingSpec.shotRange} 个镜头**！${zeroPacingSpec.durRule}；narrationMode=${narrationMode}：
-   - 若用户指定第二人称（如"你"）或科普/叙事人称，全篇严格统一；单句字幕 <= 18 字，充满具体时间节点、实体细节、金句或客观指标，杜绝空洞废话！accentWords 标出 1~2 个亮点金色词汇；
-   - narration 与 subChunks 逐字一致，严禁空洞套话！
-3. 每镜必须携带完整 \`visualBlueprint\`（下游逐镜 TSX/HTML 程序员直读：**请根据每句台词自由构思最贴合的专属 3D 场景与 2D 动态 SVG 画面**——例如：3D 旋转地球与跨洋飞线、3D 柱状矩阵、3D 芯片爆炸拆解、3D 分子球棍、K线折线雷达图、动态思维导图、物理公式推导、代码执行流或东方历史人物剪影，严禁所有镜头千篇一律！）：
-   - \`highlights\`: 1~3 个核心关键词；
-   - \`threePreset\`: "orbital-core" | "cyber-terrain" | "particle-vortex" | "floating-monoliths" | "chrono-helix" | "matrix-cubes"（仅作兜底备选）
-   - \`layout\`: 仅作离线兜底布局——${isHistoricalTheme ? '历史古风题材可用 "narrative-diorama" 配合 stageSpec' : '非历史题材请轮换选用 "3d-stage-opener" | "svg-architecture-flow" | "hud-telemetry-dashboard" | "vibecoding-spring-stage" | "metric-dashboard" | "workflow-steps" | "radial-climax"，切忌写死为 narrative-diorama！'}
-   - \`transition\` 仅允许: "cut" | "flash-cut" | "slash-wipe" | "iris-circle" | "block-wipe" | "glitch-cut" | "zoom-punch" | "light-wipe"（禁止填入配方名）
-   ${isHistoricalTheme ? '- 历史题材可选 stageSpec（mood/setting/archetype/heroNum/calligraphy/plaques）。' : ''}
-4. 每个分镜搭配精确落拍的 sfxCues，可在 0.00s 放置 "hit"/"sub_drop"/"slash"/"stamp"/"whoosh" 等音效。`
-    : `你是顶级电影动态视觉导演兼音画编曲总监 (AI Director & Sound Designer)。
-你的职责不是套模板，而是针对用户提供的主题与真实素材，构思极具大厂发布会/电影预告片质感的视频蓝图与定制合成音乐音效方案。
+1. 只输出严格的 JSON 对象，不要包含 Markdown 围栏或解释文字。
+2. **禁止任何导演指令污染台词与屏幕文字**：\`title\`（作品主标题 <= 18 字）、各幕 \`title\`、\`narration\` 与 \`subChunks\` 必须 100% 是面向观众的正片内容！严禁出现"本视频要求…""请制作…""画面风格…"等指令字样。
+3. **文字展示与断句铁律**： \`narration\` 与 \`subChunks\` 中的年份/数量必须保持**阿拉伯数字**（例如 \`206年\`、\`3000人\`、\`119年\`），绝不改写为中文汉字；不要在台词中使用双引号 \`“”""\` 或书名号 \`《》\`，需要强调的词放入 \`accentWords\`。
+4. **情绪与语速驱动**：为每幕标注具体的 \`emotion\`（\`高兴\`|\`欢快热情\`|\`激昂有力\`|\`自信\`|\`重点强调\`|\`温和\`|\`严肃强调\`|\`悬念低沉\`|\`悲壮\`）和 \`speechRate\`（\`1.05~1.12\` 保持节奏明快，史诗低沉 \`0.96~1.05\`）。
+5. **依题材适配节奏（${zeroPacingSpec.label}）**：拆分为 **${zeroPacingSpec.shotRange} 个镜头**，${zeroPacingSpec.durRule}。每镜必须携带具体的 \`visualBlueprint\`（直接写清 SVG/Canvas/Three.js 画面构成，如水墨地图路线推进/火柴人关节动作/3D 空间结构/公式曲线等），\`transition\` 仅允许 \`"cut"|"flash-cut"|"slash-wipe"|"iris-circle"|"block-wipe"|"glitch-cut"|"zoom-punch"|"light-wipe"\`。`
+    : `你是顶级全题材动态视觉导演兼交互动画编排总监 (AI Director & Interactive Choreographer)。
+${genreGuide}
+${directorNotes ? `\n【导演创作指导（仅供策划与下游主程参考，严禁把指令文字原样写入 title / narration / subChunks！】】：\n${String(directorNotes).slice(0, 900)}` : ''}
 ${beatInfoText}
 
 必须遵循以下规范：
-1. 你只输出严格的 JSON 对象，不要包含额外 Markdown 解释文字。
-2. **口播稿 (narration) 与屏幕底部字幕 (subtitleText / subChunks) 严格逐字一致！标题卡片另行提炼！**
-   - narration: 自然流畅口语表达，单镜 **10-28 字**为主，节奏明快，适合 3.5-6.5 秒快速切镜。如果素材丰富，优先拆分为 **8-16 个紧凑短镜**，避免 10 秒超长呆板大段独白！
-   - subChunks: 必须与 narration 的实际读音一字不差地按语意/标点拆分为 1-3 段屏幕单行字幕（每段 6-16 字），严禁改写或替换口播用词；视觉关键词标语请放在 title / highlights / tag 中！
-3. **产品截图/UI 软件宣传片禁止把截图放在黑遮罩后面模糊背景！** 应使用 AppWindow (shotType: "app-focus-shot" | "split-wipe-compare" | "metric-dashboard" | "multi-window-trio" | "workflow-steps" | "card-fan-opener"):
-   - cams: 归一化镜头推拉序列 [{ t: 0, fx: 0.5, fy: 0.5, z: 1.0 }, { t: 1, fx: 0.28, fy: 0.36, z: 1.65 }]，精确放大软件 UI 局部细节；
-   - marks: 截图内部归一化坐标高亮标注框 [{ fx: 0.25, fy: 0.35, fw: 0.22, fh: 0.14, label: "一键AI拆分镜", tone: "gold", startFrame: 10 }]！
-4. 画面布局与镜头语言必须根据画幅比例 (${aspectRatio}, ${width}x${height}) 量身定制：
-   - 竖屏 (9:16 / 3:4): 采用上下构图、中心主体聚焦、大字号大数字、安全边距避开底部 12% 区域。
-   - 横屏 (16:9): 采用全清 AppWindow 推镜聚焦、A/B 擦除对比、三主题并排窗或双轨数据仪表台。
-5. 为整部作品编曲：生成 audioSpec，包含：
-   - mood: "tech" | "energetic" | "cinematic" | "warm" | "emerald"
-   - bpm: 整数 (88-136)
-   - drumDensity: 0.0 - 1.0
-   - leadStyle: "pluck" | "epiano" | "glock" | "pad-only"
-   - padCutoff: 800 - 3200
-   - chords: 4组和弦进度，格式为 [[rootMidi, [m1, m2, m3, m4]], ...]，例如 [[38,[62,65,69,72]],[43,[62,65,71,74]],[36,[64,67,71,74]],[45,[64,69,72,76]]]
-6. 每个分镜设计 2-5 个精密时间点音效 (sfxCues)，既可使用内置类型 ("hit","whoosh","swoosh","flip","lock","pop_soft","tick_burst","shimmer_swell","glitch","pop","thud","card","sparkle","chime","riser","sub_drop","crash_cym","counter","typing","stamp")，也可使用 "synth_sfx" 参数化实时合成：
-   { "type": "synth_sfx", "offsetSec": 0.15, "volume": 0.55, "pan": -0.3, "freqStart": 920, "freqEnd": 180, "durationMs": 320, "q": 1.4, "wave": "saw" }。
-7. 若用户已有参考草稿 (draftScript)，请充分吸收已定稿的分镜数与叙事脉络，但在视觉动效、镜头创意、文案锐度和音效配乐上做电影级跃升。`
+1. 只输出严格 JSON 对象，不要附加 Markdown 或解释文字。
+2. **绝不泄露制作指令 + 阿拉伯数字自然呈现**：\`title\`、\`narration\`、\`subChunks\` 只能写面向观众听和看的纯粹内容（严禁出现"本视频要求…""界面详解…"之类提示词）；年份和数值一律保持阿拉伯数字（\`8 GB\`、\`25 个\`、\`1080p\`）；不要带双引号或书名号，重点词放入 \`accentWords\`。
+3. **软件教程 / UI 实操特写铁律**：严禁把整张截图缩小塞进黑框！使用 \`windowTheme: "light"\` 高亮清晰呈现；\`cams\` 必须做 **1.8x ~ 2.4x 局部特写推镜**（如 \`[{ t: 0, fx: 0.5, fy: 0.5, z: 1.05 }, { t: 0.55, fx: 0.18, fy: 0.08, z: 2.15 }]\`）；并附上 \`cursors: [{ t: 0.12, fx: 0.5, fy: 0.5 }, { t: 0.48, fx: 0.18, fy: 0.08, click: true, label: "点击操作" }]\` 让光标飞过去点击并触发涟漪与 \`click\` / \`whoosh\` 音效！
+4. 为每幕标注差异化 \`emotion\` 与 \`speechRate\`（教程推荐 \`1.06~1.14\` 明快节奏）。
+5. 为整部作品编曲：生成 \`audioSpec\`（\`mood\`, \`bpm\`, \`drumDensity\`, \`leadStyle\`, \`padCutoff\`, \`chords\`），每镜配置贴合点击/切换动作的 \`sfxCues\`（\`click\`/\`pop_soft\`/\`whoosh\`/\`typing\`/\`hit\` 等）。`
 
   const assetSummary = (assets || []).map((a) => ({
     id: a.id,
@@ -3268,64 +3493,68 @@ export function buildBatchedRemotionScenesPrompt({
   theme = {},
   topic = '',
   style = 'cinematic',
+  genre = '',
+  directorNotes = '',
+  contentOutline = [],
   bgmMeta = null,
 }) {
   const isPortrait = width < height
   const pad = String(batchIndex + 1).padStart(2, '0')
   const filePath = `src/scenes/Batch${pad}.tsx`
   const exportName = `BATCH_${pad}_SCENES`
+  const hasAnyAssets = (batchScenes || []).some((s) => (s.media?.length || s.assetPaths?.length || 0) > 0)
+  const resolvedGenre = genre || detectGenre(`${topic} ${directorNotes}`, hasAnyAssets)
+  const genreGuide = buildGenreGuidance(resolvedGenre)
+  const isUiTutorial = resolvedGenre === 'ui-tutorial'
 
-  const system = `你是全球顶尖的 Opus 5.5 Vibecoding 视频动效创意主程（精通 Remotion v4 + 原生 Three.js 3D 自由编程 + 动态矢量 SVG 创作 + 弹簧物理动画）。
-你的核心使命：**彻底打破固定模板与预设的束缚！** 面对本批次的每一个分镜，你拥有一张 **100% 自由的 Three.js 3D + SVG + React 编程画布**。请根据用户的创作主题 (\`${topic}\`) 与每一幕的 \`visualBlueprint\`（视觉蓝图）和旁白台词，**从零自由编写独一无二、千片千面、直击主题灵魂的 3D 空间与 2D 动态矢量代码**！内置预设仅在你不写自定义逻辑时兜底，绝不可偷懒把所有镜头写成千篇一律的预设套壳！
+  const system = `你是全球顶尖的 Opus 5.5 Vibecoding 视频动效创意主程（精通 Remotion v4 + 原生 Three.js 3D 自由编程 + 动态矢量 SVG 创作 + React 交互动效 + 弹簧物理动画）。
+你的核心使命：**彻底粉碎模板套壳！禁止多幕共用同一个页面框架/Card/Lesson 组件只换右侧文字！**
+面对本批次的每一幕，你拥有一张 **100% 自由的 React + Three.js 3D + 动态 SVG 编程画布**。请严格围绕题材路由与导演创作指导，为每一幕编写真正差异化、生动有呼吸感、贴合题材灵魂的专属代码！
 
-=== 适用全题材的 Opus 5.5 自由造景编程指南（当前画布 ${width}x${height} ${isPortrait ? '竖屏短视频构图' : '横屏影院构图'}） ===
-1. **【第一画笔：100% 自由编程的 Three.js 3D 空间画布 (\`<FreeformThreeStage buildScene={(api) => { ... }} />\`)】**：
-   - 你不受任何固定 3D 预设种类的限制！只需挂载 \`<FreeformThreeStage primaryColor={...} secondaryColor={...} beatPulse={pulse} durationInFrames={scene.durationInFrames || 120} buildScene={(api) => { ... }} />\`，即可在 \`buildScene\` 中用 \`api\` 逐帧自由构建**任意题材的 3D 场景**：
-     * \`api.THREE\`: 完整的 Three.js 几何与数学库（如 \`new api.THREE.SphereGeometry(r, 18, 14)\` 球体/地球/行星/原子、\`new api.THREE.BoxGeometry(w, h, d)\` 3D 柱状图/芯片层/建筑块、\`new api.THREE.CylinderGeometry(rTop, rBot, h, 16)\` 圆柱/活塞/光柱、\`new api.THREE.ConeGeometry(r, h, 12)\` 棱锥/箭头/火箭、\`new api.THREE.TorusGeometry(r, tube, 12, 36)\` 星环/磁场/齿轮、\`new api.THREE.IcosahedronGeometry(r, 1)\` 晶核、\`new api.THREE.RingGeometry(rIn, rOut, 28)\` 刻度环）；
-     * \`api.setCamera([x, y, z], [lookX, lookY, lookZ], fov)\`: 自由控制 3D 透视相机推进、环绕、俯仰运镜；
-     * \`api.addMesh(geo, { position: [x, y, z], rotation: [rx, ry, rz], scale: 1, isGold: false, fillAlpha: 0.24, strokeAlpha: 0.85, lineWidth: 1.4 })\`: 放置任意 3D 网格物体（系统自动执行深度排序与发光线框渲染并自动释放内存）；
-     * \`api.addLine3D(points, { isGold: true, alpha: 0.85, lineWidth: 2.2, closed: false, dashed: false })\`: 绘制任意 3D 空间曲线、行星轨道、跨洋航线、神经网络连线、3D 坐标轴；
-     * \`api.orbitPoint(radius, angleRad, y, tiltXRad)\` 与 \`api.arc3D(startPt, endPt, arcHeight, segments)\`: 一行代码生成 3D 环绕轨道点或 3D 抛物飞线点阵；
-     * \`api.addParticle3D([x, y, z], { radius: 4, isGold: true, glow: true })\`: 绘制 3D 空间发光粒子/光子；
-     * \`api.addLabel3D('标签文字', [x, y, z], { isGold: true, subText: '指标/说明' })\`: 在 3D 物体坐标上直接锚定跟随移动的 2D 全息 HUD 引线标牌！
-   - 若某个分镜确实只需通用背景，也可传 \`<ThreeCyberStage preset={scene.threePreset || 'orbital-core'} />\` 作为辅助，但鼓励优先用 \`<FreeformThreeStage buildScene={...} />\` 画出贴合台词的专属 3D 主体！
-2. **【第二画笔：100% 自由编写的多层动态 \`<svg>\` + 数学曲线与弹簧物理】**：
-   - 在 3D 空间层之上，手写 \`<svg viewBox="0 0 ${width} ${height}">\` 自由绘制契合本镜台词的专属 2D 动态视觉：
-     * 无论是**金融 K 线/折线趋势图、多维对比柱状图、六维雷达图、动态生长思维导图、公式/算法推导黑板、实时代码树、科学原理剖析图、流程图解、还是东方历史水墨人物/器械/地图**，全部直接用 \`<path>\`、\`<circle>\`、\`<rect>\`、\`<line>\`、\`<g>\`、\`<text>\` 配合 \`buildSmoothSvgPath(points)\` 与 \`describeSvgArc(cx, cy, r, a0, a1)\` 自由绘制！
-     * 结合 \`const phys = computeBeatSpring(frame, fps, beats, { delayFrames: 0 })\` 或 \`spring({ frame, fps, config: { damping: 13, stiffness: 170 } })\` + \`interpolate()\`，让每个图形元素都具备鲜活的弹簧生长、路径描边 (\`strokeDasharray\` / \`strokeDashoffset\`) 与音乐重拍回弹！
-   - 内置组件（如 \`<SvgArchitectureDiagram />\`、\`<HudDataDashboard />\`、\`<HudTelemetryOverlay />\`、\`<BeatSpringPhysicsRig />\`、\`<DigitRoll />\`、\`<ClipCard />\`）可作为积木局部混搭，但切勿让固定预设限制你的构图创意！
-3. **【有用户上传的真实截图/视频素材时 (publicAssetFiles 非空)】**：
-   - 请在 \`<FreeformThreeStage opacity={0.5} ... />\` 之上，使用 \`<AppWindow title={scene.title} kicker="DSH WORKBENCH" style={{ width: '100%', height: ${isPortrait ? 720 : 680} }}><FocusShot src={scene.publicAssetFiles?.[0] || scene.assetPaths?.[0] || scene.media?.[0]?.path} cams={scene.cams} marks={scene.marks} /></AppWindow>\`（或 \`<BeforeAfterWipe>\`）高清呈现用户真实素材，严禁虚构不存在的 \`staticFile\` 路径！
-4. **反静止僵硬法则与安全留白法则**：
-   - 每个分镜从 \`progress=0\` 到 \`progress=1\` 必须有连续的 3D 相机运镜、3D 物体旋转/拆解/生长、以及 2D SVG 动态演进；
-   - 屏幕底部 \`${isPortrait ? 420 : 165}px\` 区域（Y > ${isPortrait ? Math.round(height - 460) : Math.round(height - 170)}）由主合成器绘制字幕与进度条，${isPortrait ? '顶部 Y < 220px 为状态栏与角标区，右侧 X > 910（Y > 680）为互动栏安全区，' : ''}画中主文字与核心主体务必布局在 \`Y = ${isPortrait ? '225 ~ 1410' : '80 ~ 860'}\` 安全区以内！禁止自行额外重复渲染底部大字幕条、AiBadge 或 Audio！
+${genreGuide}
+${directorNotes ? `\n【导演备注（仅供你编排视觉/运镜/动效时参考，严禁把“本视频要求…”之类指令原文写入画面或字幕！）】：\n${String(directorNotes).slice(0, 900)}` : ''}
 
-=== 绝对不允许触犯的工程红线（触发即被沙箱打回！） ===
-1. 输出严格 JSON 对象（禁止外层包裹解释文字）：
-   { "files": { "${filePath}": "<完整 TypeScript JSX 代码>" } }
-2. 文件路径严格为 \`${filePath}\`，且末尾必须精确导出字典：
+=== 按题材定制的自由创作规范（当前画布 ${width}x${height} ${isPortrait ? '竖屏构图' : '横屏构图'}） ===
+${isUiTutorial ? `- **【软件实操教程专属视觉规范 —— 严禁暗黑缩略图与静态 PPT！】**：
+  1. **高对比度亮色专业画布**：如果导入截图为亮色清晰画面，外背景严禁做成乌漆麻黑的压抑黑底框！应采用干净明快的 Studio 亮灰/冷白光影渐变底（如 \`#F1F5F9 -> #E2E8F0\`）搭配深色精炼字号，或全幅贴合 \`AppWindow theme="light"\`（占画面 **85%–98%** 空间，绝不缩小塞进黑框！）。
+  2. **局部特写推拉运镜 (Zoom 1.8x ~ 2.5x)**：讲解点击具体按钮、抽屉或设置项时，\`<FocusShot src={...} cams={...} marks={...} cursors={...} />\` 必须从 \`z: 1.02\` 平滑推近放大至 \`z: 1.85 ~ 2.45\` 聚焦到目标按钮/下拉框区域，让观众连按钮上的每个汉字都清晰锐利！
+  3. **真实 UI 交互动画（拒绝静态死图！）**：每一步都要使用 \`cursors\`（例如 \`[{ t: 0.1, fx: 0.5, fy: 0.5 }, { t: 0.45, fx: targetX, fy: targetY, click: true, label: '点击...' }]\`）触发光标沿曲线滑入 + 点击波纹扩散；涉及抽屉/弹窗前后状态切换时使用 \`<UiDrawerSlide beforeSrc={...} afterSrc={...} revealAt={0.42} direction="left|modal" />\`（当 \`publicAssetFiles.length >= 2\` 时衔接前后截图状态！）；涉及输入框打字时用 \`<UiTypingOverlay text={...} />\`；角标仅用轻量悬浮玻璃标签（别用大块黑侧栏挤占截图面积）！` : `- **【按题材定制视觉语言 —— 严禁千篇一律用同一套科技风卡片！】**：
+  * **历史剧场 / 纪实传奇 (\`history-theater\`)**：使用水墨留白/宣纸/玄金卷轴色调，用动态 \`<svg>\` 画山河等高线、弯曲行军路线（\`pathLength=1\` + \`strokeDashoffset\` + 发光箭矢行进）、朱砂印章、纵排/衬线大字（\`FONT_SERIF\`）、以及 \`<FreeformThreeStage>\` 营造沙场火星/尘烟粒子或青铜战鼓三维光影！严禁使用现代 SaaS 科技仪表盘卡片！
+  * **火柴人 / 角色动画 (\`stickman-story\`)**：手写多关节层级 SVG 骨骼动画（头/躯干/大臂/小臂/大腿/小腿用嵌套 \`<g transform="translate(...) rotate(...)">\` 受 \`spring\` 与正弦周期驱动跑跳指点）、手绘对话气泡、拟声字、速度线与道具！
+  * **代码动画 / 科普原理 / 数据故事 (\`code-animation\` / \`science-explainer\` / \`data-story\`)**：用 \`<FreeformThreeStage buildScene={(api) => { ... }} />\` 手写专属 3D 模型（行星轨道、分子球棍、芯片层爆炸拆解、神经网络连线、柱状矩阵），叠加实时生长的 SVG K线/雷达/脑图/代码流/公式推导与 \`computeBeatSpring\`！
+  * **口播 / 数字人 / 自由其他题材 (\`talking-head\` / \`digital-human\` / \`other\`)**：随主题发明最贴切的 React + SVG + Three.js 视听舞台，不设任何题材或构图上限！`}
+- **【第一画笔：Three.js 3D 自由空间 (\`<FreeformThreeStage buildScene={(api) => { ... }} />\`)】**：
+  \`api.THREE\`（BoxGeometry/SphereGeometry/CylinderGeometry/ConeGeometry/TorusGeometry/IcosahedronGeometry/RingGeometry）、\`api.setCamera\`、\`api.addMesh\`、\`api.addLine3D\`、\`api.orbitPoint\`、\`api.arc3D\`、\`api.addParticle3D\`、\`api.addLabel3D\`。
+- **【第二画笔：原生动态 \`<svg>\` + 数学路径与弹簧物理】**：
+  \`buildSmoothSvgPath(points)\`、\`describeSvgArc(cx, cy, r, a0, a1)\`、\`computeBeatSpring(frame, fps, beats)\`、\`spring()\`、\`interpolate()\`。
+- **【防错位与安全留白规则】**：
+  1. **每幕独立写专属视觉结构**：严禁定义单个全局函数套全批 6 个分镜仅替换右侧 3 行字；允许复用小型通用工具（如文字/粒子辅助），但主体构图与交互动效必须随本幕台词与视觉蓝图显著变化！
+  2. 屏幕底部 \`${isPortrait ? 420 : 158}px\` 区域（Y > ${isPortrait ? Math.round(height - 440) : Math.round(height - 165)}）留给主合成器字幕条，右上角 \`top: 16~68px, right: 20~200px\` 预留给合规角标 \`<AIBadge>\`，切勿把角标文字放到右上角与它重叠！主要画面主体放在 Y = 50 ~ ${isPortrait ? 1400 : 880} 清晰区域内；严禁自行渲染底部大字幕或 Audio！
+  3. 屏幕文字（title/highlights/标签/标注）必须全部使用**阿拉伯数字**（如 \`206年\`、\`3000人\`、\`8 GB\`），不要强行改写为中文数字，也不要带无意义双引号或“本视频要求…”字样！
+
+=== 工程合规铁律（触犯即被沙箱打回！） ===
+1. 输出严格 JSON（禁止包裹解释文本）：{ "files": { "${filePath}": "<完整 TypeScript JSX 代码>" } }
+2. 末尾精确导出字典：
    \`\`\`ts
    export interface CustomSceneProps { scene: any; idx: number; total: number; beats: any[]; }
    export const ${exportName}: Record<string, React.FC<CustomSceneProps>> = {
      ${batchScenes.map((s) => `'${s.id}': Scene_${String(s.id).replace(/[^a-zA-Z0-9]/g, '_')}`).join(',\n     ')}
    };
    \`\`\`
-   注意键名必须与 batchScenes 中的 \`id\` 逐字完全一致！
-3. **严禁出现 \`Math.random(\`、\`@keyframes\`、CSS \`animation:\`、以及英文单词 transition 后跟冒号的语法（即使在注释、类型接口或变量说明中也绝对不能出现 \`transition\` 后紧跟 \`:\`！）**
-4. 严禁使用 Node 内置模块、\`eval\`、\`new Function\`、外网 URL、本地盘符、受限商业字体（微软雅黑/宋体/黑体等）。必须仅使用 \`FONT_SANS\` / \`FONT_SERIF\` / \`FONT_MONO\`。
-5. **每个 <defs> 里的渐变/滤镜/ClipPath ID 必须附带 \`\${idx}\` 或场景唯一后缀**（如 \`id={\`bg-\${idx}\`}\`），防止多场景同时挂载时 SVG ID 冲突。
-6. **TypeScript strict 零错误要求**：
-   - 必须为 \`.map\` / 回调参数与对象字典标注明确类型（如 \`(pt: any, i: number)\`、\`(api: FreeformThreeApi)\`）；
-   - 若需要使用 \`staticFile\`，只可传入 \`publicAssetFiles\` 里明确存在的文件；不要 import 用不到的变量。
-   - 可用的稳定导入路径与符号（不要臆造其它不存在的导出！）：
-     * \`from 'remotion'\`: \`AbsoluteFill, Easing, Img, interpolate, random, spring, staticFile, useCurrentFrame, useVideoConfig\`
-     * \`from '../lib/shotcraft'\`: \`FreeformThreeStage, FreeformThreeApi, ThreeCyberStage, THREE, ThreeCanvas, THREE_STAGE_PRESETS, buildSmoothSvgPath, describeSvgArc, SvgArchitectureDiagram, HudDataDashboard, HudTelemetryOverlay, BeatSpringPhysicsRig, computeBeatSpring, CameraRig, AnimatedRoutePath, ParallaxHorizon, AppWindow, FocusShot, BeforeAfterWipe, MetricPanel, DigitRoll, ClipCard, PageCam, computeBeatPulse, FONT_SANS, FONT_MONO, FONT_SERIF\`
-     * \`from '../lib/narrative-diorama'\`: \`NarrativeDioramaStage, HeroWarriorFigure, StrategicMapStage, SlashBurstOverlay, CalligraphyColumnPanel, MOOD_PRESETS, computeBeatSignal\``
+3. **绝对禁止 \`Math.random(\`、\`@keyframes\`、CSS \`animation:\`、以及英文单词 \`transition\` 后紧跟 \`:\`（注释与类型接口里也绝对不要出现 \`transition:\`！）**。
+4. 严禁 Node 模块、\`eval\`、\`new Function\`、外网 URL、受限商用字体（微软雅黑/宋体/黑体）；只用 \`FONT_SANS\` / \`FONT_SERIF\` / \`FONT_MONO\`；\`<defs>\` 渐变/clipPath ID 必须拼接 \`\${idx}\` 唯一后缀！
+5. TypeScript strict 零错误（所有回调与字典加类型注解，\`publicAssetFiles\` 里的相对路径如 'assets/...' 只能给原生 \`<Img src={staticFile(p)} />\` 用；传给 \`<FocusShot src={p} />\`, \`<UiDrawerSlide beforeSrc={p} afterSrc={q} />\`, \`<AppWindow brandMark={p} />\` 时直接传原始相对字符串，**切勿再用 staticFile() 包一层**！\`cams\` 和 \`cursors\` 的时间戳 \`t\` 统一用 \`0..1\` 归一化进度）；
+   可用导入（严格以此为准）：
+   - \`from 'remotion'\`: \`AbsoluteFill, Easing, Img, interpolate, random, spring, staticFile, useCurrentFrame, useVideoConfig\`
+   - \`from '../lib/shotcraft'\`: \`FreeformThreeStage, FreeformThreeApi, ThreeCyberStage, THREE, ThreeCanvas, THREE_STAGE_PRESETS, buildSmoothSvgPath, describeSvgArc, SvgArchitectureDiagram, HudDataDashboard, HudTelemetryOverlay, BeatSpringPhysicsRig, computeBeatSpring, CameraRig, AnimatedRoutePath, ParallaxHorizon, AppWindow, FocusShot, InteractiveCursor, UiDrawerSlide, UiTypingOverlay, BeforeAfterWipe, MetricPanel, DigitRoll, ClipCard, PageCam, computeBeatPulse, FONT_SANS, FONT_MONO, FONT_SERIF\`
+   - \`from '../lib/narrative-diorama'\`: \`NarrativeDioramaStage, HeroWarriorFigure, StrategicMapStage, SlashBurstOverlay, CalligraphyColumnPanel, MOOD_PRESETS, computeBeatSignal\``
 
   const user = JSON.stringify(
     {
       task: `请编写模块 ${filePath}（第 ${batchIndex + 1}/${totalBatches} 批，共 ${batchScenes.length} 镜 / 全片 ${totalScenes} 镜）`,
       topic,
+      genre: resolvedGenre,
+      contentOutline: Array.isArray(contentOutline) && contentOutline.length ? contentOutline : undefined,
       style,
       canvas: { width, height, fps, aspectRatio },
       themePalette: theme,
@@ -3341,8 +3570,6 @@ export function buildBatchedRemotionScenesPrompt({
         accentWords: s.accentWords || [],
         highlights: s.highlights || [],
         visualBlueprint: s.visualBlueprint || s.motionNotes || s.visualPrompt || s.title,
-        layout: s.layout,
-        threePreset: s.threePreset || s.stageSpec?.threePreset || undefined,
         txKind: s.transition || 'cut',
         durationSec: s.durationSec,
         durationInFrames: s.durationInFrames,
@@ -3351,6 +3578,7 @@ export function buildBatchedRemotionScenesPrompt({
         metrics: s.metrics?.length ? s.metrics : undefined,
         cams: s.cams?.length ? s.cams : undefined,
         marks: s.marks?.length ? s.marks : undefined,
+        cursors: s.cursors?.length ? s.cursors : undefined,
         publicAssetFiles: Array.isArray(s.media) && s.media.length > 0
           ? s.media.map((m) => String(m?.path || '').replace(/^\/+/, '').replace(/\\/g, '/')).filter(Boolean)
           : Array.isArray(s.assetPaths)
@@ -3373,18 +3601,25 @@ export function buildHtmlCoderSkillsPrompt({
   aspectRatio,
 }) {
   const isPortrait = width < height
-  const system = `你是精通 HyperFrames HTML5/Canvas 3D 透视矩阵与动态 SVG 创意编程专家（Opus 5.5 Vibecoding 水准）。
-你需要生成一个完全自包含、纯离线零外链、支持 Chromium CDP 逐帧精确 seek 的单个 HTML 文件，**不受任何固定预设限制，针对每个分镜的题旨与 visualBlueprint 自由编写专属 3D Canvas 投影场景 + 动态 SVG 图表/矢量图解 + 节拍同步弹簧物理**！
+  const topicText = plan?.displayTitle || plan?.topic || plan?.title || timingContract?.topic || ''
+  const resolvedGenre = plan?.genre || timingContract?.genre || detectGenre(`${topicText} ${plan?.directorNotes || ''}`, (timingContract?.scenes || []).some((s) => (s.assetPaths?.length || 0) > 0))
+  const genreGuide = buildGenreGuidance(resolvedGenre)
+  const directorNotes = plan?.directorNotes || timingContract?.directorNotes || ''
+  const system = `你是精通 HyperFrames HTML5/Canvas 2D+3D 透视矩阵与动态 SVG 创意编程专家（Opus 5.5 Vibecoding 水准）。
+你需要生成一个完全自包含、纯离线零外链、支持 Chromium CDP 逐帧精确 seek 的单个 HTML 文件，**彻底解除模板束缚，按题材自由手写 Canvas + SVG + 3D 透视画面**！
+
+${genreGuide}
+${directorNotes ? `\n【导演备注（仅供视觉写码参考，严禁把指令文本写入屏幕文字/字幕！）】：\n${String(directorNotes).slice(0, 700)}` : ''}
 
 === HYPERFRAMES 自由造景与确定性逐帧铁律 (违背会被拒绝重修!) ===
 1. 输出严格 JSON：{ "files": { "index.html": "<!doctype html>..." } }。
 2. 画布固定为 ${width}x${height} (${aspectRatio})，body/stage margin:0 overflow:hidden；商业字体合规铁律：必须通过 @font-face 加载 'fonts/NotoSansSC-VF.woff2'，使用 'Noto Sans SC', sans-serif 与 'JetBrains Mono', monospace，严禁声明 Microsoft YaHei / SimSun / SimHei 等受限商业字体！
 3. 严禁引用任何外部 http/https CDN (GSAP、字体、图片、SVG 外部链接全部禁止！)，若需使用真实素材，使用相对路径（如 assets/...）。
 4. 严禁出现无限自主驱动动画（不可用 CSS @keyframes、不可在 requestAnimationFrame 内自行推进主时间轴，不可使用 Math.random() 造成前后帧不一致，请使用确定性伪随机函数）。
-5. 自由 3D 与动态 SVG 创作指南：
-   - 在 Canvas2D 中自己实现轻量级 3D 透视投影函数 \`proj3D(x, y, z, camX, camY, camZ)\` + 欧拉旋转，依据每镜 \`visualBlueprint\` 自由绘制契合题材的 3D 地球飞线、3D 柱状矩阵、3D 芯片爆炸拆解、3D 轨道粒子或 3D 地形网格；
-   - 在每个分镜 DOM 内手写定制 \`<svg viewBox="0 0 ${width} ${height}">\`，通过 \`stroke-dashoffset\`、三次贝塞尔曲线、柱/雷达/折线/思维导图/流程图/代码终端与欠阻尼弹簧函数 \`springVal = 1 - Math.exp(-7 * x) * Math.cos(8.5 * x)\` 随 \`frameIndex\` 与 \`bgmBeats\` 实时运动；
-   - 右下/底部保留简洁字幕安全区（${isPortrait ? '竖屏底部 ≥ 22% 高度' : '横屏底部 ≥ 13% 高度'}）。
+5. 自由 3D 与全品类创意绘制指南（不得用固定卡片套所有镜头！）：
+   - Canvas2D 3D 透视投影函数 \`proj3D(x, y, z, camX, camY, camZ)\` + 欧拉旋转 + 粒子/星轨/柱阵/星球/战鼓；
+   - 按题材定制视觉：历史题材手写水墨 SVG 疆域与行军箭头/火星粒子；火柴人题材用 Canvas/SVG 骨骼关节关键帧；实操教程用高对比亮色画布 + **1.8x–2.5x 局部镜头推近放大** + SVG 鼠标指针滑动与点击波纹；代码/科普用实时数学图表/树图/代码流 + 欠阻尼弹簧函数 \`springVal = 1 - Math.exp(-7 * x) * Math.cos(8.5 * x)\`；
+   - 右下/底部保留简洁字幕安全区（${isPortrait ? '竖屏底部 ≥ 22% 高度' : '横屏底部 ≥ 13% 高度'}），数字用阿拉伯数字（206年、3000人），字幕无双引号。
 6. 必须内嵌 <script id="dsh-script-data" type="application/json">PLACEHOLDER</script>（保留该 script 标签占位符或完整嵌入数据，系统会自动写回最新脚本）。
 7. 必须保留合成器级强制合规叠层：右上/左上 #ai-badge（「AI 辅助创作」）及片尾最后 2 秒展示 #end-notice，且字幕条 bottom 必须避让目标平台安全区；若 script.json 包含 avatarClip.path，需保留 <video id="avatar-overlay-video" muted playsinline> 透明通道画中画/全屏叠层并在 window.__seekToFrame 内按 frame / fps 精确同步 currentTime。
 8. 必须向全局暴露确定性 seek 接口：

@@ -242,6 +242,7 @@ def run_indextts_direct(indextts_root: str, ref_audio: str, emo_audio: str, text
             elif emotion and emotion != "平静" and want_qwen_emo:
                 infer_kwargs["use_emo_text"] = True
                 infer_kwargs["emo_text"] = emotion
+                infer_kwargs["emo_alpha"] = 0.85
             tts.infer(**infer_kwargs)
             provider_name = "indextts25-direct"
         else:

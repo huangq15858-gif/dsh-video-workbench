@@ -337,11 +337,20 @@ const SceneStage: React.FC<{
             : scene.mediaPath
               ? [String(scene.mediaPath).replace(/^[/\\]+/, '').replace(/\\/g, '/')]
               : [];
-    const hydratedScene = { ...scene, publicAssetFiles, threePreset: sceneThreePreset };
+    const genreName = String((scriptData as any)?.genre || '').toLowerCase();
+    const allowTechHudOverlay =
+      visual3dMode === 'on' &&
+      (!genreName || genreName === 'code-animation' || genreName === 'product-promo' || genreName === 'data-story');
+    const hydratedScene = {
+      ...scene,
+      genre: (scriptData as any)?.genre || '',
+      publicAssetFiles,
+      threePreset: sceneThreePreset,
+    };
     return (
-      <AbsoluteFill style={{ overflow: 'hidden', backgroundColor: PALETTE.background }}>
+      <AbsoluteFill style={{ overflow: 'hidden', backgroundColor: hydratedScene.windowTheme === 'light' || genreName === 'ui-tutorial' ? '#F4F7FB' : PALETTE.background }}>
         <CustomSceneComp scene={hydratedScene} idx={idx} total={total} beats={beats} />
-        {visual3dMode === 'on' ? (
+        {allowTechHudOverlay ? (
           <HudTelemetryOverlay
             accentColor={PALETTE.accent}
             goldColor={PALETTE.gold || PALETTE.accent2}
@@ -1055,42 +1064,43 @@ const SceneStage: React.FC<{
           const splitMode = scene.windowLayout === 'split' && !isPortrait;
           const brandLogo = scene.brandMark || (scriptData as any)?.brandMark || '';
           const loupe = scene.loupe || null;
+          const isLightUi = scene.windowTheme === 'light' || String((scriptData as any)?.genre || '') === 'ui-tutorial';
           return (
-            <AbsoluteFill style={{ padding: isPortrait ? '100px 36px 250px' : '74px 68px 158px', display: 'flex', flexDirection: splitMode ? 'row' : 'column', alignItems: 'center', justifyContent: 'center', gap: splitMode ? 42 : 16 }}>
+            <AbsoluteFill style={{ padding: isPortrait ? '100px 36px 250px' : isLightUi ? '34px 44px 136px' : '74px 68px 158px', background: isLightUi ? 'linear-gradient(155deg, #F8FAFC 0%, #EEF4FF 100%)' : undefined, display: 'flex', flexDirection: splitMode ? 'row' : 'column', alignItems: 'center', justifyContent: 'center', gap: splitMode ? 42 : 12 }}>
               {splitMode ? (
                 <div style={{ flex: '0 0 34%', display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
-                  <div style={{ padding: '6px 14px', borderRadius: 999, background: `rgba(${PALETTE.rgbAccent || '69,209,178'}, 0.16)`, border: `1px solid ${PALETTE.accent}`, color: PALETTE.accent, fontFamily: MONO, fontSize: 15, fontWeight: 700, marginBottom: 14 }}>
+                  <div style={{ padding: '6px 14px', borderRadius: 999, background: isLightUi ? 'rgba(37, 99, 235, 0.1)' : `rgba(${PALETTE.rgbAccent || '69,209,178'}, 0.16)`, border: `1px solid ${isLightUi ? '#2563EB' : PALETTE.accent}`, color: isLightUi ? '#1D4ED8' : PALETTE.accent, fontFamily: MONO, fontSize: 15, fontWeight: 700, marginBottom: 14 }}>
                     {scene.kicker || sceneTag}
                   </div>
                   <KineticHeadline lines={titleLines} localFrame={localFrame} fps={fps} fontSize={48} align="left" rgbSplit={rgbSplit} />
                   <HighlightsRow highlights={highlights} localFrame={localFrame} fps={fps} align="left" />
                 </div>
               ) : (
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: isPortrait ? '100%' : '86%', maxWidth: 1420 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: isPortrait ? '100%' : isLightUi ? '95%' : '86%', maxWidth: isLightUi ? 1680 : 1420 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-                    <span style={{ padding: '5px 14px', borderRadius: 999, background: `rgba(${PALETTE.rgbAccent || '69,209,178'}, 0.16)`, border: `1px solid ${PALETTE.accent}88`, color: PALETTE.accent, fontFamily: MONO, fontSize: 15, fontWeight: 800 }}>
+                    <span style={{ padding: '5px 14px', borderRadius: 999, background: isLightUi ? 'rgba(37, 99, 235, 0.1)' : `rgba(${PALETTE.rgbAccent || '69,209,178'}, 0.16)`, border: `1px solid ${isLightUi ? '#3B82F688' : PALETTE.accent + '88'}`, color: isLightUi ? '#1D4ED8' : PALETTE.accent, fontFamily: MONO, fontSize: 15, fontWeight: 800 }}>
                       {scene.kicker || sceneTag}
                     </span>
-                    <span style={{ fontFamily: SANS, fontSize: isPortrait ? 26 : 32, fontWeight: 900, color: PALETTE.textPrimary }}>
+                    <span style={{ fontFamily: SANS, fontSize: isPortrait ? 26 : 32, fontWeight: 900, color: isLightUi ? '#0F172A' : PALETTE.textPrimary }}>
                       {scene.title}
                     </span>
                   </div>
                   {highlights.length ? (
-                    <span style={{ fontFamily: SANS, fontSize: 18, fontWeight: 700, color: PALETTE.gold || PALETTE.accent2 }}>
+                    <span style={{ fontFamily: SANS, fontSize: 18, fontWeight: 700, color: isLightUi ? '#0284C7' : PALETTE.gold || PALETTE.accent2 }}>
                       {highlights.join(' · ')}
                     </span>
                   ) : null}
                 </div>
               )}
 
-              <div style={{ flex: 1, width: isPortrait ? '100%' : splitMode ? '64%' : '86%', maxWidth: splitMode ? 1140 : 1420, height: isPortrait ? 640 : 730, position: 'relative' }}>
+              <div style={{ flex: 1, width: isPortrait ? '100%' : splitMode ? '64%' : isLightUi ? '95%' : '86%', maxWidth: splitMode ? 1140 : isLightUi ? 1680 : 1420, height: isPortrait ? 640 : isLightUi ? 820 : 730, position: 'relative' }}>
                 <AppWindow
                   title={scene.windowTitle || scene.title}
                   kicker={scene.windowBadge || scene.kicker || sceneTag}
                   brandMark={brandLogo}
                   accentColor={PALETTE.accent}
                   goldColor={PALETTE.gold || PALETTE.accent2}
-                  theme={scene.windowTheme === 'light' ? 'light' : 'dark'}
+                  theme={isLightUi ? 'light' : 'dark'}
                   style={{ width: '100%', height: '100%' }}
                 >
                   {primary ? (
@@ -1098,6 +1108,7 @@ const SceneStage: React.FC<{
                       src={primary.path}
                       cams={scene.cams}
                       marks={scene.marks}
+                      cursors={scene.cursors}
                       mediaWidth={Number(primary.width || 0)}
                       mediaHeight={Number(primary.height || 0)}
                       accentColor={PALETTE.accent}
@@ -1259,8 +1270,8 @@ const SceneStage: React.FC<{
 
               <div style={{ flex: 1, width: isPortrait ? '100%' : 'auto', height: isPortrait ? 450 : 690 }}>
                 {primary ? (
-                  <AppWindow title={scene.windowTitle || scene.title} kicker={scene.windowBadge || 'ENGINE'} brandMark={brandLogo} accentColor={PALETTE.accent} goldColor={PALETTE.gold || PALETTE.accent2} style={{ width: '100%', height: '100%' }}>
-                    <FocusShot src={primary.path} cams={scene.cams} marks={scene.marks} mediaWidth={Number(primary.width || 0)} mediaHeight={Number(primary.height || 0)} accentColor={PALETTE.accent} goldColor={PALETTE.gold || PALETTE.accent2} />
+                  <AppWindow title={scene.windowTitle || scene.title} kicker={scene.windowBadge || 'ENGINE'} brandMark={brandLogo} accentColor={PALETTE.accent} goldColor={PALETTE.gold || PALETTE.accent2} theme={scene.windowTheme === 'light' || String((scriptData as any)?.genre || '') === 'ui-tutorial' ? 'light' : 'dark'} style={{ width: '100%', height: '100%' }}>
+                    <FocusShot src={primary.path} cams={scene.cams} marks={scene.marks} cursors={scene.cursors} mediaWidth={Number(primary.width || 0)} mediaHeight={Number(primary.height || 0)} accentColor={PALETTE.accent} goldColor={PALETTE.gold || PALETTE.accent2} />
                   </AppWindow>
                 ) : (
                   <div style={{ position: 'relative', width: '100%', height: '100%' }}>
@@ -1450,7 +1461,8 @@ export const VideoComposition: React.FC = () => {
       : undefined);
 
   const subText = activeSub?.text || (Array.isArray(activeScene?.subtitles) && activeScene.subtitles[0]?.text) || activeScene?.subtitleLine || '';
-  const isCinematicSub = sData.subtitleStyle === 'cinematic' || activeScene?.layout === 'narrative-diorama';
+  const isLightFrame = activeScene?.windowTheme === 'light' || String((sData as any)?.genre || '') === 'ui-tutorial';
+  const isCinematicSub = !isLightFrame && (sData.subtitleStyle === 'cinematic' || activeScene?.layout === 'narrative-diorama');
   const accentWords: string[] = Array.isArray(activeScene?.accentWords) ? activeScene.accentWords : [];
   const activeAvatar = activeScene?.avatarClip?.path ? activeScene.avatarClip : (sData?.avatarClip?.path ? sData.avatarClip : null);
   const avatarLayout = activeScene?.avatarLayout || activeAvatar?.layout || sData?.avatarLayout || 'pip-br';

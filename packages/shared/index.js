@@ -19,6 +19,8 @@ import { tmpdir } from 'node:os'
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { syncProjectFonts } from './compliance.js'
+import { chunksRespectWords, cleanSubtitleChunk, segmentSubtitleLines, toSubtitleText, toTtsText } from './subtitle-engine.js'
+import { sanitizeScriptForRender } from './meta-guard.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 /** Read-only plugin installation root (`packages/`, `scripts/`, bundled OFL fonts & npm deps). */
@@ -680,62 +682,9 @@ export function sanitizeSpokenNarration(raw = '') {
 export function buildSentenceSubtitles(narration, durationSec, fps = 30, opts = {}) {
   const clean = sanitizeSpokenNarration(narration)
   if (!clean || durationSec <= 0) return []
-
-  const maxW = Math.max(8, Math.min(20, Number(opts?.maxLineWidth) || 16))
-  const stripTailPunct = (s) => s.replace(/[，。！？；,!;、]+$/g, '').trim()
-
-  const rawSentences = clean
-    .split(/(?<=[。！？；!?;…\n])/)
-    .map((s) => s.trim())
-    .filter(Boolean)
-
-  const displayWidth = (s) =>
-    [...s].reduce((acc, ch) => acc + (/[\u0000-\u00ff]/.test(ch) ? 0.58 : 1), 0)
-
-  const wrapClauseRespectingWords = (c, maxW = 16) => {
-    const out = []
-    let cur = ''
-    // Split keeping spaces & CJK chars atomic while keeping ASCII words unbroken
-    const tokens = c.match(/[A-Za-z0-9_.\-+]+|[\u4e00-\u9fff]|[^\sA-Za-z0-9_.\-+\u4e00-\u9fff]|\s+/g) || [c]
-    for (const tok of tokens) {
-      if (!cur) {
-        if (!/^\s+$/.test(tok)) cur = tok
-        continue
-      }
-      if (displayWidth(cur + tok) > maxW && !/^\s+$/.test(tok)) {
-        out.push(cur.trim())
-        cur = tok
-      } else {
-        cur += tok
-      }
-    }
-    if (cur.trim()) out.push(cur.trim())
-    return out
-  }
-
-  const parts = []
-  for (const sent of rawSentences.length > 0 ? rawSentences : [clean]) {
-    const cleanSent = stripTailPunct(sent)
-    if (displayWidth(cleanSent) <= maxW + 2) {
-      if (cleanSent) parts.push(cleanSent)
-      continue
-    }
-    const subChunks = sent
-      .split(/(?<=[，,、：:])/)
-      .map((c) => stripTailPunct(c))
-      .filter(Boolean)
-    for (const c of subChunks) {
-      if (parts.length > 0 && c.length <= 4 && displayWidth(`${parts[parts.length - 1]} ${c}`) <= maxW + 3) {
-        parts[parts.length - 1] = `${parts[parts.length - 1]} ${c}`
-      } else if (displayWidth(c) > maxW + 4) {
-        parts.push(...wrapClauseRespectingWords(c, maxW))
-      } else {
-        parts.push(c)
-      }
-    }
-  }
-
-  const finalParts = parts.length > 0 ? parts : [stripTailPunct(clean) || clean]
+  // Semantic line breaking: no quotes / edge punctuation, numbers+units & words stay whole
+  const finalParts = segmentSubtitleLines(clean, opts?.maxLineWidth)
+  if (finalParts.length === 0) return []
   const totalWeight = finalParts.reduce(
     (acc, s) => acc + Math.max(1, s.replace(/[^\w\u4e00-\u9fa5]/g, '').length),
     0,
@@ -773,11 +722,14 @@ const stripSubNorm = (s) =>
  */
 export function deriveVerbalSubtitleParts(narration, subChunks = null, subtitleText = '', maxLineWidth = 16) {
   const cleanNar = sanitizeSpokenNarration(narration)
-  const normNar = stripSubNorm(cleanNar)
+  const displayNar = toSubtitleText(cleanNar)
+  const normNar = stripSubNorm(displayNar)
 
   if (Array.isArray(subChunks) && subChunks.length > 0) {
-    const cleanChunks = subChunks.map((c) => sanitizeSpokenNarration(c)).filter(Boolean)
-    if (cleanChunks.length > 0) {
+    const cleanChunks = subChunks
+      .map((c) => cleanSubtitleChunk(toSubtitleText(sanitizeSpokenNarration(c))))
+      .filter(Boolean)
+    if (cleanChunks.length > 0 && chunksRespectWords(cleanChunks)) {
       if (!normNar) return cleanChunks
       const normChunks = stripSubNorm(cleanChunks.join(''))
       // Check sequential overlap: ensure chunks cover at least 75% of spoken characters
@@ -798,9 +750,9 @@ export function deriveVerbalSubtitleParts(narration, subChunks = null, subtitleT
     }
   }
 
-  const fallbackSrc = cleanNar || String(subtitleText || '').trim()
+  const fallbackSrc = displayNar || toSubtitleText(String(subtitleText || '').trim())
   if (!fallbackSrc) return []
-  return buildSentenceSubtitles(fallbackSrc, 10, 30, { maxLineWidth }).map((s) => s.text)
+  return segmentSubtitleLines(fallbackSrc, maxLineWidth)
 }
 
 /**
@@ -1023,6 +975,11 @@ export function writeScriptJson(projectOrFile, scriptData) {
   let currentFrame = 0
   let currentSec = 0
 
+  // Final gate: production directives must never reach narration / subtitles / on-screen text
+  try {
+    sanitizeScriptForRender(scriptData)
+  } catch {}
+
   if (Array.isArray(scriptData.scenes)) {
     scriptData.scenes = scriptData.scenes.map((scene, idx) => {
       const durationSec = Number(scene.durationSec || 4)
@@ -1064,9 +1021,14 @@ export function writeScriptJson(projectOrFile, scriptData) {
         scene.subtitleText || scene.caption || '',
         subtitleMaxW,
       )
+      const cleanedExistingSubs = Array.isArray(scene.subtitles)
+        ? scene.subtitles
+            .map((s) => ({ ...s, text: cleanSubtitleChunk(toSubtitleText(s?.text || '')) }))
+            .filter((s) => s.text)
+        : []
       const subtitles =
-        Array.isArray(scene.subtitles) && scene.subtitles.length > 0
-          ? scene.subtitles
+        cleanedExistingSubs.length > 0
+          ? cleanedExistingSubs
           : resolvedParts.length > 0
             ? buildChunkedSubtitles(resolvedParts)
             : buildSentenceSubtitles(scene.narration || scene.text || scene.subtitleText || '', durationSec, fps, {
@@ -1091,6 +1053,13 @@ export function writeScriptJson(projectOrFile, scriptData) {
         startSec,
         subtitles,
         ...scene,
+        narration: scene.narration ?? scene.text ?? '',
+        // TTS-only pronunciation text (never shown); recomputed whenever the narration changes
+        ttsText:
+          scene.ttsText && scene.ttsNarrationRef === (scene.narration ?? scene.text ?? '')
+            ? scene.ttsText
+            : toTtsText(scene.narration ?? scene.text ?? ''),
+        ttsNarrationRef: scene.narration ?? scene.text ?? '',
         durationSec: Number(durationSec.toFixed(4)),
         durationInFrames,
         startFrame,
@@ -1146,3 +1115,5 @@ export function writeScriptJson(projectOrFile, scriptData) {
 
 export * from './compliance.js'
 export * from './hardware-guard.js'
+export * from './meta-guard.js'
+export * from './subtitle-engine.js'

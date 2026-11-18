@@ -1245,6 +1245,11 @@ window.__ModuleLoader__?.load({
       // Director & Production Configuration
       const [directorForm, setDirectorForm] = useState({
         topic: '',
+        displayTitle: '',
+        genre: '',
+        genreLabel: '',
+        directorNotes: '',
+        contentOutline: [],
         style: 'tech',
         engine: 'remotion',
         creationMode: 'ai-coded',
@@ -1699,7 +1704,11 @@ window.__ModuleLoader__?.load({
                 const normEngine = rawEngine === 'html' || rawEngine === 'html5' ? 'html' : 'remotion'
                 setDirectorForm((prev) => ({
                   ...prev,
-                  topic: ap.script?.topic ?? ap.script?.goal ?? prev.topic ?? '',
+                  topic: ap.script?.goal ?? ap.script?.topic ?? prev.topic ?? '',
+                  displayTitle: ap.script?.displayTitle || ap.script?.title || prev.displayTitle || '',
+                  genre: ap.script?.genre || prev.genre || '',
+                  directorNotes: ap.script?.directorNotes || prev.directorNotes || '',
+                  contentOutline: Array.isArray(ap.script?.contentOutline) ? ap.script.contentOutline : prev.contentOutline || [],
                   style: UNIFIED_STYLES.some((s) => s.id === ap.script?.style) ? ap.script.style : 'tech',
                   engine: normEngine,
                   creationMode: ap.script?.creationMode || 'ai-coded',
@@ -2310,7 +2319,16 @@ window.__ModuleLoader__?.load({
             return
           }
           setUnpolishedTopicBackup(rawPrompt)
-          setDirectorForm((p) => ({ ...p, topic: d.polishedTopic }))
+          setDirectorForm((p) => ({
+            ...p,
+            topic: d.polishedTopic,
+            displayTitle: d.displayTitle || p.displayTitle,
+            genre: d.genre || p.genre,
+            genreLabel: d.genreLabel || p.genreLabel,
+            directorNotes: d.directorNotes || '',
+            contentOutline: Array.isArray(d.contentOutline) ? d.contentOutline : [],
+            style: d.suggestedStyle || p.style,
+          }))
           if (activeProjectDir && script) {
             try {
               await connFetch('/api/video-workbench/script', {
@@ -2318,7 +2336,16 @@ window.__ModuleLoader__?.load({
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                   projectDir: activeProjectDir,
-                  script: { ...script, topic: d.polishedTopic, goal: d.polishedTopic },
+                  script: {
+                    ...script,
+                    title: d.displayTitle || script.title,
+                    topic: d.displayTitle || script.topic,
+                    displayTitle: d.displayTitle || '',
+                    genre: d.genre || '',
+                    directorNotes: d.directorNotes || '',
+                    contentOutline: Array.isArray(d.contentOutline) ? d.contentOutline : [],
+                    goal: d.polishedTopic,
+                  },
                   regenerateHtml: false,
                   regenerateCode: false,
                 }),
@@ -2398,6 +2425,10 @@ window.__ModuleLoader__?.load({
             body: JSON.stringify({
               projectDir: activeProjectDir,
               topic: directorForm.topic.trim() || script?.title || 'AI 影视概念短片',
+              displayTitle: directorForm.displayTitle || undefined,
+              genre: directorForm.genre || undefined,
+              directorNotes: directorForm.directorNotes || undefined,
+              contentOutline: Array.isArray(directorForm.contentOutline) && directorForm.contentOutline.length > 0 ? directorForm.contentOutline : undefined,
               mode: modeToRun,
               engine: directorForm.engine,
               style: directorForm.style,
