@@ -167,6 +167,32 @@ window.__ModuleLoader__?.load({
       { value: 'static', label: '锁定静止 (Static)' },
     ]
 
+    const SCENE_LAYOUT_OPTIONS = [
+      { value: '3d-stage-opener', label: '🪐 Three.js 3D 空间开场', sub: '三维透视卡片群 + 3D 几何舞台' },
+      { value: 'svg-architecture-flow', label: '🕸️ 动态 SVG 架构拓扑图', sub: '5种系统拓扑 + 贝塞尔光子总线' },
+      { value: 'hud-telemetry-dashboard', label: '📊 HUD 遥测数据与代码流', sub: '实时 TSX 代码流 + 环形仪表 + 波形' },
+      { value: 'vibecoding-spring-stage', label: '⚡ Vibecoding 节拍弹簧舞台', sub: '双栏弹簧物理联动 + 拓扑/遥测' },
+      { value: 'app-focus-shot', label: '🖥️ 软件窗口推镜特写', sub: 'AppWindow + 焦点放大镜' },
+      { value: 'workflow-steps', label: '🔗 多步流程演进卡片', sub: '3~5 步横向流程拆解' },
+      { value: 'metric-dashboard', label: '📈 核心数据增长看板', sub: '滚动数字 + 进度矩阵 + 架构视窗' },
+      { value: 'split-wipe-compare', label: '🌓 A/B 滑动擦除对比', sub: '双画面动态分割线对比' },
+      { value: 'multi-window-trio', label: '🪟 三联多视窗矩阵', sub: '三窗口并列脉冲高亮' },
+      { value: 'card-fan-opener', label: '🃏 扇形图集阵列开场', sub: '多图弧形扇面展开' },
+      { value: 'mosaic-pulse-wall', label: '🧱 节拍脉冲图墙', sub: '6 宫格随音乐鼓点跃动' },
+      { value: 'kinetic-impact', label: '💥 高能大字冲击卡点', sub: '逐字弹簧冲击 + 粒子光环' },
+      { value: 'radial-climax', label: '🎯 终幕流光印章收尾', sub: '放射速度线 + 品牌落版印章' },
+      { value: 'narrative-diorama', label: '🏯 东方史诗剪影剧场', sub: '水墨剪影 + 竖排书法 (历史专用)' },
+    ]
+
+    const THREE_PRESET_OPTIONS = [
+      { value: 'orbital-core', label: '🪐 星环核心 (orbital-core)' },
+      { value: 'cyber-terrain', label: '🏔️ 赛博山谷网格 (cyber-terrain)' },
+      { value: 'particle-vortex', label: '🌀 量子粒子星云 (particle-vortex)' },
+      { value: 'floating-monoliths', label: '🗿 悬浮几何碑林 (floating-monoliths)' },
+      { value: 'chrono-helix', label: '🧬 时空双螺旋 (chrono-helix)' },
+      { value: 'matrix-cubes', label: '🧊 全息算力矩阵 (matrix-cubes)' },
+    ]
+
     const WIRE_PROTOCOL_CARDS = [
       {
         id: 'openai-completions',
@@ -204,6 +230,12 @@ window.__ModuleLoader__?.load({
 
     const LAUNCH_INSPIRATION_TEMPLATES = [
       {
+        label: '🪐 Opus 5.5 架构与代码动画',
+        topic: '制作一条 35 秒 Opus 5.5 级 Vibecoding 技术大片：融合 Three.js 3D 星环/赛博网格舞台、动态 SVG 系统架构拓扑总线、全息 HUD 遥测代码面板与节拍同步弹簧物理 (spring/interpolate)，硬核拆解 AI 多智能体协同架构。',
+        style: 'tech',
+        aspect: '16:9',
+      },
+      {
         label: '🚀 AI 产品震撼发布',
         topic: '制作一条 30 秒电影级产品发布短片：节奏先慢后燃，用高对比霓虹视觉、震撼数字计数动效与强鼓点转场，讲透我们的 AI 新品如何让普通人 3 分钟出大片。',
         style: 'tech',
@@ -230,10 +262,11 @@ window.__ModuleLoader__?.load({
     ]
 
     const QUICK_FIX_PILLS = [
+      { label: '🕸️ 切换为动态 SVG 架构图', prompt: '将当前镜头改为动态 SVG 系统架构拓扑图与光子数据流展示' },
+      { label: '📊 切换为 HUD 遥测代码面板', prompt: '将当前镜头改为全息 HUD 遥测环形仪表与实时 TSX 代码流展示' },
       { label: '⚡ 节奏加快一倍', prompt: '把全片切换节奏加快，转场更有冲击力，单幕更干脆利落' },
       { label: '✨ 动效粒子更炫酷', prompt: '升级当前幕前景视觉特效与动效代码，加入光影扫描和数字动效，确保文字清晰' },
       { label: '🔤 加大重点字幕字号', prompt: '显著放大画面标题与关键字幕字号，提高文字与背景对比度，适合手机端一眼看清' },
-      { label: '🎬 电影胶片暖金色调', prompt: '整体画面调整为电影暗角暖金光影质感，氛围更具高级大片感' },
       { label: '🥁 鼓点配乐更燃', prompt: '重编 BGM 与转场音效节奏，鼓点更有力量感并与分镜切点对齐' },
     ]
 
@@ -5090,7 +5123,7 @@ window.__ModuleLoader__?.load({
               'div',
               { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
               h('div', { style: { fontSize: '16px', fontWeight: 800 } }, '3. 发车参数与一键出片'),
-              h('span', { style: { padding: '2px 8px', borderRadius: '999px', fontSize: '11.5px', fontWeight: 800, background: T.accentBlueBg, color: T.accentBlue, border: `1px solid ${T.accentBlueBorder}` } }, 'Three.js 3D 已集成'),
+              h('span', { style: { padding: '2px 8px', borderRadius: '999px', fontSize: '11.5px', fontWeight: 800, background: T.accentBlueBg, color: T.accentBlue, border: `1px solid ${T.accentBlueBorder}` } }, '3D · SVG 架构 · HUD · Spring'),
             ),
 
             // Direct Engine Switcher right on War Room!
@@ -5111,23 +5144,23 @@ window.__ModuleLoader__?.load({
               }),
             ),
 
-            // Direct Three.js 3D Mode + Resolution/FPS Selectors
+            // Direct Three.js 3D / SVG / HUD / Spring Mode + Resolution/FPS Selectors
             h(
               'div',
               { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' } },
               h(
                 'div',
                 null,
-                h('div', { style: { fontSize: '12px', fontWeight: 700, color: T.textMuted, marginBottom: '4px' } }, 'Three.js 3D 空间光影'),
+                h('div', { style: { fontSize: '12px', fontWeight: 700, color: T.textMuted, marginBottom: '4px' } }, 'Vibecoding 3D / SVG / HUD 视效'),
                 h(CinemaSelect, {
                   compact: true,
                   value: directorForm.visual3dMode || 'auto',
                   onChange: (v) => updateDirectorAndSync({ visual3dMode: v }),
                   T,
                   options: [
-                    { value: 'auto', label: '🪐 开启 Three.js 3D (推荐)', sub: 'Opus 5.5 级星环/山谷/隧道' },
-                    { value: 'on', label: '✨ 强化全屏 3D 线框舞台', sub: '全镜叠加 3D 几何与景深' },
-                    { value: 'off', label: '🖼️ 纯 2D 平面动效', sub: '关闭 Three.js 3D 舞台层' },
+                    { value: 'auto', label: '🪐 Opus 5.5 全开 (3D+SVG+HUD+弹簧)', sub: 'Three.js 3D + 动态SVG拓扑 + 全息HUD + 弹簧物理' },
+                    { value: 'on', label: '✨ 强化 3D 线框 + 全息 HUD 遥测', sub: '全镜叠加 3D 几何矩阵与实时遥测面板' },
+                    { value: 'off', label: '🖼️ 纯 2D 平面动效', sub: '关闭 Three.js 3D 与全屏 HUD 遥测层' },
                   ],
                 }),
               ),
@@ -5946,16 +5979,16 @@ window.__ModuleLoader__?.load({
             h(
               'div',
               null,
-              h('label', { style: { display: 'block', fontSize: '13px', fontWeight: 700, marginBottom: '5px' } }, 'Three.js 3D 空间光影'),
+              h('label', { style: { display: 'block', fontSize: '13px', fontWeight: 700, marginBottom: '5px' } }, 'Vibecoding 3D / SVG / HUD 视效'),
               h(CinemaSelect, {
                 compact: true,
                 value: directorForm.visual3dMode || 'auto',
                 onChange: (v) => updateDirectorAndSync({ visual3dMode: v }),
                 T,
                 options: [
-                  { value: 'auto', label: '🪐 开启 Three.js 3D (推荐)', sub: 'Opus 5.5 级星环/山谷/隧道' },
-                  { value: 'on', label: '✨ 强化全屏 3D 线框舞台', sub: '全镜叠加 3D 透视景深' },
-                  { value: 'off', label: '🖼️ 纯 2D 平面动效', sub: '关闭 Three.js 3D 层' },
+                  { value: 'auto', label: '🪐 Opus 5.5 全开 (3D+SVG+HUD+弹簧)', sub: 'Three.js 3D + 动态SVG拓扑 + 全息HUD + 弹簧物理' },
+                  { value: 'on', label: '✨ 强化 3D 线框 + 全息 HUD 遥测', sub: '全镜叠加 3D 几何矩阵与实时遥测面板' },
+                  { value: 'off', label: '🖼️ 纯 2D 平面动效', sub: '关闭 Three.js 3D 与全屏 HUD 遥测层' },
                 ],
               }),
             ),
@@ -6479,6 +6512,34 @@ window.__ModuleLoader__?.load({
                 h('div', { style: { fontSize: '15px', fontWeight: 800 } }, `分镜手调 · ${selectedScene.id}`),
                 h('input', { value: selectedScene.title || '', onChange: (ev) => updateSelectedScene({ title: ev.target.value }), placeholder: '画面主标题', style: inputStyle }),
                 h('textarea', { rows: 4, value: selectedScene.narration || '', onChange: (ev) => updateSelectedScene({ narration: ev.target.value }), placeholder: '口播旁白与高亮字幕内容', style: { ...inputStyle, resize: 'vertical', lineHeight: 1.55 } }),
+                h(
+                  'div',
+                  { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '9px' } },
+                  h(
+                    'div',
+                    null,
+                    h('div', { style: { fontSize: '11.5px', fontWeight: 700, color: T.textMuted, marginBottom: '4px' } }, '本幕视觉布局 (SVG架构/HUD)'),
+                    h(CinemaSelect, {
+                      compact: true,
+                      value: selectedScene.layout || '3d-stage-opener',
+                      onChange: (ly) => updateSelectedScene({ layout: ly }),
+                      T,
+                      options: SCENE_LAYOUT_OPTIONS,
+                    }),
+                  ),
+                  h(
+                    'div',
+                    null,
+                    h('div', { style: { fontSize: '11.5px', fontWeight: 700, color: T.textMuted, marginBottom: '4px' } }, '本幕 Three.js 3D 舞台'),
+                    h(CinemaSelect, {
+                      compact: true,
+                      value: selectedScene.threePreset || 'orbital-core',
+                      onChange: (tp) => updateSelectedScene({ threePreset: tp }),
+                      T,
+                      options: THREE_PRESET_OPTIONS,
+                    }),
+                  ),
+                ),
                 h(
                   'div',
                   { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '9px' } },

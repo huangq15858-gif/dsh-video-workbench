@@ -175,6 +175,151 @@ function renderSceneTemplateHtml(scene, idx, total, theme) {
   const stepCode = `${String(idx + 1).padStart(2, '0')} / ${String(total).padStart(2, '0')}`
   const subTitleTxt = scene.subtitleLine ? escapeHtml(scene.subtitleLine) : ''
 
+  // Dynamic SVG Architecture Diagram Widget (Opus 5.5 Vibecoding Pillar #2)
+  const buildSvgArchitectureWidgetHtml = (topoOverride = '') => {
+    const topo = topoOverride || scene.topology || ['neural-pipeline', 'microservice-mesh', 'layered-stack', 'radial-hub', 'ast-tree'][idx % 5]
+    const rawNodes = Array.isArray(scene.archNodes) && scene.archNodes.length >= 3
+      ? scene.archNodes
+      : Array.isArray(scene.steps) && scene.steps.length >= 3
+        ? scene.steps
+        : [
+            { id: '01', title: highlights[0] || '意图解析与分镜', sub: 'AST // SCHEMA DIRECTOR' },
+            { id: '02', title: highlights[1] || 'Three.js 3D 视窗', sub: 'WEBGL // PERSPECTIVE' },
+            { id: '03', title: highlights[2] || '动态 SVG 拓扑总线', sub: 'BEZIER // PHOTON BUS' },
+            { id: '04', title: scene.title || '节拍弹簧物理引擎', sub: 'SPRING // INTERPOLATE' },
+            { id: '05', title: '48kHz 混音与成片', sub: 'REMOTION // MP4 OUT' },
+          ]
+    const nodes = rawNodes.slice(0, 5)
+    const coords = topo === 'microservice-mesh'
+      ? [{ x: 180, y: 125 }, { x: 560, y: 95 }, { x: 930, y: 125 }, { x: 350, y: 315 }, { x: 760, y: 315 }]
+      : topo === 'radial-hub'
+        ? [{ x: 200, y: 110 }, { x: 920, y: 110 }, { x: 560, y: 220 }, { x: 200, y: 330 }, { x: 920, y: 330 }]
+        : [{ x: 135, y: 220 }, { x: 348, y: 125 }, { x: 560, y: 220 }, { x: 772, y: 125 }, { x: 985, y: 220 }]
+    const edges = topo === 'radial-hub'
+      ? [[0, 2], [1, 2], [2, 3], [2, 4], [0, 3], [1, 4]]
+      : [[0, 1], [1, 2], [2, 3], [3, 4], [0, 2], [2, 4]]
+    const edgesSvg = edges.map(([ai, bi], ei) => {
+      const a = coords[ai] || coords[0]
+      const b = coords[bi] || coords[coords.length - 1]
+      const mx = ((a.x + b.x) / 2).toFixed(1)
+      const d = `M ${a.x} ${a.y} C ${mx} ${a.y}, ${mx} ${b.y}, ${b.x} ${b.y}`
+      return `
+        <path class="k-arch-edge-bg" d="${d}" fill="none" stroke="rgba(148,163,184,0.22)" stroke-width="2" stroke-dasharray="6 6" />
+        <path class="k-arch-edge" d="${d}" fill="none" stroke="${ei % 2 === 0 ? 'var(--accent)' : 'var(--gold)'}" stroke-width="3" stroke-linecap="round" />
+        <circle class="k-arch-photon" data-ax="${a.x}" data-ay="${a.y}" data-bx="${b.x}" data-by="${b.y}" data-ei="${ei}" cx="${a.x}" cy="${a.y}" r="5.5" fill="${ei % 2 === 0 ? 'var(--gold)' : 'var(--accent)'}" />`
+    }).join('')
+    const nodesSvg = nodes.map((nd, ni) => {
+      const pt = coords[ni] || { x: 160 + ni * 200, y: 220 }
+      const nw = 188, nh = 92
+      const rx = pt.x - nw / 2, ry = pt.y - nh / 2
+      const col = ni % 2 === 0 ? 'var(--accent)' : 'var(--gold)'
+      const titleStr = String(nd.title || nd.label || nd || `Node 0${ni + 1}`).slice(0, 11)
+      const subStr = String(nd.sub || nd.desc || `NODE 0${ni + 1} // ACTIVE`).slice(0, 20)
+      return `
+        <g class="k-arch-node" data-nidx="${ni}" style="transform-origin:${pt.x}px ${pt.y}px">
+          <rect x="${rx}" y="${ry}" width="${nw}" height="${nh}" rx="14" fill="rgba(8,14,24,0.92)" stroke="${col}" stroke-width="2" />
+          <rect x="${rx + 14}" y="${ry}" width="${nw - 28}" height="3" rx="1.5" fill="${col}" />
+          <text x="${rx + 16}" y="${ry + 26}" fill="${col}" font-family="var(--font-mono)" font-size="12" font-weight="800">0${ni + 1} // ${escapeHtml(subStr.split('//')[0].trim())}</text>
+          <circle cx="${rx + nw - 18}" cy="${ry + 22}" r="4.5" fill="${col}" />
+          <text x="${rx + 16}" y="${ry + 56}" fill="#F8FAFC" font-family="var(--font-sans)" font-size="18" font-weight="900">${escapeHtml(titleStr)}</text>
+          <text x="${rx + 16}" y="${ry + 76}" fill="rgba(148,163,184,0.88)" font-family="var(--font-mono)" font-size="11" font-weight="600">LATENCY ${(0.4 + ni * 0.3).toFixed(1)}ms · SYNC</text>
+        </g>`
+    }).join('')
+    return `
+      <div class="k-arch-panel">
+        <div class="k-app-bar">
+          <div class="k-app-dots"><i></i><i></i><i></i></div>
+          <span class="k-app-title">${escapeHtml(scene.windowTitle || scene.title || 'DYNAMIC SVG ARCHITECTURE TOPOLOGY')}</span>
+          <span class="k-app-kicker">SVG TOPOLOGY // ${escapeHtml(String(topo).toUpperCase())}</span>
+        </div>
+        <div class="k-arch-body">
+          <svg class="k-arch-svg" viewBox="0 0 1120 440" preserveAspectRatio="xMidYMid meet">
+            <defs>
+              <pattern id="archGrid-${idx}" width="40" height="40" patternUnits="userSpaceOnUse">
+                <path d="M 40 0 L 0 0 0 40" fill="none" stroke="rgba(148,163,184,0.08)" stroke-width="1" />
+              </pattern>
+            </defs>
+            <rect width="1120" height="440" fill="url(#archGrid-${idx})" />
+            ${edgesSvg}
+            ${nodesSvg}
+          </svg>
+        </div>
+      </div>`
+  }
+
+  // Vibecoding HUD Data & Live Code Stream Widget (Opus 5.5 Vibecoding Pillar #3)
+  const buildHudDashboardWidgetHtml = () => {
+    const codeLines = Array.isArray(scene.codeLines) && scene.codeLines.length > 0
+      ? scene.codeLines.slice(0, 6)
+      : [
+          `const stage = useThreeCyberStage({ preset: '${scene.threePreset || 'orbital-core'}', fov: 45 });`,
+          `const rig = computeBeatSpring(frame, fps, bgm.beats, { stiffness: 175 });`,
+          `// ${highlights[0] || scene.title || '帧级确定性物理弹簧与三维透视矩阵'}`,
+          `<ThreeCanvas width={1920} height={1080} camera={{ position: [0, 0, 8.2] }}>`,
+          `  <SvgArchitectureDiagram topology="neural-pipeline" nodes={5} />`,
+          `</ThreeCanvas> // ✓ 60FPS Lock · Audio LUFS -14.0dB`,
+        ]
+    const rawMetrics = Array.isArray(scene.metrics) && scene.metrics.length >= 2
+      ? scene.metrics.slice(0, 3)
+      : [
+          { label: highlights[0] || '渲染帧率锁定', value: Number(scene.counterTarget) || 60, suffix: 'FPS', pct: 96 },
+          { label: highlights[1] || '物理弹簧精度', value: 99, suffix: '.4%', pct: 94 },
+          { label: highlights[2] || '多轨混音动态', value: 48, suffix: 'kHz', pct: 90 },
+        ]
+    const ringsHtml = rawMetrics.map((m, mi) => {
+      const pct = Math.max(25, Math.min(99, Number(m.pct) || 92 - mi * 4))
+      const col = mi === 1 ? 'var(--gold)' : 'var(--accent)'
+      return `
+        <div class="k-hud-ring-card">
+          <svg class="k-hud-ring-svg" viewBox="0 0 120 120">
+            <circle cx="60" cy="60" r="46" fill="none" stroke="rgba(148,163,184,0.16)" stroke-width="8" />
+            <circle class="k-hud-ring-arc" data-pct="${pct}" cx="60" cy="60" r="46" fill="none" stroke="${col}" stroke-width="8" stroke-linecap="round" stroke-dasharray="289" stroke-dashoffset="289" transform="rotate(-90 60 60)" />
+          </svg>
+          <div class="k-hud-ring-info">
+            <div class="k-hud-ring-val" data-target="${Number(m.value) || 96}" data-suffix="${escapeHtml(m.suffix || '%')}">0${escapeHtml(m.suffix || '%')}</div>
+            <div class="k-hud-ring-lbl">${escapeHtml(m.label || `METRIC 0${mi + 1}`)}</div>
+          </div>
+        </div>`
+    }).join('')
+    return `
+      <div class="k-hud-dashboard">
+        <div class="k-hud-code-card">
+          <div class="k-app-bar">
+            <div class="k-app-dots"><i></i><i></i><i></i></div>
+            <span class="k-app-title">VIBECODING // REMOTION + THREE.JS TSX STREAM</span>
+            <span class="k-app-kicker">SPRING RIG</span>
+          </div>
+          <div class="k-hud-code-body">
+            ${codeLines.map((ln, li) => `<div class="k-hud-code-line" data-lidx="${li}"><span class="k-ln-num">0${li + 1}</span><code>${escapeHtml(ln)}</code></div>`).join('')}
+          </div>
+          <div class="k-hud-code-foot">
+            <span>⚡ BEAT-SYNCED SPRING (damping:13.5, stiffness:175)</span>
+            <span>STATUS: LOCKED</span>
+          </div>
+        </div>
+        <div class="k-hud-telemetry-col">
+          <div class="k-hud-rings-row">${ringsHtml}</div>
+          <div class="k-hud-wave-card">
+            <div class="k-hud-wave-head">
+              <span>REALTIME TELEMETRY WAVE // DETERMINISTIC FRAME INTERPOLATION</span>
+              <em>LIVE 60Hz</em>
+            </div>
+            <svg class="k-hud-wave-svg" viewBox="0 0 560 135" preserveAspectRatio="none">
+              <defs>
+                <linearGradient id="hudWaveGrad-${idx}" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stop-color="var(--accent)" stop-opacity="0.42" />
+                  <stop offset="100%" stop-color="var(--accent)" stop-opacity="0.0" />
+                </linearGradient>
+              </defs>
+              <path d="M0,105 C70,35 130,95 200,48 C270,12 330,82 400,32 C470,5 515,60 560,22 L560,135 L0,135 Z" fill="url(#hudWaveGrad-${idx})" />
+              <path class="k-hud-wave-line" d="M0,105 C70,35 130,95 200,48 C270,12 330,82 400,32 C470,5 515,60 560,22" fill="none" stroke="var(--accent)" stroke-width="3.5" stroke-linecap="round" />
+              <circle class="k-hud-wave-dot" cx="400" cy="32" r="6.5" fill="var(--gold)" />
+            </svg>
+          </div>
+        </div>
+      </div>`
+  }
+
   // Build Floating 3D Perspective Wall Cards for `3d-stage-opener`
   let depthStageHtml = ''
   if (layout === '3d-stage-opener') {
@@ -467,6 +612,19 @@ function renderSceneTemplateHtml(scene, idx, total, theme) {
     const mVal = Number(metric.value) || Number(scene.counterTarget) || 100
     const mSfx = metric.suffix || '+'
     const cellsHtml = Array.from({ length: 20 }, (_, ci) => `<span class="k-dash-cell" data-ci="${ci}"></span>`).join('')
+    const rightBodyHtml = primary
+      ? `<div class="k-app-win">
+            <div class="k-app-bar">
+              <div class="k-app-dots"><i></i><i></i><i></i></div>
+              ${brandLogo ? `<img class="k-brand-mini" src="${escapeHtml(brandLogo.replace(/^\.?[\\/]+/, './').replace(/\\/g, '/'))}" alt="" />` : ''}
+              <span class="k-app-title">${escapeHtml(scene.windowTitle || scene.title || '')}</span>
+              <span class="k-app-kicker">${escapeHtml(scene.windowBadge || 'ENGINE')}</span>
+            </div>
+            <div class="k-app-view">
+              <div class="k-cam-stage" data-nw="${Number(primary?.width || 0)}" data-nh="${Number(primary?.height || 0)}">${buildMediaTag(primary, 0, true)}</div>
+            </div>
+          </div>`
+      : buildSvgArchitectureWidgetHtml()
     contentHtml = `
       <div class="k-app-stage k-dash-grid">
         <div class="k-dash-left">
@@ -483,17 +641,50 @@ function renderSceneTemplateHtml(scene, idx, total, theme) {
           </div>
         </div>
         <div class="k-app-win-wrap k-dash-right">
-          <div class="k-app-win">
-            <div class="k-app-bar">
-              <div class="k-app-dots"><i></i><i></i><i></i></div>
-              ${brandLogo ? `<img class="k-brand-mini" src="${escapeHtml(brandLogo.replace(/^\.?[\\/]+/, './').replace(/\\/g, '/'))}" alt="" />` : ''}
-              <span class="k-app-title">${escapeHtml(scene.windowTitle || scene.title || '')}</span>
-              <span class="k-app-kicker">${escapeHtml(scene.windowBadge || 'ENGINE')}</span>
-            </div>
-            <div class="k-app-view">
-              <div class="k-cam-stage" data-nw="${Number(primary?.width || 0)}" data-nh="${Number(primary?.height || 0)}">${primary ? buildMediaTag(primary, 0, true) : ''}</div>
-            </div>
+          ${rightBodyHtml}
+        </div>
+      </div>`
+  } else if (layout === 'svg-architecture-flow') {
+    contentHtml = `
+      <div class="k-app-stage k-app-wide">
+        <div class="k-app-head">
+          <div class="k-app-head-l">
+            <span class="k-tag-chip">${escapeHtml(scene.kicker || `${stepCode} · SVG ARCHITECTURE`)}</span>
+            <span class="k-app-head-title">${escapeHtml(scene.title || '')}</span>
           </div>
+          ${highlights.length ? `<span class="k-app-head-sub">${escapeHtml(highlights.join(' · '))}</span>` : ''}
+        </div>
+        <div class="k-app-win-wrap">
+          ${buildSvgArchitectureWidgetHtml()}
+        </div>
+      </div>`
+  } else if (layout === 'hud-telemetry-dashboard') {
+    contentHtml = `
+      <div class="k-app-stage k-app-wide">
+        <div class="k-app-head">
+          <div class="k-app-head-l">
+            <span class="k-tag-chip k-tag-gold">${escapeHtml(scene.kicker || `${stepCode} · HUD TELEMETRY`)}</span>
+            <span class="k-app-head-title">${escapeHtml(scene.title || '')}</span>
+          </div>
+          ${highlights.length ? `<span class="k-app-head-sub">${escapeHtml(highlights.join(' · '))}</span>` : ''}
+        </div>
+        <div class="k-app-win-wrap">
+          ${buildHudDashboardWidgetHtml()}
+        </div>
+      </div>`
+  } else if (layout === 'vibecoding-spring-stage') {
+    const flip = idx % 2 === 1
+    contentHtml = `
+      <div class="k-split-grid ${flip ? 'k-reverse' : ''}">
+        <div class="k-left-col">
+          <div class="k-eyebrow"><span class="k-dot"></span><span>${stepCode} · ${escapeHtml(scene.kicker || 'VIBECODING SPRING RIG')}</span></div>
+          <div class="k-headline k-headline-sm k-glitch-target">${buildCharSpansHtml(safeTitleLines)}</div>
+          ${subTitleTxt ? `<div class="k-subline">${subTitleTxt}</div>` : ''}
+          <div class="k-accent-rule"></div>
+          <div class="k-pills-row">${highlights.map((h) => `<div class="k-pill"><span>⚡</span>${escapeHtml(h)}</div>`).join('')}</div>
+        </div>
+        <div class="k-right-col" style="flex:1.25;width:100%;">
+          ${idx % 2 === 0 ? buildSvgArchitectureWidgetHtml('microservice-mesh') : buildHudDashboardWidgetHtml()}
         </div>
       </div>`
   } else if (layout === 'multi-window-trio') {
@@ -1177,6 +1368,61 @@ export function buildRichHtmlVideo(script) {
       flex: 1; ${width < height ? 'height: 88%;' : 'aspect-ratio: 16 / 10.6; max-height: 86%;'} display: flex; flex-direction: column; border-radius: ${lp(16)}px; overflow: hidden;
       background: #0B1514; border: 1.5px solid rgba(255,255,255,0.16); box-shadow: 0 ${lp(22)}px ${lp(52)}px rgba(0,0,0,0.62);
     }
+    /* Dynamic SVG Architecture & HUD Telemetry Dashboard (Opus 5.5 Vibecoding) */
+    .k-arch-panel {
+      width: 100%; height: 100%; max-height: ${lp(560)}px; display: flex; flex-direction: column;
+      border-radius: ${lp(18)}px; overflow: hidden; background: rgba(7,12,22,0.92);
+      border: 1.5px solid color-mix(in srgb, var(--accent) 48%, transparent);
+      box-shadow: 0 ${lp(28)}px ${lp(72)}px rgba(0,0,0,0.72);
+    }
+    .k-arch-body { flex: 1; position: relative; min-height: 0; display: flex; align-items: center; justify-content: center; padding: ${lp(16)}px; }
+    .k-arch-svg { width: 100%; height: 100%; display: block; overflow: visible; }
+    .k-hud-dashboard {
+      width: 100%; height: 100%; max-height: ${lp(560)}px; display: flex; gap: ${lp(24)}px; align-items: stretch;
+    }
+    .k-hud-code-card {
+      flex: 1.08; display: flex; flex-direction: column; border-radius: ${lp(18)}px; overflow: hidden;
+      background: rgba(6,10,19,0.94); border: 1.5px solid color-mix(in srgb, var(--accent) 44%, transparent);
+      box-shadow: 0 ${lp(26)}px ${lp(68)}px rgba(0,0,0,0.72);
+    }
+    .k-hud-code-body {
+      flex: 1; padding: ${lp(22)}px ${lp(24)}px; display: flex; flex-direction: column; justify-content: center; gap: ${lp(12)}px;
+      font: 700 ${Math.max(12, lp(15))}px/1.45 var(--font-mono); color: #E2E8F0;
+    }
+    .k-hud-code-line {
+      display: flex; align-items: center; gap: ${lp(14)}px; padding: ${lp(8)}px ${lp(12)}px; border-radius: ${lp(8)}px;
+      background: rgba(15,23,42,0.65); border-left: 3px solid var(--accent);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .k-hud-code-line:nth-child(even) { border-left-color: var(--gold); }
+    .k-ln-num { color: var(--gold); font-weight: 800; opacity: 0.85; }
+    .k-hud-code-foot {
+      padding: ${lp(10)}px ${lp(20)}px; background: rgba(12,20,34,0.95); border-top: 1px solid rgba(255,255,255,0.08);
+      display: flex; justify-content: space-between; font: 800 ${Math.max(10, lp(12))}px var(--font-mono); color: var(--accent);
+    }
+    .k-hud-telemetry-col {
+      flex: 1; display: flex; flex-direction: column; gap: ${lp(20)}px; min-width: 0;
+    }
+    .k-hud-rings-row {
+      display: flex; gap: ${lp(16)}px; flex: 1; min-height: 0;
+    }
+    .k-hud-ring-card {
+      flex: 1; border-radius: ${lp(16)}px; padding: ${lp(14)}px; background: rgba(8,14,26,0.92);
+      border: 1.5px solid rgba(255,255,255,0.14); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: ${lp(8)}px;
+      box-shadow: 0 ${lp(18)}px ${lp(44)}px rgba(0,0,0,0.55);
+    }
+    .k-hud-ring-svg { width: ${lp(88)}px; height: ${lp(88)}px; }
+    .k-hud-ring-info { text-align: center; }
+    .k-hud-ring-val { font: 900 ${Math.max(18, lp(26))}px/1.1 var(--font-mono); color: #F8FAFC; }
+    .k-hud-ring-lbl { font: 700 ${Math.max(11, lp(13))}px var(--font-sans); color: var(--sub); margin-top: 2px; }
+    .k-hud-wave-card {
+      flex: 1.05; border-radius: ${lp(16)}px; padding: ${lp(16)}px ${lp(20)}px; background: rgba(8,14,26,0.92);
+      border: 1.5px solid color-mix(in srgb, var(--gold) 38%, transparent); display: flex; flex-direction: column; justify-content: space-between;
+      box-shadow: 0 ${lp(18)}px ${lp(44)}px rgba(0,0,0,0.55);
+    }
+    .k-hud-wave-head { display: flex; justify-content: space-between; align-items: center; font: 800 ${Math.max(10, lp(12))}px var(--font-mono); color: var(--sub); }
+    .k-hud-wave-head em { font-style: normal; color: var(--gold); }
+    .k-hud-wave-svg { width: 100%; height: ${lp(105)}px; display: block; overflow: visible; }
     #workflow-hud {
       position: absolute; ${width < height ? `top: ${Math.round(height * 0.04)}px;` : `top: ${lp(20)}px;`} left: 50%; transform: translateX(-50%);
       display: none; align-items: center; gap: ${lp(8)}px; padding: ${lp(6)}px ${lp(16)}px; border-radius: 999px;
@@ -1573,15 +1819,69 @@ export function buildRichHtmlVideo(script) {
       const dashBarFill = scEl.querySelector('.k-dash-bar-fill');
       const dashCells = [...scEl.querySelectorAll('.k-dash-cell')];
       const trioWins = [...scEl.querySelectorAll('.k-trio-win')];
+      const archNodes = [...scEl.querySelectorAll('.k-arch-node')];
+      const archPhotons = [...scEl.querySelectorAll('.k-arch-photon')];
+      const hudCodeLines = [...scEl.querySelectorAll('.k-hud-code-line')];
+      const hudRingArcs = [...scEl.querySelectorAll('.k-hud-ring-arc')];
+      const hudRingVals = [...scEl.querySelectorAll('.k-hud-ring-val')];
+      const hudWaveDot = scEl.querySelector('.k-hud-wave-dot');
       const videos = [...scEl.querySelectorAll('video')];
 
       sceneEls.push({
         scEl, meta, chEls, bgMedia, cardStage, macGlint, eyebrow, subline, ruleEl, glowBar, sealEl,
         pills, callouts, cards3d, mosaicCells, cntNum, cmpA, cmpB, cmpBridge,
         appWinWrap, appWin, appBar, appView, camStage, markBoxes, loupeRing, loupeCam, fanCards, wfCards, wipeB, wipeLine, dashNum, dashBarFill, dashCells, trioWins,
+        archNodes, archPhotons, hudCodeLines, hudRingArcs, hudRingVals, hudWaveDot,
         videos,
       });
     });
+
+    function drawHudTelemetryOverlay(ctx, f, t, activeIdx, totalScenes, bp) {
+      if (String(CFG.visual3dMode || 'auto').toLowerCase() === 'off') return;
+      ctx.save();
+      const w = CFG.width, h = CFG.height;
+      const isPort = w < h;
+      const padX = isPort ? 34 : 46;
+      const padY = isPort ? 44 : 40;
+      const mm = String(Math.floor(t / 60)).padStart(2, '0');
+      const ss = String(Math.floor(t % 60)).padStart(2, '0');
+      const ff = String(f % Math.max(1, CFG.fps)).padStart(2, '0');
+      const tc = 'TC ' + mm + ':' + ss + ':' + ff;
+      const scCode = 'SCENE ' + String(activeIdx + 1).padStart(2, '0') + '/' + String(totalScenes).padStart(2, '0');
+
+      // Top-left broadcast telemetry badge
+      ctx.font = '700 ' + (isPort ? 12 : 13) + 'px monospace';
+      ctx.fillStyle = 'rgba(' + CFG.rgbAccent + ',0.78)';
+      ctx.fillText('REMOTION 4.x // THREE.JS 3D // SPRING · ' + tc + ' · ' + scCode, padX + 12, padY + 14);
+
+      // Right-side rotating gyroscope reticle
+      if (!isPort) {
+        const rx = w - 82, ry = h * 0.5;
+        ctx.save();
+        ctx.translate(rx, ry);
+        ctx.rotate(t * 0.48);
+        ctx.strokeStyle = 'rgba(' + CFG.rgbAccent + ',0.32)';
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([6, 8]);
+        ctx.beginPath(); ctx.arc(0, 0, 34 + bp * 6, 0, 6.2832); ctx.stroke();
+        ctx.rotate(-t * 0.96);
+        ctx.strokeStyle = 'rgba(' + CFG.rgbGold + ',0.38)';
+        ctx.setLineDash([4, 6]);
+        ctx.beginPath(); ctx.arc(0, 0, 22, 0, 6.2832); ctx.stroke();
+        ctx.restore();
+      }
+
+      // Bottom-left 18-bar beat-reactive spectrum equalizer
+      const eqX = padX + 10, eqY = h - (isPort ? 52 : 42);
+      const bars = 18;
+      for (let bi = 0; bi < bars; bi++) {
+        const wave = 0.28 + 0.72 * Math.abs(Math.sin(t * 5.8 + bi * 0.55));
+        const bh = Math.round((4 + wave * 16) * (1 + bp * 0.55));
+        ctx.fillStyle = bi % 3 === 0 ? 'rgba(' + CFG.rgbGold + ',0.68)' : 'rgba(' + CFG.rgbAccent + ',0.62)';
+        ctx.fillRect(eqX + bi * 6, eqY - bh, 3.5, bh);
+      }
+      ctx.restore();
+    }
 
     function animateHeadline(chEls, localT, outT) {
       chEls.forEach((ch, i) => {
@@ -1985,6 +2285,64 @@ export function buildRichHtmlVideo(script) {
             if (b) b.textContent = isAct ? 'ACTIVE' : 'VIEW';
           });
         }
+
+        // Dynamic SVG Architecture Topology Nodes & Data Packet Photons
+        if (cur.archNodes && cur.archNodes.length > 0) {
+          const bp = beatPulse(t, false);
+          cur.archNodes.forEach((nd, ni) => {
+            const sp = EZ.spring(pr(localT, 0.08 + ni * 0.08, 0.48 + ni * 0.08));
+            const pulseSc = 1 + (ni === Math.floor(localT * 2.5) % cur.archNodes.length ? bp * 0.045 : 0);
+            nd.style.opacity = clamp(sp * 1.4).toFixed(3);
+            nd.style.transform = 'scale(' + ((0.75 + 0.25 * sp) * pulseSc).toFixed(4) + ')';
+          });
+        }
+        if (cur.archPhotons && cur.archPhotons.length > 0) {
+          cur.archPhotons.forEach((ph, ei) => {
+            const ax = Number(ph.dataset.ax || 150), ay = Number(ph.dataset.ay || 220);
+            const bx = Number(ph.dataset.bx || 950), by = Number(ph.dataset.by || 220);
+            const u = (localT * 0.85 + ei * 0.21) % 1;
+            const mx = (ax + bx) * 0.5;
+            const omt = 1 - u;
+            const cx = omt * omt * omt * ax + 3 * omt * omt * u * mx + 3 * omt * u * u * mx + u * u * u * bx;
+            const cy = omt * omt * omt * ay + 3 * omt * omt * u * ay + 3 * omt * u * u * by + u * u * u * by;
+            ph.setAttribute('cx', cx.toFixed(1));
+            ph.setAttribute('cy', cy.toFixed(1));
+          });
+        }
+
+        // Vibecoding HUD Dashboard Code Stream, Ring Gauges & Wave Dot
+        if (cur.hudCodeLines && cur.hudCodeLines.length > 0) {
+          const actLn = Math.min(cur.hudCodeLines.length - 1, Math.floor(p * cur.hudCodeLines.length));
+          cur.hudCodeLines.forEach((ln, li) => {
+            const sp = EZ.spring(pr(localT, 0.06 + li * 0.08, 0.42 + li * 0.08));
+            const isAct = li === actLn;
+            ln.style.opacity = clamp(sp * 1.4).toFixed(3);
+            ln.style.transform = 'translateX(' + ((1 - sp) * 36).toFixed(1) + 'px) scale(' + (isAct ? '1.015' : '1.0') + ')';
+            ln.style.background = isAct ? 'rgba(56,189,248,0.18)' : 'rgba(15,23,42,0.65)';
+          });
+        }
+        if (cur.hudRingArcs && cur.hudRingArcs.length > 0) {
+          const rProg = EZ.out(pr(localT, 0.12, Math.min(durT - 0.2, 1.5)));
+          cur.hudRingArcs.forEach((arc) => {
+            const pct = Number(arc.dataset.pct || 92);
+            const offset = 289 * (1 - (pct / 100) * rProg);
+            arc.setAttribute('stroke-dashoffset', offset.toFixed(1));
+          });
+        }
+        if (cur.hudRingVals && cur.hudRingVals.length > 0) {
+          const rProg = EZ.out(pr(localT, 0.12, Math.min(durT - 0.2, 1.5)));
+          cur.hudRingVals.forEach((el) => {
+            const target = Number(el.dataset.target || 96);
+            const sfx = el.dataset.suffix || '%';
+            el.textContent = Math.round(target * rProg) + sfx;
+          });
+        }
+        if (cur.hudWaveDot) {
+          const wx = lerp(40, 540, (localT * 0.45) % 1);
+          const wy = 56 + Math.sin(localT * 4.2) * 28;
+          cur.hudWaveDot.setAttribute('cx', wx.toFixed(1));
+          cur.hudWaveDot.setAttribute('cy', wy.toFixed(1));
+        }
       }
 
       // Update Top Workflow HUD
@@ -2010,11 +2368,12 @@ export function buildRichHtmlVideo(script) {
 
       // Render Foreground VFX Canvas (#fxt)
       fxt.clearRect(0, 0, CFG.width, CFG.height);
+      drawHudTelemetryOverlay(fxt, f, t, activeIdx, CFG.timeline.length, beatPulse(t, false));
       if (meta.layout === 'radial-climax') {
         drawRadialLines(fxt, t, CFG.width / 2, CFG.height / 2, 0.65, CFG.rgbAccent);
         drawGlow(fxt, CFG.width / 2, CFG.height / 2, 420, CFG.rgbGold, 0.16 + beatPulse(t, true) * 0.1);
       }
-      if (localT < 1.0 && ['kinetic-impact', 'radial-climax', '3d-stage-opener', 'mosaic-pulse-wall'].includes(meta.layout)) {
+      if (localT < 1.0 && ['kinetic-impact', 'radial-climax', '3d-stage-opener', 'mosaic-pulse-wall', 'svg-architecture-flow', 'hud-telemetry-dashboard', 'vibecoding-spring-stage'].includes(meta.layout)) {
         drawShockRing(fxt, localT, 0.04, CFG.width * 0.5, CFG.height * 0.45, Math.min(CFG.width, CFG.height) * 0.78, 0.65, CFG.rgbAccent);
         drawSparks(fxt, localT, 0.1, CFG.width * 0.5, CFG.height * 0.45, CFG.rgbGold, 36, activeIdx + 5);
         drawScanSweep(fxt, localT, 0.35, 0.55, CFG.rgbAccent);

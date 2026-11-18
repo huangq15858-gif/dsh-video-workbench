@@ -304,10 +304,18 @@ export async function planVideoFromAssets(options = {}) {
     'multi-window-trio',
     'mosaic-pulse-wall',
   ]
-  const zeroAssetNarrative = contentVisuals.length === 0
+  const isHistoricalTopic = /历史|霸王|项羽|秦|汉|楚|三国|唐|宋|明|古风|武侠|战役|将军|帝王|演义/i.test(`${coreTopic || ''} ${notesText || ''}`)
+  const zeroAssetNarrative = contentVisuals.length === 0 && isHistoricalTopic
   const middleLayoutsTextOnly = zeroAssetNarrative
     ? ['narrative-diorama']
-    : ['kinetic-impact', 'compare-dual', 'workflow-steps', 'metric-dashboard']
+    : [
+        'svg-architecture-flow',
+        'hud-telemetry-dashboard',
+        'vibecoding-spring-stage',
+        'metric-dashboard',
+        'workflow-steps',
+        'kinetic-impact',
+      ]
   const NARRATIVE_DEFAULTS = [
     { mood: 'dawn-amber', setting: 'palace-stairs', archetype: 'hero-numeral', heroNum: '01', heroUnit: '幕' },
     { mood: 'crimson-war', setting: 'mountain-camp', archetype: 'oath-break' },

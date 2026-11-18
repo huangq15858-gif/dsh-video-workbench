@@ -13,7 +13,7 @@ import {
   useVideoConfig,
 } from 'remotion';
 import scriptData from '../script.json';
-import { AIBadge, AppWindow, AvatarOverlay, BeforeAfterWipe, EndNotice, FocusShot, MetricPanel, SceneTransitionOverlay, ThreeCyberStage, THREE_STAGE_PRESETS, WorkflowBar, FONT_SANS, FONT_MONO, FONT_SERIF } from './lib/shotcraft';
+import { AIBadge, AppWindow, AvatarOverlay, BeatSpringPhysicsRig, BeforeAfterWipe, computeBeatSpring, EndNotice, FocusShot, HudDataDashboard, HudTelemetryOverlay, MetricPanel, SceneTransitionOverlay, SvgArchitectureDiagram, ThreeCyberStage, THREE_STAGE_PRESETS, WorkflowBar, FONT_SANS, FONT_MONO, FONT_SERIF } from './lib/shotcraft';
 import { NarrativeDioramaStage } from './lib/narrative-diorama';
 const CUSTOM_SCENE_MAP: Record<string, React.ComponentType<any>> = {};
 
@@ -402,14 +402,15 @@ const SceneStage: React.FC<{
   const highlights: string[] = Array.isArray(scene.highlights) ? scene.highlights.filter(Boolean).slice(0, 3) : [];
   const sceneTag = String(scene.tag || `0${idx + 1}`);
 
-  // Impact shake & punch camera (restrained on clean UI showcase layouts)
-  const isHeavyImpact = ['kinetic-impact', 'radial-climax', '3d-stage-opener', 'mosaic-pulse-wall'].includes(layout);
+  // Impact shake, punch camera & Beat-Synced Spring Physics (spring + interpolate + harmonic recoil)
+  const isHeavyImpact = ['kinetic-impact', 'radial-climax', '3d-stage-opener', 'mosaic-pulse-wall', 'vibecoding-spring-stage', 'svg-architecture-flow', 'hud-telemetry-dashboard'].includes(layout);
+  const springPhys = computeBeatSpring(localFrame, fps, beats, { delayFrames: 0, beatBoost: isHeavyImpact ? 1.15 : 0.75 });
   const impactDecay = isHeavyImpact && localFrame < 12 ? Math.exp(-localFrame * 0.3) : 0;
   const shakeX = (hashNum(absFrame * 1.3 + 7) - 0.5) * 12 * impactDecay;
-  const shakeY = (hashNum(absFrame * 2.1 + 19) - 0.5) * 9 * impactDecay;
+  const shakeY = (hashNum(absFrame * 2.1 + 19) - 0.5) * 9 * impactDecay + springPhys.translateY * 0.24;
   const punchZoom = isHeavyImpact && txKind === 'zoom-punch' && localFrame < 12 ? interpolate(localFrame, [0, 12], [1.1, 1], { easing: easeOut }) : 1;
-  const beatZoom = 1 + bp * (isHeavyImpact ? 0.012 : 0.004);
-  const rgbSplit = (txKind === 'glitch-cut' && localFrame < 14 ? 7 * (1 - localFrame / 14) : 0) + impactDecay * 3.5;
+  const beatZoom = (0.96 + springPhys.enterSpring * 0.04) + bp * (isHeavyImpact ? 0.014 : 0.005) + springPhys.beatKick * 0.022;
+  const rgbSplit = (txKind === 'glitch-cut' && localFrame < 14 ? 7 * (1 - localFrame / 14) : 0) + impactDecay * 3.5 + springPhys.rgbSplitPx * 0.35;
 
   const enterFade = interpolate(localFrame, [0, 8], [0, 1], { extrapolateRight: 'clamp' });
   const exitFade = interpolate(localFrame, [Math.max(0, dur - 8), dur], [1, 0], { extrapolateLeft: 'clamp' });
@@ -1257,13 +1258,99 @@ const SceneStage: React.FC<{
               </div>
 
               <div style={{ flex: 1, width: isPortrait ? '100%' : 'auto', height: isPortrait ? 450 : 690 }}>
-                <AppWindow title={scene.windowTitle || scene.title} kicker={scene.windowBadge || 'ENGINE'} brandMark={brandLogo} accentColor={PALETTE.accent} goldColor={PALETTE.gold || PALETTE.accent2} style={{ width: '100%', height: '100%' }}>
-                  {primary ? <FocusShot src={primary.path} cams={scene.cams} marks={scene.marks} mediaWidth={Number(primary.width || 0)} mediaHeight={Number(primary.height || 0)} accentColor={PALETTE.accent} goldColor={PALETTE.gold || PALETTE.accent2} /> : null}
-                </AppWindow>
+                {primary ? (
+                  <AppWindow title={scene.windowTitle || scene.title} kicker={scene.windowBadge || 'ENGINE'} brandMark={brandLogo} accentColor={PALETTE.accent} goldColor={PALETTE.gold || PALETTE.accent2} style={{ width: '100%', height: '100%' }}>
+                    <FocusShot src={primary.path} cams={scene.cams} marks={scene.marks} mediaWidth={Number(primary.width || 0)} mediaHeight={Number(primary.height || 0)} accentColor={PALETTE.accent} goldColor={PALETTE.gold || PALETTE.accent2} />
+                  </AppWindow>
+                ) : (
+                  <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+                    <SvgArchitectureDiagram
+                      title={scene.windowTitle || '系统核心拓扑'}
+                      kicker={scene.windowBadge || 'SVG TOPOLOGY // SPRING'}
+                      nodes={highlights.length >= 2 ? highlights : scene.subChunks || [scene.title]}
+                      topology="neural-pipeline"
+                      accentColor={PALETTE.accent}
+                      goldColor={PALETTE.gold || PALETTE.accent2}
+                      beatPulse={bp}
+                      seed={idx + 1}
+                    />
+                  </div>
+                )}
               </div>
             </AbsoluteFill>
           );
         })() : null}
+
+        {/* LAYOUT 13: svg-architecture-flow (Opus 5.5 Dynamic SVG Architecture Topology + Spring Physics) */}
+        {layout === 'svg-architecture-flow' ? (() => {
+          const archNodes =
+            Array.isArray(scene.steps) && scene.steps.length >= 3
+              ? scene.steps.map((s: any) => s?.title || s?.label || String(s))
+              : highlights.length >= 3
+                ? [scene.title, ...highlights]
+                : Array.isArray(scene.subChunks) && scene.subChunks.length >= 2
+                  ? [scene.title, ...scene.subChunks, ...highlights]
+                  : [scene.title, ...highlights, 'Three.js 3D 空间', 'SVG 动态拓扑', 'Spring 弹簧同步'];
+          return (
+            <BeatSpringPhysicsRig beats={beats} beatBoost={1.1}>
+              <SvgArchitectureDiagram
+                title={scene.headline || scene.title}
+                kicker={scene.kicker || `ARCH_TOPOLOGY // SCENE 0${idx + 1}`}
+                nodes={archNodes}
+                topology={scene.archTopology || 'auto'}
+                accentColor={PALETTE.accent}
+                goldColor={PALETTE.gold || PALETTE.accent2}
+                beatPulse={bp}
+                seed={idx + 1}
+              />
+            </BeatSpringPhysicsRig>
+          );
+        })() : null}
+
+        {/* LAYOUT 14: hud-telemetry-dashboard (Opus 5.5 HUD Data Panels + Live Code Stream + SVG Ring/Spline Charts) */}
+        {layout === 'hud-telemetry-dashboard' ? (
+          <BeatSpringPhysicsRig beats={beats} beatBoost={1.0}>
+            <HudDataDashboard
+              title={scene.headline || scene.title}
+              kicker={scene.kicker || `HUD_TELEMETRY // SCENE 0${idx + 1}`}
+              highlights={highlights}
+              metrics={scene.metrics}
+              codeLines={scene.codeLines}
+              accentColor={PALETTE.accent}
+              goldColor={PALETTE.gold || PALETTE.accent2}
+              beatPulse={bp}
+              seed={idx + 1}
+            />
+          </BeatSpringPhysicsRig>
+        ) : null}
+
+        {/* LAYOUT 15: vibecoding-spring-stage (Opus 5.5 Radial Hub SVG + Spring Physics + HUD Telemetry) */}
+        {layout === 'vibecoding-spring-stage' ? (
+          <BeatSpringPhysicsRig beats={beats} beatBoost={1.3}>
+            <SvgArchitectureDiagram
+              title={scene.headline || scene.title}
+              kicker={scene.kicker || `VIBECODING_SPRING // SCENE 0${idx + 1}`}
+              nodes={[scene.title, ...highlights, ...(Array.isArray(scene.subChunks) ? scene.subChunks : [])]}
+              topology="radial-hub"
+              accentColor={PALETTE.accent}
+              goldColor={PALETTE.gold || PALETTE.accent2}
+              beatPulse={bp}
+              seed={idx + 3}
+            />
+          </BeatSpringPhysicsRig>
+        ) : null}
+
+        {/* Vibecoding Broadcast HUD Telemetry Frame Overlay */}
+        {enable3dStage ? (
+          <HudTelemetryOverlay
+            accentColor={PALETTE.accent}
+            goldColor={PALETTE.gold || PALETTE.accent2}
+            beatPulse={bp}
+            sceneIndex={idx}
+            totalScenes={total}
+            opacity={0.72}
+          />
+        ) : null}
 
         {/* LAYOUT 12: multi-window-trio */}
         {layout === 'multi-window-trio' ? (() => {

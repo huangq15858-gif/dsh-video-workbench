@@ -1,7 +1,7 @@
 {
   "name": "dsh-video-workbench",
-  "version": "0.3.0",
-  "description": "DeepSeek Harness 多智能体双引擎视频工作台：AI 策划分镜、Remotion 4.x + Three.js 3D / HTML5 动效编码、48kHz 踩点混音、IndexTTS-2.5 / GPT-SoVITS 多引擎配音与数字人口播。",
+  "version": "0.3.1",
+  "description": "DeepSeek Harness 多智能体双引擎视频工作台：Opus 5.5 级 Vibecoding (Remotion 4.x + Three.js 3D + 动态 SVG 架构图 + HUD 数据面板 + 节拍同步弹簧物理)、48kHz 踩点混音与多引擎配音。",
   "license": "MIT",
   "author": "Merziller",
   "repository": {

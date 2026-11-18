@@ -31,7 +31,7 @@
       "id": "scene-01",
       "index": 1,
       "title": "双引擎动效：从素材到成片",
-      "narration": "欢迎体验 DeepSeek Harness 视频工作台。导入你的图片、视频与音乐素材，AI 自动完成文案编排、3D 动效、节拍音效与真人配音。",
+      "narration": "欢迎体验 DeepSeek Harness 视频工作台。导入你的图片、视频与音乐素材，AI 自动完成文案编排、Three.js 3D 动效、节拍弹簧与真人配音。",
       "emotion": "平静",
       "role": "host",
       "voiceId": "pack-中年-男声-男-专题-纪录-旁白",
@@ -48,59 +48,60 @@
           "index": 1,
           "text": "欢迎体验 DeepSeek Harness 视频工作台",
           "startSec": 0,
-          "endSec": 1.8,
+          "endSec": 1.612,
           "startFrame": 0,
-          "endFrame": 54
+          "endFrame": 49
         },
         {
           "index": 2,
           "text": "导入你的图片",
-          "startSec": 1.8,
-          "endSec": 2.25,
-          "startFrame": 54,
-          "endFrame": 68
+          "startSec": 1.612,
+          "endSec": 2.015,
+          "startFrame": 48,
+          "endFrame": 61
         },
         {
           "index": 3,
           "text": "视频与音乐素材",
-          "startSec": 2.25,
-          "endSec": 2.775,
-          "startFrame": 67,
-          "endFrame": 84
+          "startSec": 2.015,
+          "endSec": 2.485,
+          "startFrame": 60,
+          "endFrame": 75
         },
         {
           "index": 4,
           "text": "AI 自动完成文案编排",
-          "startSec": 2.775,
-          "endSec": 3.525,
-          "startFrame": 83,
-          "endFrame": 106
+          "startSec": 2.485,
+          "endSec": 3.157,
+          "startFrame": 74,
+          "endFrame": 95
         },
         {
           "index": 5,
-          "text": "3D 动效",
-          "startSec": 3.525,
-          "endSec": 3.825,
-          "startFrame": 105,
-          "endFrame": 115
+          "text": "Three.js 3D 动效",
+          "startSec": 3.157,
+          "endSec": 3.896,
+          "startFrame": 94,
+          "endFrame": 117
         },
         {
           "index": 6,
-          "text": "节拍音效与真人配音",
-          "startSec": 3.825,
+          "text": "节拍弹簧与真人配音",
+          "startSec": 3.896,
           "endSec": 4.5,
-          "startFrame": 114,
+          "startFrame": 116,
           "endFrame": 135
         }
       ],
       "layout": "3d-stage-opener",
+      "threePreset": "orbital-core",
       "camera": "zoom-in",
       "transition": "iris-circle",
       "vfx": "3d-depth+sweep",
       "sfxCue": "hit",
       "highlights": [
-        "3D 透视舞台",
-        "双引擎动效",
+        "Three.js 3D 舞台",
+        "节拍弹簧物理",
         "一键成片"
       ],
       "voiceName": "男-专题 纪录 旁白",
@@ -109,14 +110,14 @@
     {
       "id": "scene-02",
       "index": 2,
-      "title": "本地音色匹配：立体声混音",
-      "narration": "内置两百零五个本地音色并支持自定义音色包，配合节拍锁定的立体声转场音效与背景音乐闪避技术，让人声清晰突出、节奏紧凑自然。",
+      "title": "动态 SVG 架构与多轨混音",
+      "narration": "内置动态 SVG 架构拓扑总线与两百零五个本地音色，配合节拍同步弹簧物理与背景音乐闪避技术，让系统架构与声音细节清晰突出。",
       "emotion": "高兴",
       "role": "storyteller",
       "voiceId": "pack-中年-男声-男-专题-纪录-旁白",
       "voiceLocked": false,
       "voiceMatchReason": "AI 自动匹配: [中年-男声] 男-专题 纪录 旁白 [匹配度 99% — 黄金参考时长(8.52s) + 情绪支持(高兴) + 科技/专业解说语境 + 广播级解说音色]",
-      "visualPrompt": "块状擦除接强力逐字排版，冲击波光环与微粒火花随重拍脉冲跃动。",
+      "visualPrompt": "动态 SVG 节点拓扑与贝塞尔光子脉冲随节拍弹簧跃动。",
       "audioFile": "",
       "durationSec": 5,
       "durationInFrames": 150,
@@ -125,54 +126,47 @@
       "subtitles": [
         {
           "index": 1,
-          "text": "内置两百零五个本地音色并支持自定义音色包",
+          "text": "内置动态 SVG 架构拓扑总线与两百",
           "startSec": 0,
-          "endSec": 1.786,
+          "endSec": 1.429,
           "startFrame": 0,
-          "endFrame": 54
+          "endFrame": 43
         },
         {
           "index": 2,
-          "text": "配合节拍锁定的立体声转场音效与背",
-          "startSec": 1.786,
-          "endSec": 3.215,
-          "startFrame": 53,
-          "endFrame": 97
+          "text": "零五个本地音色",
+          "startSec": 1.429,
+          "endSec": 2.054,
+          "startFrame": 42,
+          "endFrame": 62
         },
         {
           "index": 3,
-          "text": "景音乐闪避技术",
-          "startSec": 3.215,
-          "endSec": 3.84,
-          "startFrame": 96,
-          "endFrame": 116
+          "text": "配合节拍同步弹簧物理与背景音乐闪避技术",
+          "startSec": 2.054,
+          "endSec": 3.75,
+          "startFrame": 61,
+          "endFrame": 113
         },
         {
           "index": 4,
-          "text": "让人声清晰突出",
-          "startSec": 3.84,
-          "endSec": 4.465,
-          "startFrame": 115,
-          "endFrame": 134
-        },
-        {
-          "index": 5,
-          "text": "节奏紧凑自然",
-          "startSec": 4.465,
+          "text": "让系统架构与声音细节清晰突出",
+          "startSec": 3.75,
           "endSec": 5,
-          "startFrame": 133,
+          "startFrame": 112,
           "endFrame": 150
         }
       ],
-      "layout": "kinetic-impact",
+      "layout": "svg-architecture-flow",
+      "threePreset": "cyber-terrain",
       "camera": "pan-left",
       "transition": "block-wipe",
       "vfx": "sparks+shockwave",
       "sfxCue": "whoosh",
       "highlights": [
-        "205 本地音色",
-        "48kHz 立体声",
-        "节拍自动闪避"
+        "动态 SVG 拓扑",
+        "光子数据总线",
+        "48kHz 自动闪避"
       ],
       "voiceName": "男-专题 纪录 旁白",
       "voiceCategory": "中年-男声"
@@ -180,14 +174,14 @@
     {
       "id": "scene-03",
       "index": 3,
-      "title": "全帧率高清渲染：即刻交付",
-      "narration": "双引擎均支持确定性逐帧捕获与多轨合成，一键输出色彩精准的 1080p 高清成片视频。",
+      "title": "HUD 遥测面板：全帧率高清交付",
+      "narration": "搭载全息 HUD 遥测数据仪表与 TSX 实时代码流，双引擎确定性逐帧捕获，一键输出广播级高清成片视频。",
       "emotion": "激昂",
       "role": "narrator",
       "voiceId": "pack-中年-男声-男-专题-纪录-旁白",
       "voiceLocked": false,
       "voiceMatchReason": "AI 自动匹配: [中年-男声] 男-专题 纪录 旁白 [匹配度 99% — 黄金参考时长(8.52s) + 角色契合(narrator) + 科技/专业解说语境 + 广播级解说音色]",
-      "visualPrompt": "放射状速度线爆裂展开，盖章特技与流光长条收尾。",
+      "visualPrompt": "全息 HUD 环形仪表盘与 TSX 代码流同步滚动，定格品牌印章。",
       "audioFile": "",
       "durationSec": 4.5,
       "durationInFrames": 135,
@@ -196,30 +190,47 @@
       "subtitles": [
         {
           "index": 1,
-          "text": "双引擎均支持确定性逐帧捕获与多轨合成",
+          "text": "搭载全息 HUD 遥测数据仪表与",
           "startSec": 0,
-          "endSec": 2.132,
+          "endSec": 1.4,
           "startFrame": 0,
-          "endFrame": 64
+          "endFrame": 42
         },
         {
           "index": 2,
-          "text": "一键输出色彩精准的 1080p 高清成片视频",
-          "startSec": 2.132,
+          "text": "TSX 实时代码流",
+          "startSec": 1.4,
+          "endSec": 2.2,
+          "startFrame": 42,
+          "endFrame": 66
+        },
+        {
+          "index": 3,
+          "text": "双引擎确定性逐帧捕获",
+          "startSec": 2.2,
+          "endSec": 3.2,
+          "startFrame": 66,
+          "endFrame": 96
+        },
+        {
+          "index": 4,
+          "text": "一键输出广播级高清成片视频",
+          "startSec": 3.2,
           "endSec": 4.5,
-          "startFrame": 63,
+          "startFrame": 96,
           "endFrame": 135
         }
       ],
-      "layout": "radial-climax",
+      "layout": "hud-telemetry-dashboard",
+      "threePreset": "particle-vortex",
       "camera": "zoom-out",
       "transition": "zoom-punch",
       "vfx": "radial-speedlines",
       "sfxCue": "chime",
       "highlights": [
-        "1080p 60fps",
-        "BT.709 色彩",
-        "即刻成片"
+        "HUD 遥测仪表",
+        "实时代码流",
+        "60FPS 确定性渲染"
       ],
       "voiceName": "男-专题 纪录 旁白",
       "voiceCategory": "中年-男声"
@@ -229,7 +240,7 @@
   "quality": "1080p",
   "totalDurationSec": 14,
   "totalDurationInFrames": 420,
-  "updatedAt": "2026-11-18T06:56:47.175Z",
+  "updatedAt": "2026-11-18T07:49:35.456Z",
   "requestedAspectRatio": "auto",
   "dimensionReason": "AI 综合主题与素材横纵比，选用 16:9 影院横屏"
 }

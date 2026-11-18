@@ -507,6 +507,61 @@
       flex: 1; aspect-ratio: 16 / 10.6; max-height: 86%; display: flex; flex-direction: column; border-radius: 16px; overflow: hidden;
       background: #0B1514; border: 1.5px solid rgba(255,255,255,0.16); box-shadow: 0 22px 52px rgba(0,0,0,0.62);
     }
+    /* Dynamic SVG Architecture & HUD Telemetry Dashboard (Opus 5.5 Vibecoding) */
+    .k-arch-panel {
+      width: 100%; height: 100%; max-height: 560px; display: flex; flex-direction: column;
+      border-radius: 18px; overflow: hidden; background: rgba(7,12,22,0.92);
+      border: 1.5px solid color-mix(in srgb, var(--accent) 48%, transparent);
+      box-shadow: 0 28px 72px rgba(0,0,0,0.72);
+    }
+    .k-arch-body { flex: 1; position: relative; min-height: 0; display: flex; align-items: center; justify-content: center; padding: 16px; }
+    .k-arch-svg { width: 100%; height: 100%; display: block; overflow: visible; }
+    .k-hud-dashboard {
+      width: 100%; height: 100%; max-height: 560px; display: flex; gap: 24px; align-items: stretch;
+    }
+    .k-hud-code-card {
+      flex: 1.08; display: flex; flex-direction: column; border-radius: 18px; overflow: hidden;
+      background: rgba(6,10,19,0.94); border: 1.5px solid color-mix(in srgb, var(--accent) 44%, transparent);
+      box-shadow: 0 26px 68px rgba(0,0,0,0.72);
+    }
+    .k-hud-code-body {
+      flex: 1; padding: 22px 24px; display: flex; flex-direction: column; justify-content: center; gap: 12px;
+      font: 700 15px/1.45 var(--font-mono); color: #E2E8F0;
+    }
+    .k-hud-code-line {
+      display: flex; align-items: center; gap: 14px; padding: 8px 12px; border-radius: 8px;
+      background: rgba(15,23,42,0.65); border-left: 3px solid var(--accent);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .k-hud-code-line:nth-child(even) { border-left-color: var(--gold); }
+    .k-ln-num { color: var(--gold); font-weight: 800; opacity: 0.85; }
+    .k-hud-code-foot {
+      padding: 10px 20px; background: rgba(12,20,34,0.95); border-top: 1px solid rgba(255,255,255,0.08);
+      display: flex; justify-content: space-between; font: 800 12px var(--font-mono); color: var(--accent);
+    }
+    .k-hud-telemetry-col {
+      flex: 1; display: flex; flex-direction: column; gap: 20px; min-width: 0;
+    }
+    .k-hud-rings-row {
+      display: flex; gap: 16px; flex: 1; min-height: 0;
+    }
+    .k-hud-ring-card {
+      flex: 1; border-radius: 16px; padding: 14px; background: rgba(8,14,26,0.92);
+      border: 1.5px solid rgba(255,255,255,0.14); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;
+      box-shadow: 0 18px 44px rgba(0,0,0,0.55);
+    }
+    .k-hud-ring-svg { width: 88px; height: 88px; }
+    .k-hud-ring-info { text-align: center; }
+    .k-hud-ring-val { font: 900 26px/1.1 var(--font-mono); color: #F8FAFC; }
+    .k-hud-ring-lbl { font: 700 13px var(--font-sans); color: var(--sub); margin-top: 2px; }
+    .k-hud-wave-card {
+      flex: 1.05; border-radius: 16px; padding: 16px 20px; background: rgba(8,14,26,0.92);
+      border: 1.5px solid color-mix(in srgb, var(--gold) 38%, transparent); display: flex; flex-direction: column; justify-content: space-between;
+      box-shadow: 0 18px 44px rgba(0,0,0,0.55);
+    }
+    .k-hud-wave-head { display: flex; justify-content: space-between; align-items: center; font: 800 12px var(--font-mono); color: var(--sub); }
+    .k-hud-wave-head em { font-style: normal; color: var(--gold); }
+    .k-hud-wave-svg { width: 100%; height: 105px; display: block; overflow: visible; }
     #workflow-hud {
       position: absolute; top: 20px; left: 50%; transform: translateX(-50%);
       display: none; align-items: center; gap: 8px; padding: 6px 16px; border-radius: 999px;
@@ -549,38 +604,190 @@
 
   <template class="scene-template" data-scene-id="scene-01" data-layout="3d-stage-opener"><div class="k-scene" data-scene-idx="0">
       <div class="k-bg-procedural"></div>
-      <div class="k-3d-space"><div class="k-3d-world"><div class="k-3d-card k-3d-badge" data-cidx="0"><span class="k-3d-dot"></span><span>3D 透视舞台</span></div><div class="k-3d-card k-3d-badge" data-cidx="1"><span class="k-3d-dot"></span><span>双引擎动效</span></div><div class="k-3d-card k-3d-badge" data-cidx="2"><span class="k-3d-dot"></span><span>一键成片</span></div><div class="k-3d-card k-3d-badge" data-cidx="3"><span class="k-3d-dot"></span><span>3D 透视舞台</span></div><div class="k-3d-card k-3d-badge" data-cidx="4"><span class="k-3d-dot"></span><span>双引擎动效</span></div><div class="k-3d-card k-3d-badge" data-cidx="5"><span class="k-3d-dot"></span><span>一键成片</span></div><div class="k-3d-card k-3d-badge" data-cidx="6"><span class="k-3d-dot"></span><span>3D 透视舞台</span></div><div class="k-3d-card k-3d-badge" data-cidx="7"><span class="k-3d-dot"></span><span>双引擎动效</span></div><div class="k-3d-card k-3d-badge" data-cidx="8"><span class="k-3d-dot"></span><span>一键成片</span></div><div class="k-3d-card k-3d-badge" data-cidx="9"><span class="k-3d-dot"></span><span>3D 透视舞台</span></div><div class="k-3d-card k-3d-badge" data-cidx="10"><span class="k-3d-dot"></span><span>双引擎动效</span></div><div class="k-3d-card k-3d-badge" data-cidx="11"><span class="k-3d-dot"></span><span>一键成片</span></div><div class="k-3d-card k-3d-badge" data-cidx="12"><span class="k-3d-dot"></span><span>3D 透视舞台</span></div><div class="k-3d-card k-3d-badge" data-cidx="13"><span class="k-3d-dot"></span><span>双引擎动效</span></div><div class="k-3d-card k-3d-badge" data-cidx="14"><span class="k-3d-dot"></span><span>一键成片</span></div><div class="k-3d-card k-3d-badge" data-cidx="15"><span class="k-3d-dot"></span><span>3D 透视舞台</span></div></div></div>
+      <div class="k-3d-space"><div class="k-3d-world"><div class="k-3d-card k-3d-badge" data-cidx="0"><span class="k-3d-dot"></span><span>Three.js 3D 舞台</span></div><div class="k-3d-card k-3d-badge" data-cidx="1"><span class="k-3d-dot"></span><span>节拍弹簧物理</span></div><div class="k-3d-card k-3d-badge" data-cidx="2"><span class="k-3d-dot"></span><span>一键成片</span></div><div class="k-3d-card k-3d-badge" data-cidx="3"><span class="k-3d-dot"></span><span>Three.js 3D 舞台</span></div><div class="k-3d-card k-3d-badge" data-cidx="4"><span class="k-3d-dot"></span><span>节拍弹簧物理</span></div><div class="k-3d-card k-3d-badge" data-cidx="5"><span class="k-3d-dot"></span><span>一键成片</span></div><div class="k-3d-card k-3d-badge" data-cidx="6"><span class="k-3d-dot"></span><span>Three.js 3D 舞台</span></div><div class="k-3d-card k-3d-badge" data-cidx="7"><span class="k-3d-dot"></span><span>节拍弹簧物理</span></div><div class="k-3d-card k-3d-badge" data-cidx="8"><span class="k-3d-dot"></span><span>一键成片</span></div><div class="k-3d-card k-3d-badge" data-cidx="9"><span class="k-3d-dot"></span><span>Three.js 3D 舞台</span></div><div class="k-3d-card k-3d-badge" data-cidx="10"><span class="k-3d-dot"></span><span>节拍弹簧物理</span></div><div class="k-3d-card k-3d-badge" data-cidx="11"><span class="k-3d-dot"></span><span>一键成片</span></div><div class="k-3d-card k-3d-badge" data-cidx="12"><span class="k-3d-dot"></span><span>Three.js 3D 舞台</span></div><div class="k-3d-card k-3d-badge" data-cidx="13"><span class="k-3d-dot"></span><span>节拍弹簧物理</span></div><div class="k-3d-card k-3d-badge" data-cidx="14"><span class="k-3d-dot"></span><span>一键成片</span></div><div class="k-3d-card k-3d-badge" data-cidx="15"><span class="k-3d-dot"></span><span>Three.js 3D 舞台</span></div></div></div>
       <div class="k-hero-scrim"></div>
       <div class="k-split-grid">
         <div class="k-left-col">
           <div class="k-eyebrow"><span class="k-dot"></span><span>01 / 03 · 01</span></div>
           <div class="k-headline k-glitch-target"><div class="k-line-row"><span class="k-ch">双</span><span class="k-ch">引</span><span class="k-ch">擎</span><span class="k-ch">动</span><span class="k-ch">效</span><span class="k-ch">：</span></div><div class="k-line-row"><span class="k-ch">从</span><span class="k-ch">素</span><span class="k-ch">材</span><span class="k-ch">到</span><span class="k-ch">成</span><span class="k-ch">片</span></div></div>
           
-          <div class="k-pills-row"><div class="k-pill"><span>▸</span>3D 透视舞台</div><div class="k-pill"><span>▸</span>双引擎动效</div><div class="k-pill"><span>▸</span>一键成片</div></div>
+          <div class="k-pills-row"><div class="k-pill"><span>▸</span>Three.js 3D 舞台</div><div class="k-pill"><span>▸</span>节拍弹簧物理</div><div class="k-pill"><span>▸</span>一键成片</div></div>
         </div>
         
       </div></div></template>
-  <template class="scene-template" data-scene-id="scene-02" data-layout="kinetic-impact"><div class="k-scene" data-scene-idx="1">
-      <div class="k-bg-procedural"></div>
-      <div class="k-dark-veil-soft"></div>
-      <div class="k-center-stage">
-        <div class="k-eyebrow"><span class="k-dot"></span><span>02 / 03 · 02</span></div>
-        <div class="k-headline k-headline-lg k-glitch-target"><div class="k-line-row"><span class="k-ch">本</span><span class="k-ch">地</span><span class="k-ch">音</span><span class="k-ch">色</span><span class="k-ch">匹</span><span class="k-ch">配</span><span class="k-ch">：</span></div><div class="k-line-row"><span class="k-ch">立</span><span class="k-ch">体</span><span class="k-ch">声</span><span class="k-ch">混</span><span class="k-ch">音</span></div></div>
-        <div class="k-pills-row"><div class="k-pill"><span>◆</span>205 本地音色</div><div class="k-pill"><span>◆</span>48kHz 立体声</div><div class="k-pill"><span>◆</span>节拍自动闪避</div></div>
+  <template class="scene-template" data-scene-id="scene-02" data-layout="svg-architecture-flow"><div class="k-scene" data-scene-idx="1">
+      <div class="k-app-stage k-app-wide">
+        <div class="k-app-head">
+          <div class="k-app-head-l">
+            <span class="k-tag-chip">02 / 03 · SVG ARCHITECTURE</span>
+            <span class="k-app-head-title">动态 SVG 架构与多轨混音</span>
+          </div>
+          <span class="k-app-head-sub">动态 SVG 拓扑 · 光子数据总线 · 48kHz 自动闪避</span>
+        </div>
+        <div class="k-app-win-wrap">
+          
+      <div class="k-arch-panel">
+        <div class="k-app-bar">
+          <div class="k-app-dots"><i></i><i></i><i></i></div>
+          <span class="k-app-title">动态 SVG 架构与多轨混音</span>
+          <span class="k-app-kicker">SVG TOPOLOGY // MICROSERVICE-MESH</span>
+        </div>
+        <div class="k-arch-body">
+          <svg class="k-arch-svg" viewBox="0 0 1120 440" preserveAspectRatio="xMidYMid meet">
+            <defs>
+              <pattern id="archGrid-1" width="40" height="40" patternUnits="userSpaceOnUse">
+                <path d="M 40 0 L 0 0 0 40" fill="none" stroke="rgba(148,163,184,0.08)" stroke-width="1" />
+              </pattern>
+            </defs>
+            <rect width="1120" height="440" fill="url(#archGrid-1)" />
+            
+        <path class="k-arch-edge-bg" d="M 180 125 C 370.0 125, 370.0 95, 560 95" fill="none" stroke="rgba(148,163,184,0.22)" stroke-width="2" stroke-dasharray="6 6" />
+        <path class="k-arch-edge" d="M 180 125 C 370.0 125, 370.0 95, 560 95" fill="none" stroke="var(--accent)" stroke-width="3" stroke-linecap="round" />
+        <circle class="k-arch-photon" data-ax="180" data-ay="125" data-bx="560" data-by="95" data-ei="0" cx="180" cy="125" r="5.5" fill="var(--gold)" />
+        <path class="k-arch-edge-bg" d="M 560 95 C 745.0 95, 745.0 125, 930 125" fill="none" stroke="rgba(148,163,184,0.22)" stroke-width="2" stroke-dasharray="6 6" />
+        <path class="k-arch-edge" d="M 560 95 C 745.0 95, 745.0 125, 930 125" fill="none" stroke="var(--gold)" stroke-width="3" stroke-linecap="round" />
+        <circle class="k-arch-photon" data-ax="560" data-ay="95" data-bx="930" data-by="125" data-ei="1" cx="560" cy="95" r="5.5" fill="var(--accent)" />
+        <path class="k-arch-edge-bg" d="M 930 125 C 640.0 125, 640.0 315, 350 315" fill="none" stroke="rgba(148,163,184,0.22)" stroke-width="2" stroke-dasharray="6 6" />
+        <path class="k-arch-edge" d="M 930 125 C 640.0 125, 640.0 315, 350 315" fill="none" stroke="var(--accent)" stroke-width="3" stroke-linecap="round" />
+        <circle class="k-arch-photon" data-ax="930" data-ay="125" data-bx="350" data-by="315" data-ei="2" cx="930" cy="125" r="5.5" fill="var(--gold)" />
+        <path class="k-arch-edge-bg" d="M 350 315 C 555.0 315, 555.0 315, 760 315" fill="none" stroke="rgba(148,163,184,0.22)" stroke-width="2" stroke-dasharray="6 6" />
+        <path class="k-arch-edge" d="M 350 315 C 555.0 315, 555.0 315, 760 315" fill="none" stroke="var(--gold)" stroke-width="3" stroke-linecap="round" />
+        <circle class="k-arch-photon" data-ax="350" data-ay="315" data-bx="760" data-by="315" data-ei="3" cx="350" cy="315" r="5.5" fill="var(--accent)" />
+        <path class="k-arch-edge-bg" d="M 180 125 C 555.0 125, 555.0 125, 930 125" fill="none" stroke="rgba(148,163,184,0.22)" stroke-width="2" stroke-dasharray="6 6" />
+        <path class="k-arch-edge" d="M 180 125 C 555.0 125, 555.0 125, 930 125" fill="none" stroke="var(--accent)" stroke-width="3" stroke-linecap="round" />
+        <circle class="k-arch-photon" data-ax="180" data-ay="125" data-bx="930" data-by="125" data-ei="4" cx="180" cy="125" r="5.5" fill="var(--gold)" />
+        <path class="k-arch-edge-bg" d="M 930 125 C 845.0 125, 845.0 315, 760 315" fill="none" stroke="rgba(148,163,184,0.22)" stroke-width="2" stroke-dasharray="6 6" />
+        <path class="k-arch-edge" d="M 930 125 C 845.0 125, 845.0 315, 760 315" fill="none" stroke="var(--gold)" stroke-width="3" stroke-linecap="round" />
+        <circle class="k-arch-photon" data-ax="930" data-ay="125" data-bx="760" data-by="315" data-ei="5" cx="930" cy="125" r="5.5" fill="var(--accent)" />
+            
+        <g class="k-arch-node" data-nidx="0" style="transform-origin:180px 125px">
+          <rect x="86" y="79" width="188" height="92" rx="14" fill="rgba(8,14,24,0.92)" stroke="var(--accent)" stroke-width="2" />
+          <rect x="100" y="79" width="160" height="3" rx="1.5" fill="var(--accent)" />
+          <text x="102" y="105" fill="var(--accent)" font-family="var(--font-mono)" font-size="12" font-weight="800">01 // AST</text>
+          <circle cx="256" cy="101" r="4.5" fill="var(--accent)" />
+          <text x="102" y="135" fill="#F8FAFC" font-family="var(--font-sans)" font-size="18" font-weight="900">动态 SVG 拓扑</text>
+          <text x="102" y="155" fill="rgba(148,163,184,0.88)" font-family="var(--font-mono)" font-size="11" font-weight="600">LATENCY 0.4ms · SYNC</text>
+        </g>
+        <g class="k-arch-node" data-nidx="1" style="transform-origin:560px 95px">
+          <rect x="466" y="49" width="188" height="92" rx="14" fill="rgba(8,14,24,0.92)" stroke="var(--gold)" stroke-width="2" />
+          <rect x="480" y="49" width="160" height="3" rx="1.5" fill="var(--gold)" />
+          <text x="482" y="75" fill="var(--gold)" font-family="var(--font-mono)" font-size="12" font-weight="800">02 // WEBGL</text>
+          <circle cx="636" cy="71" r="4.5" fill="var(--gold)" />
+          <text x="482" y="105" fill="#F8FAFC" font-family="var(--font-sans)" font-size="18" font-weight="900">光子数据总线</text>
+          <text x="482" y="125" fill="rgba(148,163,184,0.88)" font-family="var(--font-mono)" font-size="11" font-weight="600">LATENCY 0.7ms · SYNC</text>
+        </g>
+        <g class="k-arch-node" data-nidx="2" style="transform-origin:930px 125px">
+          <rect x="836" y="79" width="188" height="92" rx="14" fill="rgba(8,14,24,0.92)" stroke="var(--accent)" stroke-width="2" />
+          <rect x="850" y="79" width="160" height="3" rx="1.5" fill="var(--accent)" />
+          <text x="852" y="105" fill="var(--accent)" font-family="var(--font-mono)" font-size="12" font-weight="800">03 // BEZIER</text>
+          <circle cx="1006" cy="101" r="4.5" fill="var(--accent)" />
+          <text x="852" y="135" fill="#F8FAFC" font-family="var(--font-sans)" font-size="18" font-weight="900">48kHz 自动闪避</text>
+          <text x="852" y="155" fill="rgba(148,163,184,0.88)" font-family="var(--font-mono)" font-size="11" font-weight="600">LATENCY 1.0ms · SYNC</text>
+        </g>
+        <g class="k-arch-node" data-nidx="3" style="transform-origin:350px 315px">
+          <rect x="256" y="269" width="188" height="92" rx="14" fill="rgba(8,14,24,0.92)" stroke="var(--gold)" stroke-width="2" />
+          <rect x="270" y="269" width="160" height="3" rx="1.5" fill="var(--gold)" />
+          <text x="272" y="295" fill="var(--gold)" font-family="var(--font-mono)" font-size="12" font-weight="800">04 // SPRING</text>
+          <circle cx="426" cy="291" r="4.5" fill="var(--gold)" />
+          <text x="272" y="325" fill="#F8FAFC" font-family="var(--font-sans)" font-size="18" font-weight="900">动态 SVG 架构与多</text>
+          <text x="272" y="345" fill="rgba(148,163,184,0.88)" font-family="var(--font-mono)" font-size="11" font-weight="600">LATENCY 1.3ms · SYNC</text>
+        </g>
+        <g class="k-arch-node" data-nidx="4" style="transform-origin:760px 315px">
+          <rect x="666" y="269" width="188" height="92" rx="14" fill="rgba(8,14,24,0.92)" stroke="var(--accent)" stroke-width="2" />
+          <rect x="680" y="269" width="160" height="3" rx="1.5" fill="var(--accent)" />
+          <text x="682" y="295" fill="var(--accent)" font-family="var(--font-mono)" font-size="12" font-weight="800">05 // REMOTION</text>
+          <circle cx="836" cy="291" r="4.5" fill="var(--accent)" />
+          <text x="682" y="325" fill="#F8FAFC" font-family="var(--font-sans)" font-size="18" font-weight="900">48kHz 混音与成片</text>
+          <text x="682" y="345" fill="rgba(148,163,184,0.88)" font-family="var(--font-mono)" font-size="11" font-weight="600">LATENCY 1.6ms · SYNC</text>
+        </g>
+          </svg>
+        </div>
+      </div>
+        </div>
       </div></div></template>
-  <template class="scene-template" data-scene-id="scene-03" data-layout="radial-climax"><div class="k-scene" data-scene-idx="2">
-      <div class="k-bg-procedural"></div>
-      <div class="k-dark-veil-soft"></div>
-      <div class="k-center-stage k-climax-stage">
-        <div class="k-eyebrow"><span class="k-dot"></span><span>03</span></div>
-        <div class="k-headline k-headline-lg"><div class="k-line-row"><span class="k-ch">全</span><span class="k-ch">帧</span><span class="k-ch">率</span><span class="k-ch">高</span><span class="k-ch">清</span><span class="k-ch">渲</span><span class="k-ch">染</span><span class="k-ch">：</span></div><div class="k-line-row"><span class="k-ch">即</span><span class="k-ch">刻</span><span class="k-ch">交</span><span class="k-ch">付</span></div></div>
-        <div class="k-glow-bar"></div>
-        <div class="k-stamp-seal">1080p 60fps</div>
+  <template class="scene-template" data-scene-id="scene-03" data-layout="hud-telemetry-dashboard"><div class="k-scene" data-scene-idx="2">
+      <div class="k-app-stage k-app-wide">
+        <div class="k-app-head">
+          <div class="k-app-head-l">
+            <span class="k-tag-chip k-tag-gold">03 / 03 · HUD TELEMETRY</span>
+            <span class="k-app-head-title">HUD 遥测面板：全帧率高清交付</span>
+          </div>
+          <span class="k-app-head-sub">HUD 遥测仪表 · 实时代码流 · 60FPS 确定性渲染</span>
+        </div>
+        <div class="k-app-win-wrap">
+          
+      <div class="k-hud-dashboard">
+        <div class="k-hud-code-card">
+          <div class="k-app-bar">
+            <div class="k-app-dots"><i></i><i></i><i></i></div>
+            <span class="k-app-title">VIBECODING // REMOTION + THREE.JS TSX STREAM</span>
+            <span class="k-app-kicker">SPRING RIG</span>
+          </div>
+          <div class="k-hud-code-body">
+            <div class="k-hud-code-line" data-lidx="0"><span class="k-ln-num">01</span><code>const stage = useThreeCyberStage({ preset: &#39;particle-vortex&#39;, fov: 45 });</code></div><div class="k-hud-code-line" data-lidx="1"><span class="k-ln-num">02</span><code>const rig = computeBeatSpring(frame, fps, bgm.beats, { stiffness: 175 });</code></div><div class="k-hud-code-line" data-lidx="2"><span class="k-ln-num">03</span><code>// HUD 遥测仪表</code></div><div class="k-hud-code-line" data-lidx="3"><span class="k-ln-num">04</span><code>&lt;ThreeCanvas width={1920} height={1080} camera={{ position: [0, 0, 8.2] }}&gt;</code></div><div class="k-hud-code-line" data-lidx="4"><span class="k-ln-num">05</span><code>  &lt;SvgArchitectureDiagram topology=&quot;neural-pipeline&quot; nodes={5} /&gt;</code></div><div class="k-hud-code-line" data-lidx="5"><span class="k-ln-num">06</span><code>&lt;/ThreeCanvas&gt; // ✓ 60FPS Lock · Audio LUFS -14.0dB</code></div>
+          </div>
+          <div class="k-hud-code-foot">
+            <span>⚡ BEAT-SYNCED SPRING (damping:13.5, stiffness:175)</span>
+            <span>STATUS: LOCKED</span>
+          </div>
+        </div>
+        <div class="k-hud-telemetry-col">
+          <div class="k-hud-rings-row">
+        <div class="k-hud-ring-card">
+          <svg class="k-hud-ring-svg" viewBox="0 0 120 120">
+            <circle cx="60" cy="60" r="46" fill="none" stroke="rgba(148,163,184,0.16)" stroke-width="8" />
+            <circle class="k-hud-ring-arc" data-pct="96" cx="60" cy="60" r="46" fill="none" stroke="var(--accent)" stroke-width="8" stroke-linecap="round" stroke-dasharray="289" stroke-dashoffset="289" transform="rotate(-90 60 60)" />
+          </svg>
+          <div class="k-hud-ring-info">
+            <div class="k-hud-ring-val" data-target="60" data-suffix="FPS">0FPS</div>
+            <div class="k-hud-ring-lbl">HUD 遥测仪表</div>
+          </div>
+        </div>
+        <div class="k-hud-ring-card">
+          <svg class="k-hud-ring-svg" viewBox="0 0 120 120">
+            <circle cx="60" cy="60" r="46" fill="none" stroke="rgba(148,163,184,0.16)" stroke-width="8" />
+            <circle class="k-hud-ring-arc" data-pct="94" cx="60" cy="60" r="46" fill="none" stroke="var(--gold)" stroke-width="8" stroke-linecap="round" stroke-dasharray="289" stroke-dashoffset="289" transform="rotate(-90 60 60)" />
+          </svg>
+          <div class="k-hud-ring-info">
+            <div class="k-hud-ring-val" data-target="99" data-suffix=".4%">0.4%</div>
+            <div class="k-hud-ring-lbl">实时代码流</div>
+          </div>
+        </div>
+        <div class="k-hud-ring-card">
+          <svg class="k-hud-ring-svg" viewBox="0 0 120 120">
+            <circle cx="60" cy="60" r="46" fill="none" stroke="rgba(148,163,184,0.16)" stroke-width="8" />
+            <circle class="k-hud-ring-arc" data-pct="90" cx="60" cy="60" r="46" fill="none" stroke="var(--accent)" stroke-width="8" stroke-linecap="round" stroke-dasharray="289" stroke-dashoffset="289" transform="rotate(-90 60 60)" />
+          </svg>
+          <div class="k-hud-ring-info">
+            <div class="k-hud-ring-val" data-target="48" data-suffix="kHz">0kHz</div>
+            <div class="k-hud-ring-lbl">60FPS 确定性渲染</div>
+          </div>
+        </div></div>
+          <div class="k-hud-wave-card">
+            <div class="k-hud-wave-head">
+              <span>REALTIME TELEMETRY WAVE // DETERMINISTIC FRAME INTERPOLATION</span>
+              <em>LIVE 60Hz</em>
+            </div>
+            <svg class="k-hud-wave-svg" viewBox="0 0 560 135" preserveAspectRatio="none">
+              <defs>
+                <linearGradient id="hudWaveGrad-2" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stop-color="var(--accent)" stop-opacity="0.42" />
+                  <stop offset="100%" stop-color="var(--accent)" stop-opacity="0.0" />
+                </linearGradient>
+              </defs>
+              <path d="M0,105 C70,35 130,95 200,48 C270,12 330,82 400,32 C470,5 515,60 560,22 L560,135 L0,135 Z" fill="url(#hudWaveGrad-2)" />
+              <path class="k-hud-wave-line" d="M0,105 C70,35 130,95 200,48 C270,12 330,82 400,32 C470,5 515,60 560,22" fill="none" stroke="var(--accent)" stroke-width="3.5" stroke-linecap="round" />
+              <circle class="k-hud-wave-dot" cx="400" cy="32" r="6.5" fill="var(--gold)" />
+            </svg>
+          </div>
+        </div>
+      </div>
+        </div>
       </div></div></template>
 
   <script>
   (() => {
-    const CFG = {"fps":30,"width":1920,"height":1080,"totalFrames":420,"totalSec":14,"rgbAccent":"125,178,255","rgbGold":"245,185,46","accent":"#38BDF8","accent2":"#7DB2FF","gold":"#F5B92E","beats":[{"time":0,"strong":true,"index":0},{"time":0.5085,"strong":false,"index":1},{"time":1.0169,"strong":false,"index":2},{"time":1.5254,"strong":false,"index":3},{"time":2.0339,"strong":true,"index":4},{"time":2.5424,"strong":false,"index":5},{"time":3.0508,"strong":false,"index":6},{"time":3.5593,"strong":false,"index":7},{"time":4.0678,"strong":true,"index":8},{"time":4.5763,"strong":false,"index":9},{"time":5.0847,"strong":false,"index":10},{"time":5.5932,"strong":false,"index":11},{"time":6.1017,"strong":true,"index":12},{"time":6.6102,"strong":false,"index":13},{"time":7.1186,"strong":false,"index":14},{"time":7.6271,"strong":false,"index":15},{"time":8.1356,"strong":true,"index":16},{"time":8.6441,"strong":false,"index":17},{"time":9.1525,"strong":false,"index":18},{"time":9.661,"strong":false,"index":19},{"time":10.1695,"strong":true,"index":20},{"time":10.678,"strong":false,"index":21},{"time":11.1864,"strong":false,"index":22},{"time":11.6949,"strong":false,"index":23},{"time":12.2034,"strong":true,"index":24},{"time":12.7119,"strong":false,"index":25},{"time":13.2203,"strong":false,"index":26},{"time":13.7288,"strong":false,"index":27},{"time":14.2373,"strong":true,"index":28},{"time":14.7458,"strong":false,"index":29},{"time":15.2542,"strong":false,"index":30},{"time":15.7627,"strong":false,"index":31}],"visual3dMode":"auto","avatarClip":null,"avatarLayout":"pip-br","timeline":[{"id":"scene-01","idx":0,"layout":"3d-stage-opener","threePreset":"orbital-core","transition":"iris-circle","kenBurns":"zoom-in","vfx":"3d-depth+sweep","startFrame":0,"endFrame":135,"startSec":0,"endSec":4.5,"durFrames":135,"durSec":4.5,"narration":"欢迎体验 DeepSeek Harness 视频工作台。导入你的图片、视频与音乐素材，AI 自动完成文案编排、3D 动效、节拍音效与真人配音。","subtitles":[{"index":1,"text":"欢迎体验 DeepSeek Harness 视频工作台","startSec":0,"endSec":1.8,"startFrame":0,"endFrame":54},{"index":2,"text":"导入你的图片","startSec":1.8,"endSec":2.25,"startFrame":54,"endFrame":68},{"index":3,"text":"视频与音乐素材","startSec":2.25,"endSec":2.775,"startFrame":67,"endFrame":84},{"index":4,"text":"AI 自动完成文案编排","startSec":2.775,"endSec":3.525,"startFrame":83,"endFrame":106},{"index":5,"text":"3D 动效","startSec":3.525,"endSec":3.825,"startFrame":105,"endFrame":115},{"index":6,"text":"节拍音效与真人配音","startSec":3.825,"endSec":4.5,"startFrame":114,"endFrame":135}],"counterTarget":96,"workflowSteps":[],"hudStep":-1,"cams":[],"loupe":null,"avatarClip":null,"avatarLayout":""},{"id":"scene-02","idx":1,"layout":"kinetic-impact","threePreset":"cyber-terrain","transition":"block-wipe","kenBurns":"zoom-in","vfx":"sparks+shockwave","startFrame":135,"endFrame":285,"startSec":4.5,"endSec":9.5,"durFrames":150,"durSec":5,"narration":"内置两百零五个本地音色并支持自定义音色包，配合节拍锁定的立体声转场音效与背景音乐闪避技术，让人声清晰突出、节奏紧凑自然。","subtitles":[{"index":1,"text":"内置两百零五个本地音色并支持自定义音色包","startSec":0,"endSec":1.786,"startFrame":0,"endFrame":54},{"index":2,"text":"配合节拍锁定的立体声转场音效与背","startSec":1.786,"endSec":3.215,"startFrame":53,"endFrame":97},{"index":3,"text":"景音乐闪避技术","startSec":3.215,"endSec":3.84,"startFrame":96,"endFrame":116},{"index":4,"text":"让人声清晰突出","startSec":3.84,"endSec":4.465,"startFrame":115,"endFrame":134},{"index":5,"text":"节奏紧凑自然","startSec":4.465,"endSec":5,"startFrame":133,"endFrame":150}],"counterTarget":96,"workflowSteps":[],"hudStep":-1,"cams":[],"loupe":null,"avatarClip":null,"avatarLayout":""},{"id":"scene-03","idx":2,"layout":"radial-climax","threePreset":"particle-vortex","transition":"zoom-punch","kenBurns":"zoom-in","vfx":"radial-speedlines","startFrame":285,"endFrame":420,"startSec":9.5,"endSec":14,"durFrames":135,"durSec":4.5,"narration":"双引擎均支持确定性逐帧捕获与多轨合成，一键输出色彩精准的 1080p 高清成片视频。","subtitles":[{"index":1,"text":"双引擎均支持确定性逐帧捕获与多轨合成","startSec":0,"endSec":2.132,"startFrame":0,"endFrame":64},{"index":2,"text":"一键输出色彩精准的 1080p 高清成片视频","startSec":2.132,"endSec":4.5,"startFrame":63,"endFrame":135}],"counterTarget":96,"workflowSteps":[],"hudStep":-1,"cams":[],"loupe":null,"avatarClip":null,"avatarLayout":""}]};
+    const CFG = {"fps":30,"width":1920,"height":1080,"totalFrames":420,"totalSec":14,"rgbAccent":"125,178,255","rgbGold":"245,185,46","accent":"#38BDF8","accent2":"#7DB2FF","gold":"#F5B92E","beats":[{"time":0,"strong":true,"index":0},{"time":0.5085,"strong":false,"index":1},{"time":1.0169,"strong":false,"index":2},{"time":1.5254,"strong":false,"index":3},{"time":2.0339,"strong":true,"index":4},{"time":2.5424,"strong":false,"index":5},{"time":3.0508,"strong":false,"index":6},{"time":3.5593,"strong":false,"index":7},{"time":4.0678,"strong":true,"index":8},{"time":4.5763,"strong":false,"index":9},{"time":5.0847,"strong":false,"index":10},{"time":5.5932,"strong":false,"index":11},{"time":6.1017,"strong":true,"index":12},{"time":6.6102,"strong":false,"index":13},{"time":7.1186,"strong":false,"index":14},{"time":7.6271,"strong":false,"index":15},{"time":8.1356,"strong":true,"index":16},{"time":8.6441,"strong":false,"index":17},{"time":9.1525,"strong":false,"index":18},{"time":9.661,"strong":false,"index":19},{"time":10.1695,"strong":true,"index":20},{"time":10.678,"strong":false,"index":21},{"time":11.1864,"strong":false,"index":22},{"time":11.6949,"strong":false,"index":23},{"time":12.2034,"strong":true,"index":24},{"time":12.7119,"strong":false,"index":25},{"time":13.2203,"strong":false,"index":26},{"time":13.7288,"strong":false,"index":27},{"time":14.2373,"strong":true,"index":28},{"time":14.7458,"strong":false,"index":29},{"time":15.2542,"strong":false,"index":30},{"time":15.7627,"strong":false,"index":31}],"visual3dMode":"auto","avatarClip":null,"avatarLayout":"pip-br","timeline":[{"id":"scene-01","idx":0,"layout":"3d-stage-opener","threePreset":"orbital-core","transition":"iris-circle","kenBurns":"zoom-in","vfx":"3d-depth+sweep","startFrame":0,"endFrame":135,"startSec":0,"endSec":4.5,"durFrames":135,"durSec":4.5,"narration":"欢迎体验 DeepSeek Harness 视频工作台。导入你的图片、视频与音乐素材，AI 自动完成文案编排、Three.js 3D 动效、节拍弹簧与真人配音。","subtitles":[{"index":1,"text":"欢迎体验 DeepSeek Harness 视频工作台","startSec":0,"endSec":1.612,"startFrame":0,"endFrame":49},{"index":2,"text":"导入你的图片","startSec":1.612,"endSec":2.015,"startFrame":48,"endFrame":61},{"index":3,"text":"视频与音乐素材","startSec":2.015,"endSec":2.485,"startFrame":60,"endFrame":75},{"index":4,"text":"AI 自动完成文案编排","startSec":2.485,"endSec":3.157,"startFrame":74,"endFrame":95},{"index":5,"text":"Three.js 3D 动效","startSec":3.157,"endSec":3.896,"startFrame":94,"endFrame":117},{"index":6,"text":"节拍弹簧与真人配音","startSec":3.896,"endSec":4.5,"startFrame":116,"endFrame":135}],"counterTarget":96,"workflowSteps":[],"hudStep":-1,"cams":[],"loupe":null,"avatarClip":null,"avatarLayout":""},{"id":"scene-02","idx":1,"layout":"svg-architecture-flow","threePreset":"cyber-terrain","transition":"block-wipe","kenBurns":"zoom-in","vfx":"sparks+shockwave","startFrame":135,"endFrame":285,"startSec":4.5,"endSec":9.5,"durFrames":150,"durSec":5,"narration":"内置动态 SVG 架构拓扑总线与两百零五个本地音色，配合节拍同步弹簧物理与背景音乐闪避技术，让系统架构与声音细节清晰突出。","subtitles":[{"index":1,"text":"内置动态 SVG 架构拓扑总线与两百","startSec":0,"endSec":1.429,"startFrame":0,"endFrame":43},{"index":2,"text":"零五个本地音色","startSec":1.429,"endSec":2.054,"startFrame":42,"endFrame":62},{"index":3,"text":"配合节拍同步弹簧物理与背景音乐闪避技术","startSec":2.054,"endSec":3.75,"startFrame":61,"endFrame":113},{"index":4,"text":"让系统架构与声音细节清晰突出","startSec":3.75,"endSec":5,"startFrame":112,"endFrame":150}],"counterTarget":96,"workflowSteps":[],"hudStep":-1,"cams":[],"loupe":null,"avatarClip":null,"avatarLayout":""},{"id":"scene-03","idx":2,"layout":"hud-telemetry-dashboard","threePreset":"particle-vortex","transition":"zoom-punch","kenBurns":"zoom-in","vfx":"radial-speedlines","startFrame":285,"endFrame":420,"startSec":9.5,"endSec":14,"durFrames":135,"durSec":4.5,"narration":"搭载全息 HUD 遥测数据仪表与 TSX 实时代码流，双引擎确定性逐帧捕获，一键输出广播级高清成片视频。","subtitles":[{"index":1,"text":"搭载全息 HUD 遥测数据仪表与","startSec":0,"endSec":1.4,"startFrame":0,"endFrame":42},{"index":2,"text":"TSX 实时代码流","startSec":1.4,"endSec":2.2,"startFrame":42,"endFrame":66},{"index":3,"text":"双引擎确定性逐帧捕获","startSec":2.2,"endSec":3.2,"startFrame":66,"endFrame":96},{"index":4,"text":"一键输出广播级高清成片视频","startSec":3.2,"endSec":4.5,"startFrame":96,"endFrame":135}],"counterTarget":96,"workflowSteps":[],"hudStep":-1,"cams":[],"loupe":null,"avatarClip":null,"avatarLayout":""}]};
     const stageEl = document.getElementById('stage');
     const worldEl = document.getElementById('world');
     const slotsEl = document.getElementById('scene-slots');
@@ -928,15 +1135,69 @@
       const dashBarFill = scEl.querySelector('.k-dash-bar-fill');
       const dashCells = [...scEl.querySelectorAll('.k-dash-cell')];
       const trioWins = [...scEl.querySelectorAll('.k-trio-win')];
+      const archNodes = [...scEl.querySelectorAll('.k-arch-node')];
+      const archPhotons = [...scEl.querySelectorAll('.k-arch-photon')];
+      const hudCodeLines = [...scEl.querySelectorAll('.k-hud-code-line')];
+      const hudRingArcs = [...scEl.querySelectorAll('.k-hud-ring-arc')];
+      const hudRingVals = [...scEl.querySelectorAll('.k-hud-ring-val')];
+      const hudWaveDot = scEl.querySelector('.k-hud-wave-dot');
       const videos = [...scEl.querySelectorAll('video')];
 
       sceneEls.push({
         scEl, meta, chEls, bgMedia, cardStage, macGlint, eyebrow, subline, ruleEl, glowBar, sealEl,
         pills, callouts, cards3d, mosaicCells, cntNum, cmpA, cmpB, cmpBridge,
         appWinWrap, appWin, appBar, appView, camStage, markBoxes, loupeRing, loupeCam, fanCards, wfCards, wipeB, wipeLine, dashNum, dashBarFill, dashCells, trioWins,
+        archNodes, archPhotons, hudCodeLines, hudRingArcs, hudRingVals, hudWaveDot,
         videos,
       });
     });
+
+    function drawHudTelemetryOverlay(ctx, f, t, activeIdx, totalScenes, bp) {
+      if (String(CFG.visual3dMode || 'auto').toLowerCase() === 'off') return;
+      ctx.save();
+      const w = CFG.width, h = CFG.height;
+      const isPort = w < h;
+      const padX = isPort ? 34 : 46;
+      const padY = isPort ? 44 : 40;
+      const mm = String(Math.floor(t / 60)).padStart(2, '0');
+      const ss = String(Math.floor(t % 60)).padStart(2, '0');
+      const ff = String(f % Math.max(1, CFG.fps)).padStart(2, '0');
+      const tc = 'TC ' + mm + ':' + ss + ':' + ff;
+      const scCode = 'SCENE ' + String(activeIdx + 1).padStart(2, '0') + '/' + String(totalScenes).padStart(2, '0');
+
+      // Top-left broadcast telemetry badge
+      ctx.font = '700 ' + (isPort ? 12 : 13) + 'px monospace';
+      ctx.fillStyle = 'rgba(' + CFG.rgbAccent + ',0.78)';
+      ctx.fillText('REMOTION 4.x // THREE.JS 3D // SPRING · ' + tc + ' · ' + scCode, padX + 12, padY + 14);
+
+      // Right-side rotating gyroscope reticle
+      if (!isPort) {
+        const rx = w - 82, ry = h * 0.5;
+        ctx.save();
+        ctx.translate(rx, ry);
+        ctx.rotate(t * 0.48);
+        ctx.strokeStyle = 'rgba(' + CFG.rgbAccent + ',0.32)';
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([6, 8]);
+        ctx.beginPath(); ctx.arc(0, 0, 34 + bp * 6, 0, 6.2832); ctx.stroke();
+        ctx.rotate(-t * 0.96);
+        ctx.strokeStyle = 'rgba(' + CFG.rgbGold + ',0.38)';
+        ctx.setLineDash([4, 6]);
+        ctx.beginPath(); ctx.arc(0, 0, 22, 0, 6.2832); ctx.stroke();
+        ctx.restore();
+      }
+
+      // Bottom-left 18-bar beat-reactive spectrum equalizer
+      const eqX = padX + 10, eqY = h - (isPort ? 52 : 42);
+      const bars = 18;
+      for (let bi = 0; bi < bars; bi++) {
+        const wave = 0.28 + 0.72 * Math.abs(Math.sin(t * 5.8 + bi * 0.55));
+        const bh = Math.round((4 + wave * 16) * (1 + bp * 0.55));
+        ctx.fillStyle = bi % 3 === 0 ? 'rgba(' + CFG.rgbGold + ',0.68)' : 'rgba(' + CFG.rgbAccent + ',0.62)';
+        ctx.fillRect(eqX + bi * 6, eqY - bh, 3.5, bh);
+      }
+      ctx.restore();
+    }
 
     function animateHeadline(chEls, localT, outT) {
       chEls.forEach((ch, i) => {
@@ -1340,6 +1601,64 @@
             if (b) b.textContent = isAct ? 'ACTIVE' : 'VIEW';
           });
         }
+
+        // Dynamic SVG Architecture Topology Nodes & Data Packet Photons
+        if (cur.archNodes && cur.archNodes.length > 0) {
+          const bp = beatPulse(t, false);
+          cur.archNodes.forEach((nd, ni) => {
+            const sp = EZ.spring(pr(localT, 0.08 + ni * 0.08, 0.48 + ni * 0.08));
+            const pulseSc = 1 + (ni === Math.floor(localT * 2.5) % cur.archNodes.length ? bp * 0.045 : 0);
+            nd.style.opacity = clamp(sp * 1.4).toFixed(3);
+            nd.style.transform = 'scale(' + ((0.75 + 0.25 * sp) * pulseSc).toFixed(4) + ')';
+          });
+        }
+        if (cur.archPhotons && cur.archPhotons.length > 0) {
+          cur.archPhotons.forEach((ph, ei) => {
+            const ax = Number(ph.dataset.ax || 150), ay = Number(ph.dataset.ay || 220);
+            const bx = Number(ph.dataset.bx || 950), by = Number(ph.dataset.by || 220);
+            const u = (localT * 0.85 + ei * 0.21) % 1;
+            const mx = (ax + bx) * 0.5;
+            const omt = 1 - u;
+            const cx = omt * omt * omt * ax + 3 * omt * omt * u * mx + 3 * omt * u * u * mx + u * u * u * bx;
+            const cy = omt * omt * omt * ay + 3 * omt * omt * u * ay + 3 * omt * u * u * by + u * u * u * by;
+            ph.setAttribute('cx', cx.toFixed(1));
+            ph.setAttribute('cy', cy.toFixed(1));
+          });
+        }
+
+        // Vibecoding HUD Dashboard Code Stream, Ring Gauges & Wave Dot
+        if (cur.hudCodeLines && cur.hudCodeLines.length > 0) {
+          const actLn = Math.min(cur.hudCodeLines.length - 1, Math.floor(p * cur.hudCodeLines.length));
+          cur.hudCodeLines.forEach((ln, li) => {
+            const sp = EZ.spring(pr(localT, 0.06 + li * 0.08, 0.42 + li * 0.08));
+            const isAct = li === actLn;
+            ln.style.opacity = clamp(sp * 1.4).toFixed(3);
+            ln.style.transform = 'translateX(' + ((1 - sp) * 36).toFixed(1) + 'px) scale(' + (isAct ? '1.015' : '1.0') + ')';
+            ln.style.background = isAct ? 'rgba(56,189,248,0.18)' : 'rgba(15,23,42,0.65)';
+          });
+        }
+        if (cur.hudRingArcs && cur.hudRingArcs.length > 0) {
+          const rProg = EZ.out(pr(localT, 0.12, Math.min(durT - 0.2, 1.5)));
+          cur.hudRingArcs.forEach((arc) => {
+            const pct = Number(arc.dataset.pct || 92);
+            const offset = 289 * (1 - (pct / 100) * rProg);
+            arc.setAttribute('stroke-dashoffset', offset.toFixed(1));
+          });
+        }
+        if (cur.hudRingVals && cur.hudRingVals.length > 0) {
+          const rProg = EZ.out(pr(localT, 0.12, Math.min(durT - 0.2, 1.5)));
+          cur.hudRingVals.forEach((el) => {
+            const target = Number(el.dataset.target || 96);
+            const sfx = el.dataset.suffix || '%';
+            el.textContent = Math.round(target * rProg) + sfx;
+          });
+        }
+        if (cur.hudWaveDot) {
+          const wx = lerp(40, 540, (localT * 0.45) % 1);
+          const wy = 56 + Math.sin(localT * 4.2) * 28;
+          cur.hudWaveDot.setAttribute('cx', wx.toFixed(1));
+          cur.hudWaveDot.setAttribute('cy', wy.toFixed(1));
+        }
       }
 
       // Update Top Workflow HUD
@@ -1365,11 +1684,12 @@
 
       // Render Foreground VFX Canvas (#fxt)
       fxt.clearRect(0, 0, CFG.width, CFG.height);
+      drawHudTelemetryOverlay(fxt, f, t, activeIdx, CFG.timeline.length, beatPulse(t, false));
       if (meta.layout === 'radial-climax') {
         drawRadialLines(fxt, t, CFG.width / 2, CFG.height / 2, 0.65, CFG.rgbAccent);
         drawGlow(fxt, CFG.width / 2, CFG.height / 2, 420, CFG.rgbGold, 0.16 + beatPulse(t, true) * 0.1);
       }
-      if (localT < 1.0 && ['kinetic-impact', 'radial-climax', '3d-stage-opener', 'mosaic-pulse-wall'].includes(meta.layout)) {
+      if (localT < 1.0 && ['kinetic-impact', 'radial-climax', '3d-stage-opener', 'mosaic-pulse-wall', 'svg-architecture-flow', 'hud-telemetry-dashboard', 'vibecoding-spring-stage'].includes(meta.layout)) {
         drawShockRing(fxt, localT, 0.04, CFG.width * 0.5, CFG.height * 0.45, Math.min(CFG.width, CFG.height) * 0.78, 0.65, CFG.rgbAccent);
         drawSparks(fxt, localT, 0.1, CFG.width * 0.5, CFG.height * 0.45, CFG.rgbGold, 36, activeIdx + 5);
         drawScanSweep(fxt, localT, 0.35, 0.55, CFG.rgbAccent);

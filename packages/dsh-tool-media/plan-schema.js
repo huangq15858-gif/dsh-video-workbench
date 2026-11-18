@@ -77,6 +77,33 @@ export const PROMO_SHOT_RECIPES = {
     toScale: 1.0,
     transition: 'cut',
   },
+  arch_flow: {
+    id: 'arch_flow',
+    label: '动态 SVG 架构拓扑',
+    layout: 'svg-architecture-flow',
+    kenBurns: 'zoom-in',
+    fromScale: 1.0,
+    toScale: 1.12,
+    transition: 'iris-circle',
+  },
+  hud_telemetry: {
+    id: 'hud_telemetry',
+    label: 'HUD 遥测数据与代码流',
+    layout: 'hud-telemetry-dashboard',
+    kenBurns: 'zoom-in',
+    fromScale: 1.0,
+    toScale: 1.14,
+    transition: 'slash-wipe',
+  },
+  spring_stage: {
+    id: 'spring_stage',
+    label: 'Vibecoding 节拍弹簧舞台',
+    layout: 'vibecoding-spring-stage',
+    kenBurns: 'zoom-in',
+    fromScale: 1.02,
+    toScale: 1.16,
+    transition: 'zoom-punch',
+  },
 }
 
 const VALID_SHOT_KINDS = Object.keys(PROMO_SHOT_RECIPES)
@@ -94,6 +121,9 @@ const VALID_SHOWCASE_LAYOUTS = new Set([
   'kinetic-impact',
   'radial-climax',
   'narrative-diorama',
+  'svg-architecture-flow',
+  'hud-telemetry-dashboard',
+  'vibecoding-spring-stage',
 ])
 
 const VALID_STAGE_ARCHETYPES = [
@@ -335,14 +365,27 @@ export function repairPromoPlanRules(
         }))
       : [
           { title: topic || '开场核心亮点', narration: `${topic || '项目核心价值'}，从构想到成片全面加速。`, recipe: 'pull_out', threePreset: 'orbital-core', durationSec: defaultShotDur + 0.4 },
-          { title: '智能架构与多维空间', narration: '结合 Three.js 三维空间舞台与帧级确定性动效，让技术细节跃然屏上。', recipe: 'push_in', threePreset: 'cyber-terrain', durationSec: defaultShotDur + 0.2 },
-          { title: '高密度视听与节奏对齐', narration: '配音、参数化音效与背景配乐精准锁拍，杜绝拖沓与音画错位。', recipe: 'pan_across', threePreset: 'particle-vortex', durationSec: defaultShotDur },
-          { title: '精准帧级呈现', narration: '智能编排运镜与安全区字幕，每一帧清晰可控。', recipe: 'face_focus', threePreset: 'floating-monoliths', durationSec: defaultShotDur + 0.2 },
-          { title: '全链路自动化协同', narration: '四大智能体分工协作，一键完成从脚本、剪辑到混音与渲染。', recipe: 'impact', threePreset: 'chrono-helix', durationSec: defaultShotDur },
+          { title: '动态 SVG 架构拓扑', narration: '结合 Three.js 三维空间舞台与动态 SVG 架构图，让系统拓扑与数据流向一目了然。', recipe: 'arch_flow', threePreset: 'cyber-terrain', durationSec: defaultShotDur + 0.2 },
+          { title: 'HUD 遥测数据与代码流', narration: '全息 HUD 遥测面板实时呈现核心性能指标与 TSX 代码执行流。', recipe: 'hud_telemetry', threePreset: 'particle-vortex', durationSec: defaultShotDur },
+          { title: '节拍同步弹簧物理引擎', narration: '每一帧基于 spring 与 interpolate 物理阻尼刚度计算，紧贴音乐强弱鼓点。', recipe: 'spring_stage', threePreset: 'floating-monoliths', durationSec: defaultShotDur + 0.2 },
+          { title: '全链路多智能体协同', narration: '四大智能体分工协作，一键完成从脚本、剪辑到混音与渲染。', recipe: 'impact', threePreset: 'chrono-helix', durationSec: defaultShotDur },
           { title: '立即高效交付', narration: '声画同步成片导出，直接面向全平台上线发布。', recipe: 'freeze_end', threePreset: 'matrix-cubes', durationSec: defaultShotDur },
         ]
 
   const cleanStyle = normalizeVideoStyle(rawPlan?.style || style || 'tech')
+  const isHistoricalTopic = /历史|霸王|项羽|秦|汉|楚|三国|唐|宋|明|古风|武侠|战役|将军|帝王|演义/i.test(
+    `${topic || ''} ${rawPlan?.title || ''} ${existingScript?.title || ''} ${existingScript?.goal || ''}`,
+  )
+  const vibecodingZeroAssetLayouts = [
+    '3d-stage-opener',
+    'svg-architecture-flow',
+    'hud-telemetry-dashboard',
+    'vibecoding-spring-stage',
+    'metric-dashboard',
+    'workflow-steps',
+    'kinetic-impact',
+    'radial-climax',
+  ]
 
   let transitionCount = 0
   const repairedShots = rawShots.map((s, idx) => {
@@ -376,13 +419,21 @@ export function repairPromoPlanRules(
           ? [mediaItems[idx % mediaItems.length].path]
           : []
 
-    const chosenLayout = VALID_SHOWCASE_LAYOUTS.has(s?.layout)
-      ? s.layout
-      : mediaItems.length === 0 && (s?.stageSpec || isNarrativeMv)
-        ? 'narrative-diorama'
-        : VALID_SHOWCASE_LAYOUTS.has(existingScenes[idx]?.layout)
-          ? existingScenes[idx].layout
-          : spec.layout
+    const rawLayout = String(s?.layout || '').trim()
+    const chosenLayout =
+      VALID_SHOWCASE_LAYOUTS.has(rawLayout) && (rawLayout !== 'narrative-diorama' || isHistoricalTopic)
+        ? rawLayout
+        : mediaItems.length === 0
+          ? isHistoricalTopic
+            ? 'narrative-diorama'
+            : idx === 0
+              ? '3d-stage-opener'
+              : idx === rawShots.length - 1
+                ? 'radial-climax'
+                : vibecodingZeroAssetLayouts[idx % vibecodingZeroAssetLayouts.length]
+          : VALID_SHOWCASE_LAYOUTS.has(existingScenes[idx]?.layout)
+            ? existingScenes[idx].layout
+            : spec.layout
 
     const rawSubChunks = Array.isArray(s?.subChunks) && s.subChunks.length > 0
       ? s.subChunks.map((c) => sanitizeSpokenNarration(c)).filter(Boolean)
@@ -662,23 +713,27 @@ export async function runSchemaDirectorWithDegradation({
         const desiredZeroShotsMax = Math.min(pacingProfile.maxShots, desiredZeroShotsMin + (pacingProfile.id === 'dynamic' ? 6 : 4))
         const desiredUiShotsMin = Math.max(pacingProfile.minShots, Math.min(pacingProfile.maxShots - 2, approxShots - 2))
         const desiredUiShotsMax = Math.min(pacingProfile.maxShots, desiredUiShotsMin + 4)
+        const isHistoricalPrompt = /历史|霸王|项羽|秦|汉|楚|三国|唐|宋|明|古风|武侠|战役|将军|帝王|演义/i.test(
+          `${topic || ''} ${scriptData?.title || ''} ${scriptData?.goal || ''} ${noteSummaries || ''}`,
+        )
         const pacingLabelHint = `当前选用节奏方案【${pacingProfile.label}】：${pacingProfile.ruleHint}`
         const systemPrompt = zeroVisualAssets
-          ? `你是顶级音画动态导演 (AI Visual & Motion Director)，擅长所有题材创作（人物传记/历史史诗、软件原理/代码架构科普、产品发布/品牌故事/深度解析）。
-当前没有任何图片/视频素材 (zeroVisualAssets=true)，全部画面由 AI Remotion TSX 代码逐镜编写与内置矢量舞台共同演绎！
+          ? `你是顶级音画动态导演 (AI Visual & Motion Director)，擅长 Opus 5.5 级 Vibecoding 代码动画（Remotion + Three.js 3D + 动态 SVG 架构图 + HUD 遥测面板 + 节拍同步弹簧物理）以及历史史诗/深度科普创作。
+当前没有任何图片/视频素材 (zeroVisualAssets=true)，全部画面由 AI Remotion TSX 代码逐镜编写与内置 3D / 动态 SVG / HUD 舞台共同演绎！
 ${pacingLabelHint}
-输出严格紧凑 JSON：{ "version": "promo-plan/1", "mode": "${pacingProfile.id === 'dynamic' ? 'narrative-mv' : 'promo-ui'}", "beatSync": ${pacingProfile.id === 'dynamic' || narrationMode === 'subtitle-mv' || narrationMode === 'tts-beat-sync'}, "title": "...", "style": "cinematic|tech|emerald|energetic|documentary", "bpm": ${effectiveBgm?.bpm || (pacingProfile.id === 'calm' ? 88 : 110)}, "shots": [{ "id": "scene-01", "title": "...", "narration": "...", "accentWords": ["核心关键词"], "layout": "narrative-diorama", "beatCount": ${pacingProfile.id === 'dynamic' ? 2 : 4}, "durationSec": ${pacingProfile.id === 'calm' ? 5.0 : pacingProfile.id === 'balanced' ? 3.8 : 2.0}, "transition": "${pacingProfile.id === 'calm' ? 'light-wipe' : 'slash-wipe'}", "visualBlueprint": "主视觉元素、前景中景动势与中段变化", "stageSpec": { "mood": "dawn-amber|crimson-war|indigo-night|ash-twilight|bronze-hall|jade-river|void-gold", "setting": "palace-stairs|mountain-camp|city-siege|river-gorge|vast-plain", "archetype": "hero-numeral|hero-stand|oath-break|cavalry-rush|slash-climax|duel-confront|farewell-tent|strategic-map|scroll-calligraphy|plaque-summary|channel-end", "heroNum": "24", "heroUnit": "岁", "bannerChar": "楚", "plaques": ["要点1","要点2"], "headline": "结尾主标题", "subheadline": "副标题" } }] }。
+输出严格紧凑 JSON：{ "version": "promo-plan/1", "mode": "${pacingProfile.id === 'dynamic' ? 'narrative-mv' : 'promo-ui'}", "beatSync": ${pacingProfile.id === 'dynamic' || narrationMode === 'subtitle-mv' || narrationMode === 'tts-beat-sync'}, "title": "...", "style": "cinematic|tech|emerald|energetic|documentary", "bpm": ${effectiveBgm?.bpm || (pacingProfile.id === 'calm' ? 88 : 110)}, "shots": [{ "id": "scene-01", "title": "...", "narration": "...", "accentWords": ["核心关键词"], "layout": "${isHistoricalPrompt ? 'narrative-diorama' : '3d-stage-opener|svg-architecture-flow|hud-telemetry-dashboard|vibecoding-spring-stage|metric-dashboard|workflow-steps|kinetic-impact|radial-climax'}", "threePreset": "orbital-core|cyber-terrain|particle-vortex|floating-monoliths|chrono-helix|matrix-cubes", "beatCount": ${pacingProfile.id === 'dynamic' ? 2 : 4}, "durationSec": ${pacingProfile.id === 'calm' ? 5.0 : pacingProfile.id === 'balanced' ? 3.8 : 2.0}, "transition": "${pacingProfile.id === 'calm' ? 'light-wipe' : 'slash-wipe'}", "visualBlueprint": "主视觉元素、动态 SVG 架构拓扑/HUD 遥测数据与节拍弹簧动势", "highlights": ["要点1","要点2","要点3"]${isHistoricalPrompt ? ', "stageSpec": { "mood": "dawn-amber|crimson-war|indigo-night|ash-twilight|bronze-hall|jade-river|void-gold", "setting": "palace-stairs|mountain-camp|city-siege|river-gorge|vast-plain", "archetype": "hero-numeral|hero-stand|oath-break|cavalry-rush|slash-climax|duel-confront|farewell-tent|strategic-map|scroll-calligraphy|plaque-summary|channel-end", "heroNum": "24", "heroUnit": "岁", "bannerChar": "楚", "plaques": ["要点1","要点2"], "headline": "结尾主标题", "subheadline": "副标题" }' : ''} }] }。
 核心硬性要求：
 1. **贴合题材的拆镜与节奏**：拆分为 **${desiredZeroShotsMin}~${desiredZeroShotsMax} 个镜头**，${pacingProfile.ruleHint}（单镜口播长度与时长严格匹配，避免字多时长短）。
-2. **每个镜头写出 \`visualBlueprint\`（下游 TSX 代码生成员直读！）**：具体写清画面构图、矢量主主体动作与镜内变化，保持 JSON 精简紧凑，只填写该镜必需字段。
-3. **绝对禁止输出任何网址 URL、参考来源标注或 Markdown 链接**（严禁 \`utm_source\` 等；除非用户明确要求展示项目仓库网址）：所有旁白与字幕纯正中文短句，若用户指定人称须全程统一，\`accentWords\` 标出 1~2 个核心高亮词。
-4. \`transition\` 仅允许 \`${VALID_TRANSITIONS.join(' | ')}\` 中的合法值（首镜用 \`cut\`）。`
+2. **充分运用 Opus 5.5 四大核心视觉布局**：${isHistoricalPrompt ? '历史古风题材可用 `narrative-diorama` 配合 `stageSpec`' : '轮换使用 `3d-stage-opener` (Three.js 3D 空间开场)、`svg-architecture-flow` (动态 SVG 架构拓扑图与光子总线)、`hud-telemetry-dashboard` (HUD 遥测仪表与实时代码流)、`vibecoding-spring-stage` (节拍同步弹簧物理双栏舞台)、`metric-dashboard`、`workflow-steps` 与 `radial-climax`'}。
+3. **每个镜头写出 \`visualBlueprint\`（下游 TSX 代码生成员直读！）**：具体写清画面构图、动态 SVG 拓扑节点、HUD 遥测指标或矢量主体动作，保持 JSON 精简紧凑。
+4. **绝对禁止输出任何网址 URL、参考来源标注或 Markdown 链接**（严禁 \`utm_source\` 等；除非用户明确要求展示项目仓库网址）：所有旁白与字幕纯正中文短句，\`accentWords\` 标出 1~2 个核心高亮词。
+5. \`transition\` 仅允许 \`${VALID_TRANSITIONS.join(' | ')}\` 中的合法值（首镜用 \`cut\`）。`
           : `你是顶级商业与开源技术宣传片/产品介绍导演，擅长依据题材调整叙事节奏。
 ${pacingLabelHint}
-输出严格紧凑 JSON：{ "version": "promo-plan/1", "beatSync": ${narrationMode === 'subtitle-mv' || narrationMode === 'tts-beat-sync' || pacingProfile.id === 'dynamic'}, "title": "...", "style": "tech|energetic|emerald|cinematic|documentary", "bpm": ${effectiveBgm?.bpm || (pacingProfile.id === 'calm' ? 92 : 114)}, "shots": [{ "id": "scene-01", "title": "...", "narration": "...", "subChunks": ["短句1","短句2"], "accentWords": ["亮点"], "visualBlueprint": "具体描述镜头动态构图：无截图时画动态SVG架构拓扑/数据卡片；有截图时用AppWindow+cams局部聚焦推镜", "recipe": "push_in", "layout": "app-focus-shot", "windowTitle": "模块名称", "highlights": ["标签1","标签2"], "cams": [{ "t": 0, "fx": 0.5, "fy": 0.5, "z": 1.0 }, { "t": 0.55, "fx": 0.5, "fy": 0.48, "z": 1.15 }], "durationSec": ${pacingProfile.id === 'calm' ? 5.0 : pacingProfile.id === 'balanced' ? 3.8 : 2.5}, "transition": "${pacingProfile.id === 'calm' ? 'light-wipe' : 'slash-wipe'}", "assetRefs": [] }] }。
+输出严格紧凑 JSON：{ "version": "promo-plan/1", "beatSync": ${narrationMode === 'subtitle-mv' || narrationMode === 'tts-beat-sync' || pacingProfile.id === 'dynamic'}, "title": "...", "style": "tech|energetic|emerald|cinematic|documentary", "bpm": ${effectiveBgm?.bpm || (pacingProfile.id === 'calm' ? 92 : 114)}, "shots": [{ "id": "scene-01", "title": "...", "narration": "...", "subChunks": ["短句1","短句2"], "accentWords": ["亮点"], "visualBlueprint": "具体描述镜头动态构图：无截图时用 svg-architecture-flow 画动态SVG架构拓扑或 hud-telemetry-dashboard 画HUD数据代码面板；有截图时用 AppWindow+cams 局部聚焦推镜", "recipe": "push_in", "layout": "app-focus-shot|svg-architecture-flow|hud-telemetry-dashboard|vibecoding-spring-stage|workflow-steps|split-wipe-compare|metric-dashboard|multi-window-trio", "threePreset": "orbital-core|cyber-terrain|particle-vortex|floating-monoliths|chrono-helix|matrix-cubes", "windowTitle": "模块名称", "highlights": ["标签1","标签2"], "cams": [{ "t": 0, "fx": 0.5, "fy": 0.5, "z": 1.0 }, { "t": 0.55, "fx": 0.5, "fy": 0.48, "z": 1.15 }], "durationSec": ${pacingProfile.id === 'calm' ? 5.0 : pacingProfile.id === 'balanced' ? 3.8 : 2.5}, "transition": "${pacingProfile.id === 'calm' ? 'light-wipe' : 'slash-wipe'}", "assetRefs": [] }] }。
 核心硬性要求：
 1. **依应用场景适配节奏**：拆分为 **${desiredUiShotsMin}~${desiredUiShotsMax} 个镜头**，${pacingProfile.ruleHint} 口播文案口语自然、句式清晰。
-2. **虚实交替混剪**：软件截图/实拍场景填入 exact \`relativeAssets\` 路径并配 \`app-focus-shot / split-wipe-compare / workflow-steps / multi-window-trio\`；开篇痛点钩子、架构原理或结尾卡片置 \`assetRefs: []\`（并写清 \`visualBlueprint\` 由 AI 主程编写动态 SVG 视觉）。
+2. **虚实交替混剪（实拍截图 + 动态 SVG 架构图 + HUD 遥测面板）**：软件截图/实拍场景填入 exact \`relativeAssets\` 路径并配 \`app-focus-shot / split-wipe-compare / workflow-steps / multi-window-trio\`；开篇痛点钩子、系统架构原理或性能遥测镜头置 \`assetRefs: []\` 并选用 \`svg-architecture-flow\` / \`hud-telemetry-dashboard\` / \`vibecoding-spring-stage\`（写清 \`visualBlueprint\` 由 AI 主程编写动态 SVG 架构图与 HUD 数据面板）。
 3. **严禁网页参考来源注释**（\`utm_source\` 等），如主题要求展示项目自身开源 GitHub 地址请完整准确保留。\`transition\` 仅允许 ${VALID_TRANSITIONS.join('/')}。`
         const res = await callLlmChatFn({
           system: systemPrompt,

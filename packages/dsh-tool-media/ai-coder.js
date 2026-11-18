@@ -855,6 +855,9 @@ export async function runAiStudioPipeline(options = {}) {
       'metric-dashboard': 'metric-dashboard',
       'multi-window-trio': 'multi-window-trio',
       'narrative-diorama': 'narrative-diorama',
+      'svg-architecture-flow': 'svg-architecture-flow',
+      'hud-telemetry-dashboard': 'hud-telemetry-dashboard',
+      'vibecoding-spring-stage': 'vibecoding-spring-stage',
       'hero-title': '3d-stage-opener',
       'metric-counter': 'metric-dashboard',
       'bento-grid': 'mosaic-pulse-wall',
@@ -862,8 +865,26 @@ export async function runAiStudioPipeline(options = {}) {
       'media-spotlight': 'app-focus-shot',
       'closing-cta': 'radial-climax',
     }
-    const zeroAssetFallbackLayout = visuals.length === 0 ? 'narrative-diorama' : (idx === 0 ? 'card-fan-opener' : 'app-focus-shot')
-    const mappedLayout = sc.layout || (visuals.length === 0 && sc.stageSpec ? 'narrative-diorama' : prev?.layout) || shotLayoutMap[sc.shotType] || zeroAssetFallbackLayout
+    const isHistoricalTopic = /历史|霸王|项羽|秦|汉|楚|三国|唐|宋|明|古风|武侠|战役|将军|帝王|演义/i.test(`${coreTopic || ''} ${userPrompt || ''}`)
+    const vibecodingFallbackCycle = ['3d-stage-opener', 'svg-architecture-flow', 'hud-telemetry-dashboard', 'vibecoding-spring-stage', 'metric-dashboard', 'radial-climax']
+    const zeroAssetFallbackLayout =
+      visuals.length === 0
+        ? isHistoricalTopic
+          ? 'narrative-diorama'
+          : idx === 0
+            ? '3d-stage-opener'
+            : idx === plan.scenes.length - 1
+              ? 'radial-climax'
+              : vibecodingFallbackCycle[idx % vibecodingFallbackCycle.length]
+        : idx === 0
+          ? 'card-fan-opener'
+          : 'app-focus-shot'
+    const mappedLayout =
+      sc.layout && (sc.layout !== 'narrative-diorama' || isHistoricalTopic)
+        ? sc.layout
+        : (visuals.length === 0 && sc.stageSpec && isHistoricalTopic ? 'narrative-diorama' : prev?.layout) ||
+          shotLayoutMap[sc.shotType] ||
+          zeroAssetFallbackLayout
 
     return {
       id,
