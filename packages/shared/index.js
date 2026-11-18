@@ -136,22 +136,11 @@ export function resolveEnvPath(envKey, fallbackRelative = '') {
 export function resolveRemotionRuntime() {
   loadEnv()
   const explicitRoot = resolveEnvPath('REMOTION_TEMPLATE_ROOT', '')
-  if (explicitRoot && existsSync(join(explicitRoot, 'node_modules', '@remotion', 'renderer', 'package.json'))) {
-    const nmDir = join(explicitRoot, 'node_modules')
-    const tscCand = join(nmDir, 'typescript', 'bin', 'tsc')
-    return {
-      templateRoot: explicitRoot,
-      nodeModulesDir: nmDir,
-      rendererEntry: join(nmDir, '@remotion', 'renderer', 'dist', 'index.js'),
-      bundlerEntry: join(nmDir, '@remotion', 'bundler', 'dist', 'index.js'),
-      tscBin: existsSync(tscCand) ? tscCand : '',
-    }
-  }
-
   const nmCandidates = [
     join(PACKAGE_ROOT, 'node_modules'),
     basename(dirname(PACKAGE_ROOT)) === 'node_modules' ? dirname(PACKAGE_ROOT) : '',
     basename(dirname(dirname(PACKAGE_ROOT))) === 'node_modules' ? dirname(dirname(PACKAGE_ROOT)) : '',
+    explicitRoot ? join(explicitRoot, 'node_modules') : '',
   ].filter(Boolean)
 
   for (const nmDir of nmCandidates) {
@@ -177,7 +166,7 @@ export function resolveRemotionRuntime() {
 }
 
 /**
- * Link bundled `node_modules` (Remotion, React, TypeScript) into a generated video project
+ * Link bundled `node_modules` (Remotion, Three.js, @remotion/three, React, TypeScript) into a generated video project
  * so `tsc --noEmit` and `@remotion/bundler` work with zero manual `npm install`.
  */
 export function ensureRemotionJunction(projectDir) {
@@ -186,14 +175,22 @@ export function ensureRemotionJunction(projectDir) {
   const projNm = join(absDir, 'node_modules')
   if (runtime?.nodeModulesDir && existsSync(runtime.nodeModulesDir)) {
     let hasProjNm = existsSync(projNm)
+    if (hasProjNm) {
+      // Upgrade stale junction if it lacks newly bundled Three.js / @remotion/three
+      const hasThreeInTarget = existsSync(join(runtime.nodeModulesDir, 'three', 'package.json'))
+      const hasThreeInProj = existsSync(join(projNm, 'three', 'package.json'))
+      if (hasThreeInTarget && !hasThreeInProj) {
+        try {
+          rmSync(projNm, { recursive: true, force: true })
+          hasProjNm = false
+        } catch {}
+      }
+    }
     if (!hasProjNm) {
       try {
-        // Remove dangling broken junction/symlink if target moved
         lstatSync(projNm)
         rmSync(projNm, { recursive: true, force: true })
       } catch {}
-    }
-    if (!hasProjNm) {
       try {
         symlinkSync(runtime.nodeModulesDir, projNm, 'junction')
       } catch {}

@@ -22,9 +22,25 @@ import {
   runCommandRedirected,
 } from '../shared/index.js'
 
-export const IMAGE_EXTS = new Set(['.jpg', '.jpeg', '.png', '.webp', '.bmp', '.gif'])
-export const VIDEO_EXTS = new Set(['.mp4', '.mov', '.webm', '.mkv', '.avi', '.m4v'])
-export const AUDIO_EXTS = new Set(['.mp3', '.wav', '.flac', '.m4a', '.aac', '.ogg'])
+export const IMAGE_EXTS = new Set(['.jpg', '.jpeg', '.png', '.webp', '.bmp', '.gif', '.avif', '.svg', '.jfif'])
+export const VIDEO_EXTS = new Set([
+  '.mp4',
+  '.mov',
+  '.webm',
+  '.mkv',
+  '.avi',
+  '.m4v',
+  '.flv',
+  '.wmv',
+  '.ts',
+  '.mts',
+  '.m2ts',
+  '.mpg',
+  '.mpeg',
+  '.3gp',
+  '.ogv',
+])
+export const AUDIO_EXTS = new Set(['.mp3', '.wav', '.flac', '.m4a', '.aac', '.ogg', '.opus', '.wma'])
 const TEXT_EXTS = new Set(['.txt', '.md'])
 
 const MUSIC_HINT = /(bgm|music|音乐|配乐|背景|伴奏|歌曲|song|theme)/i
@@ -50,28 +66,74 @@ export function classifyFile(filePath) {
 }
 
 /**
- * Probe a media file via ffprobe (duration / dimensions / audio presence).
+ * Probe a media file via ffprobe with automatic ffmpeg stderr fallback (never failing video imports).
  */
 export async function probeMedia(filePath) {
-  const { ffprobe } = resolveBinaries()
-  const res = await runCommandRedirected(ffprobe, [
-    '-v', 'error',
-    '-show_entries', 'format=duration:stream=codec_type,width,height,duration,r_frame_rate',
-    '-of', 'json',
-    filePath,
-  ], { timeoutMs: 30_000 })
-  if (res.code !== 0) throw new Error(`ffprobe failed for ${filePath}: ${res.stderr}`)
-  const parsed = JSON.parse(res.stdout || '{}')
-  const streams = parsed.streams || []
-  const v = streams.find((s) => s.codec_type === 'video')
-  const a = streams.find((s) => s.codec_type === 'audio')
-  const dur = Number(parsed?.format?.duration || v?.duration || a?.duration || 0)
+  const { ffprobe, ffmpeg } = resolveBinaries()
+  try {
+    const res = await runCommandRedirected(
+      ffprobe,
+      [
+        '-v',
+        'error',
+        '-show_entries',
+        'format=duration:stream=codec_type,width,height,duration,r_frame_rate',
+        '-of',
+        'json',
+        filePath,
+      ],
+      { timeoutMs: 25_000 },
+    )
+    if (res.code === 0 && res.stdout) {
+      const parsed = JSON.parse(res.stdout || '{}')
+      const streams = parsed.streams || []
+      const v = streams.find((s) => s.codec_type === 'video')
+      const a = streams.find((s) => s.codec_type === 'audio')
+      const dur = Number(parsed?.format?.duration || v?.duration || a?.duration || 0)
+      if (dur > 0 || Number(v?.width) > 0 || a) {
+        return {
+          durationSec: Number.isFinite(dur) ? Number(dur.toFixed(3)) : 0,
+          width: Number(v?.width || 0),
+          height: Number(v?.height || 0),
+          hasVideo: Boolean(v),
+          hasAudio: Boolean(a),
+        }
+      }
+    }
+  } catch {}
+
+  // Fallback: parse `ffmpeg -i <filePath>` stderr output
+  try {
+    const ffRes = await runCommandRedirected(ffmpeg, ['-hide_banner', '-i', filePath], { timeoutMs: 20_000 })
+    const info = `${ffRes.stderr || ''}\n${ffRes.stdout || ''}`
+    const durMatch = info.match(/Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/i)
+    const durSec = durMatch
+      ? Number(durMatch[1]) * 3600 + Number(durMatch[2]) * 60 + Number(durMatch[3])
+      : 0
+    const dimMatch = info.match(/Stream\s+#[^\n]*Video:[^\n]*?\b(\d{2,5})x(\d{2,5})\b/i)
+    const hasVideo = /Stream\s+#[^\n]*Video:/i.test(info)
+    const hasAudio = /Stream\s+#[^\n]*Audio:/i.test(info)
+    if (durSec > 0 || dimMatch || hasVideo || hasAudio) {
+      return {
+        durationSec: Number.isFinite(durSec) ? Number(durSec.toFixed(3)) : 0,
+        width: dimMatch ? Number(dimMatch[1]) : 0,
+        height: dimMatch ? Number(dimMatch[2]) : 0,
+        hasVideo,
+        hasAudio,
+      }
+    }
+  } catch {}
+
+  const ext = extname(filePath).toLowerCase()
+  const isVid = VIDEO_EXTS.has(ext)
+  const isAud = AUDIO_EXTS.has(ext)
   return {
-    durationSec: Number.isFinite(dur) ? Number(dur.toFixed(3)) : 0,
-    width: Number(v?.width || 0),
-    height: Number(v?.height || 0),
-    hasVideo: Boolean(v),
-    hasAudio: Boolean(a),
+    durationSec: isVid ? 6.0 : isAud ? 15.0 : 0,
+    width: isVid ? 1920 : 0,
+    height: isVid ? 1080 : 0,
+    hasVideo: isVid,
+    hasAudio: isVid || isAud,
+    fallback: true,
   }
 }
 
@@ -209,13 +271,27 @@ export async function importAssets({ projectDir, sources, onProgress } = {}) {
   const manifest = readAssets(absProject)
   const byHash = new Map(manifest.items.map((it) => [it.sourceKey, it]))
   const added = []
+  const existing = []
   let idx = 0
   for (const file of files) {
     idx++
     const type = classifyFile(file)
+    if (!type) continue
     const st = statSync(file)
-    const sourceKey = createHash('md5').update(`${file}|${st.size}|${st.mtimeMs}`).digest('hex').slice(0, 12)
-    if (byHash.has(sourceKey)) continue
+    // Content hash by file size + original filename so re-saving in `uploads/` matches cleanly
+    const sourceKey = createHash('md5').update(`${basename(file)}|${st.size}|${st.mtimeMs}`).digest('hex').slice(0, 12)
+    if (byHash.has(sourceKey)) {
+      const prev = byHash.get(sourceKey)
+      if (prev?.id) {
+        if (prev.path && !existsSync(join(absProject, prev.path))) {
+          try {
+            placeFile(file, join(absProject, prev.path))
+          } catch {}
+        }
+        existing.push(prev)
+      }
+      continue
+    }
     onProgress?.({ index: idx, total: files.length, file })
 
     if (type === 'text') {
@@ -228,8 +304,13 @@ export async function importAssets({ projectDir, sources, onProgress } = {}) {
     let probe = { durationSec: 0, width: 0, height: 0, hasAudio: false }
     try {
       probe = await probeMedia(file)
-    } catch (err) {
-      if (type !== 'image') continue
+    } catch {}
+    if (type === 'video') {
+      if (!(probe.durationSec > 0)) probe.durationSec = 6.0
+      if (!(probe.width > 0)) probe.width = 1920
+      if (!(probe.height > 0)) probe.height = 1080
+    } else if (type === 'audio') {
+      if (!(probe.durationSec > 0)) probe.durationSec = 15.0
     }
     const role =
       type === 'audio' ? classifyAudioRole(file, probe.durationSec) : type === 'video' ? 'footage' : 'image'
@@ -252,11 +333,31 @@ export async function importAssets({ projectDir, sources, onProgress } = {}) {
     let webPath = ''
     if (type === 'video' && ext !== '.webm') {
       const webRel = `assets/.web/${id}.webm`
-      try {
-        if (await makeWebmProxy(join(absProject, relPath), join(absProject, webRel))) {
-          webPath = webRel
-        }
-      } catch {}
+      const webAbs = join(absProject, webRel)
+      if (existsSync(webAbs)) {
+        webPath = webRel
+      } else if (st.size <= 10 * 1024 * 1024 && probe.durationSec <= 20) {
+        try {
+          if (await makeWebmProxy(join(absProject, relPath), webAbs)) {
+            webPath = webRel
+          }
+        } catch {}
+      } else {
+        // Large video: transcode WebM proxy asynchronously in background so upload returns immediately
+        makeWebmProxy(join(absProject, relPath), webAbs)
+          .then((ok) => {
+            if (!ok) return
+            try {
+              const curMan = readAssets(absProject)
+              const hit = curMan.items.find((x) => x.id === id)
+              if (hit) {
+                hit.webPath = webRel
+                writeAssets(absProject, curMan)
+              }
+            } catch {}
+          })
+          .catch(() => {})
+      }
     }
 
     const item = {
@@ -291,8 +392,11 @@ export async function importAssets({ projectDir, sources, onProgress } = {}) {
     projectDir: absProject,
     scannedFiles: files.length,
     addedCount: added.length,
+    existingCount: existing.length,
+    matchedCount: added.length + existing.length,
     summary: summarizeAssets(manifest),
     added: added.slice(0, 50),
+    existing: existing.slice(0, 50),
   }
 }
 

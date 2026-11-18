@@ -7,8 +7,12 @@ import WebVideoWorkbenchPlugin, {
 export const name = 'dsh-video-workbench'
 
 export function apply(ctx) {
-  ctx.plugin(PresetVideoPlugin)
-  ctx.plugin(WebVideoWorkbenchPlugin)
+  try {
+    ctx.plugin(PresetVideoPlugin)
+  } catch {}
+  try {
+    ctx.plugin(WebVideoWorkbenchPlugin)
+  } catch {}
 }
 
 export { VIDEO_MAKER_SYSTEM_PROMPT, handleWorkbenchApiRequest, listVideoProjects }

@@ -59,7 +59,7 @@ export function scaffoldVideoProject(projectDir, options = {}) {
   ensureWin11ProjectGuards(absDir)
 
   const title = options.title || 'DeepSeek Harness 双引擎视频演示'
-  const engine = options.engine === 'remotion' ? 'remotion' : 'html'
+  const engine = options.engine === 'html' ? 'html' : 'remotion'
   const fps = Number(options.fps) || 30
   const style = options.style || 'tech'
 
@@ -70,6 +70,7 @@ export function scaffoldVideoProject(projectDir, options = {}) {
     fps,
     width: 1920,
     height: 1080,
+    visual3dMode: options.visual3dMode || 'auto',
     audience: options.audience || '开发者与数字内容创作者',
     goal: options.goal || '展示素材导入、AI 分镜策划、音效配乐混音、双引擎动效与本地真人配音全链路能力',
     aiBadge: options.aiBadge !== undefined ? Boolean(options.aiBadge) : true,
@@ -165,41 +166,62 @@ export const name = 'dsh-preset-video'
 
 export function apply(ctx) {
   // 1. Register local TTS, Video Suite, and Media Production tools directly in current context
-  ctx.plugin(LocalTtsPlugin)
-  ctx.plugin(AvatarPlugin)
-  ctx.plugin(VideoSuitePlugin)
-  ctx.plugin(MediaPlugin)
+  for (const subPlugin of [LocalTtsPlugin, AvatarPlugin, VideoSuitePlugin, MediaPlugin]) {
+    try {
+      ctx.plugin(subPlugin)
+    } catch {}
+  }
 
-  // 2. Register the `视频制作模式` (id: `video-maker`) preset if `agentPresets` service is available
-  ctx.inject(['agentPresets'], (innerCtx) => {
-    innerCtx.agentPresets.register({
-      id: 'video-maker',
-      name: '视频制作模式',
-      description:
-        '支持素材导入、AI 分镜策划、音效配乐混音、HTML5/Remotion 双引擎动效与本地真人配音全链路视频工作台。',
-      order: 15,
-      plugins: [
-        {
-          path: '@deepseek-ai/dsh-persona',
-          config: {
-            prompt: VIDEO_MAKER_SYSTEM_PROMPT,
-          },
-        },
-        { path: '@deepseek-ai/dsh-agent-instructions' },
-        { path: '@deepseek-ai/dsh-tool-bash' },
-        { path: '@deepseek-ai/dsh-tool-pwsh' },
-        { path: '@deepseek-ai/dsh-tool-fs' },
-        { path: '@deepseek-ai/dsh-tool-fs-search' },
-        { path: '@deepseek-ai/dsh-tool-jobs' },
-        { path: '@deepseek-ai/dsh-skill-filesystem' },
-        { path: '@deepseek-ai/dsh-tool-skill' },
-        { path: join(PACKAGE_ROOT, 'packages', 'dsh-tool-local-tts', 'index.js') },
-        { path: join(PACKAGE_ROOT, 'packages', 'dsh-tool-avatar', 'index.js') },
-        { path: join(PACKAGE_ROOT, 'packages', 'dsh-tool-video-suite', 'index.js') },
-        { path: join(PACKAGE_ROOT, 'packages', 'dsh-tool-media', 'index.js') },
-      ],
+  // 2. Register the `视频制作模式` (id: `video-maker`) preset safely if `agentPresets` service is available
+  try {
+    ctx.inject(['agentPresets'], (innerCtx) => {
+      try {
+        const reg = innerCtx?.agentPresets
+        if (!reg || typeof reg.register !== 'function') return
+        if (reg.definitions instanceof Map && reg.definitions.has('video-maker')) return
+        if (typeof reg.get === 'function') {
+          try {
+            if (reg.get('video-maker')) return
+          } catch {}
+        }
+        const res = reg.register({
+          id: 'video-maker',
+          name: '视频制作模式',
+          description:
+            '支持素材导入、AI 分镜策划、音效配乐混音、Remotion + Three.js 3D / HTML5 双引擎动效与本地真人配音全链路视频工作台。',
+          order: 15,
+          plugins: [
+            {
+              id: 'persona',
+              name: '@deepseek-ai/dsh-persona',
+              config: {
+                prefix: VIDEO_MAKER_SYSTEM_PROMPT,
+              },
+            },
+            { id: 'agent-instructions', name: '@deepseek-ai/dsh-agent-instructions' },
+            { id: 'time-context', name: '@deepseek-ai/dsh-time-context' },
+            { id: 'tool-bash', name: '@deepseek-ai/dsh-tool-bash' },
+            { id: 'tool-pwsh', name: '@deepseek-ai/dsh-tool-pwsh' },
+            { id: 'tool-fs', name: '@deepseek-ai/dsh-tool-fs' },
+            { id: 'tool-fs-search', name: '@deepseek-ai/dsh-tool-fs-search' },
+            { id: 'tool-jobs', name: '@deepseek-ai/dsh-tool-jobs' },
+            { id: 'skill-filesystem', name: '@deepseek-ai/dsh-skill-filesystem' },
+            { id: 'tool-skill', name: '@deepseek-ai/dsh-tool-skill' },
+          ],
+        })
+        if (res && typeof res.catch === 'function') {
+          res.catch(() => {})
+        }
+        if (typeof res === 'function' && typeof innerCtx.effect === 'function') {
+          innerCtx.effect(() => () => {
+            try {
+              res()
+            } catch {}
+          })
+        }
+      } catch {}
     })
-  })
+  } catch {}
 }
 
 export default { name, apply }

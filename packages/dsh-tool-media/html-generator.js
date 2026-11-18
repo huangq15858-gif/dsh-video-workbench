@@ -528,8 +528,8 @@ function renderSceneTemplateHtml(scene, idx, total, theme) {
       ? `<div style="position:absolute;top:84px;right:96px;display:flex;flex-direction:row-reverse;gap:20px;">${spec.calligraphy.slice(0, 3).map((c) => `<div style="writing-mode:vertical-rl;font:900 42px/1.2 'Source Han Serif SC Heavy', serif;letter-spacing:6px;color:#F8E7B9;">${escapeHtml(c)}</div>`).join('')}</div>`
       : ''
     contentHtml = `
-      <div style="position:absolute;inset:0;background:radial-gradient(circle at 50% 48%, rgba(245,158,11,0.38), rgba(110,20,16,0.55) 45%, #070406 90%);"></div>
-      <svg viewBox="0 0 1920 1080" preserveAspectRatio="xMidYMid slice" style="position:absolute;inset:0;width:100%;height:100%;opacity:0.9;">
+      <div style="position:absolute;inset:0;background:radial-gradient(circle at 50% 48%, rgba(245,158,11,0.32), rgba(110,20,16,0.45) 45%, rgba(7,4,6,0.68) 92%);"></div>
+      <svg viewBox="0 0 1920 1080" preserveAspectRatio="xMidYMid slice" style="position:absolute;inset:0;width:100%;height:100%;opacity:0.84;">
         <circle cx="960" cy="520" r="128" fill="#FFF7DF" opacity="0.92" />
         <path d="M-20,780 L280,620 L620,695 L980,580 L1340,680 L1690,610 L1940,740 L1940,1080 L-20,1080 Z" fill="#180B08" />
       </svg>
@@ -568,6 +568,14 @@ export function buildRichHtmlVideo(script) {
   const landScale = width > height ? Math.max(0.42, Math.min(2.2, width / 1920)) : 1
   const lp = (n) => Math.max(1, Math.round(n * landScale))
 
+  const THREE_PRESET_CYCLE = [
+    'orbital-core',
+    'cyber-terrain',
+    'particle-vortex',
+    'floating-monoliths',
+    'chrono-helix',
+    'matrix-cubes',
+  ]
   let cursorFrame = 0
   const timeline = scenes.map((s, idx) => {
     const durFrames = Math.max(12, Number(s.durationInFrames) || Math.ceil(Number(s.durationSec || 4.5) * fps))
@@ -578,6 +586,7 @@ export function buildRichHtmlVideo(script) {
       id: s.id || `scene-${String(idx + 1).padStart(2, '0')}`,
       idx,
       layout: s.layout || 'kinetic-impact',
+      threePreset: s.threePreset || s?.stageSpec?.threePreset || THREE_PRESET_CYCLE[idx % THREE_PRESET_CYCLE.length],
       transition: s.transition || 'iris-circle',
       kenBurns: s.kenBurns || 'zoom-in',
       vfx: s.vfx || 'sparks+shockwave',
@@ -614,6 +623,7 @@ export function buildRichHtmlVideo(script) {
     accent2: theme.accent2,
     gold: theme.gold,
     beats,
+    visual3dMode: script?.visual3dMode || 'auto',
     avatarClip: script?.avatarClip || null,
     avatarLayout: script?.avatarLayout || 'pip-br',
     timeline,
@@ -1287,7 +1297,7 @@ export function buildRichHtmlVideo(script) {
     }
     const gPat = grainCtx.createPattern(gTile, 'repeat');
 
-    // Canvas2D Particle & Light FX Primitives
+    // Canvas2D & Three.js-Grade 3D Perspective Stage Primitives
     function drawStars(ctx, t, n, alpha, col) {
       for (let i = 0; i < n; i++) {
         const x = ((hash(i * 1.31 + 3) + t * (0.008 + hash(i * 2.1) * 0.015)) % 1) * CFG.width;
@@ -1297,6 +1307,133 @@ export function buildRichHtmlVideo(script) {
         ctx.fillStyle = 'rgba(' + col + ',' + (alpha * tw).toFixed(3) + ')';
         ctx.fillRect(x, y, r, r);
       }
+    }
+
+    function drawThreeCyberStage(ctx, t, sceneIdx, meta, bp) {
+      if (String(CFG.visual3dMode || 'auto').toLowerCase() === 'off') return;
+      const w = CFG.width;
+      const h = CFG.height;
+      const cx = w * 0.5;
+      const cy = h * 0.48;
+      const fovScale = Math.min(w, h) * (0.62 + bp * 0.04);
+      const preset = (meta && meta.threePreset) || ['orbital-core', 'cyber-terrain', 'particle-vortex', 'floating-monoliths', 'chrono-helix', 'matrix-cubes'][sceneIdx % 6];
+      const rgbA = CFG.rgbAccent || '56, 189, 248';
+      const rgbB = CFG.rgbGold || '245, 185, 46';
+
+      const rot3D = (x, y, z, rx, ry, rz) => {
+        let y1 = y * Math.cos(rx) - z * Math.sin(rx);
+        let z1 = y * Math.sin(rx) + z * Math.cos(rx);
+        let x2 = x * Math.cos(ry) + z1 * Math.sin(ry);
+        let z2 = -x * Math.sin(ry) + z1 * Math.cos(ry);
+        let x3 = x2 * Math.cos(rz) - y1 * Math.sin(rz);
+        let y3 = x2 * Math.sin(rz) + y1 * Math.cos(rz);
+        return [x3, y3, z2];
+      };
+
+      const proj3D = (x, y, z, camZ = 8.2) => {
+        const dz = camZ - z;
+        if (dz <= 0.25) return null;
+        const sc = fovScale / dz;
+        return { x: cx + x * sc, y: cy - y * sc, z: dz, sc };
+      };
+
+      ctx.save();
+      if (preset === 'cyber-terrain') {
+        const cols = 20, rows = 14, sx = 0.95, sz = 1.05;
+        const zScroll = (t * 2.6) % sz;
+        ctx.lineWidth = 1.25;
+        for (let rz = 0; rz < rows - 1; rz++) {
+          const z0 = 4.2 - rz * sz + zScroll;
+          const z1 = 4.2 - (rz + 1) * sz + zScroll;
+          const fade = Math.max(0.08, Math.min(0.75, 1 - rz / rows));
+          for (let c = 0; c < cols - 1; c++) {
+            const x0 = (c - (cols - 1) / 2) * sx;
+            const x1 = (c + 1 - (cols - 1) / 2) * sx;
+            const cy0 = -1.7 + Math.pow(Math.min(1, Math.abs(x0) / 3.2), 1.6) * 2.1 + Math.sin(x0 * 0.65 + (rz - t * 2.6) * 0.45) * 0.38 + bp * 0.22;
+            const cy1 = -1.7 + Math.pow(Math.min(1, Math.abs(x1) / 3.2), 1.6) * 2.1 + Math.sin(x1 * 0.65 + (rz - t * 2.6) * 0.45) * 0.38 + bp * 0.22;
+            const cy2 = -1.7 + Math.pow(Math.min(1, Math.abs(x0) / 3.2), 1.6) * 2.1 + Math.sin(x0 * 0.65 + (rz + 1 - t * 2.6) * 0.45) * 0.38;
+            const p0 = proj3D(x0, cy0, z0, 8.8);
+            const p1 = proj3D(x1, cy1, z0, 8.8);
+            const p2 = proj3D(x0, cy2, z1, 8.8);
+            if (p0 && p1) {
+              ctx.strokeStyle = 'rgba(' + (Math.abs(x0) < 2.1 ? rgbB : rgbA) + ',' + (fade * 0.56).toFixed(3) + ')';
+              ctx.beginPath();
+              ctx.moveTo(p0.x, p0.y);
+              ctx.lineTo(p1.x, p1.y);
+              if (p2) ctx.lineTo(p2.x, p2.y);
+              ctx.stroke();
+            }
+          }
+        }
+      } else if (preset === 'chrono-helix') {
+        for (let ti = 0; ti < 10; ti++) {
+          const z = ((ti * 2.1 + t * 3.6) % 21) - 14.5;
+          const rad = 2.75 + (ti % 2) * 0.3 + bp * 0.22;
+          const sides = 8;
+          ctx.strokeStyle = 'rgba(' + (ti % 2 === 0 ? rgbA : rgbB) + ',' + clamp((16 - Math.abs(z)) / 18 * 0.68, 0.08, 0.72).toFixed(3) + ')';
+          ctx.lineWidth = 1.6;
+          ctx.beginPath();
+          for (let s = 0; s <= sides; s++) {
+            const a = (s / sides) * Math.PI * 2 + t * 0.42 + ti * 0.25;
+            const pt = proj3D(Math.cos(a) * rad, Math.sin(a) * rad, z, 8.4);
+            if (!pt) continue;
+            if (s === 0) ctx.moveTo(pt.x, pt.y);
+            else ctx.lineTo(pt.x, pt.y);
+          }
+          ctx.stroke();
+        }
+      } else {
+        // 3D Polyhedral Wireframe Core + Gyroscope Rings ('orbital-core' / 'particle-vortex' / 'floating-monoliths' / 'matrix-cubes')
+        const verts = [
+          [0, 1.85, 0], [0, -1.85, 0],
+          [1.65, 0, 0], [-1.65, 0, 0],
+          [0, 0, 1.65], [0, 0, -1.65],
+          [1.1, 1.1, 1.1], [-1.1, 1.1, 1.1], [1.1, -1.1, 1.1], [-1.1, -1.1, 1.1],
+          [1.1, 1.1, -1.1], [-1.1, 1.1, -1.1], [1.1, -1.1, -1.1], [-1.1, -1.1, -1.1]
+        ];
+        const scale = 1 + bp * 0.24 + Math.sin(t * 2.2) * 0.06;
+        const pVerts = verts.map(([vx, vy, vz]) => {
+          const [rx, ry, rz] = rot3D(vx * scale, vy * scale, vz * scale, t * 0.55, t * 0.78, t * 0.32);
+          return proj3D(rx, ry, rz, 8.2);
+        });
+        ctx.strokeStyle = 'rgba(' + rgbA + ',' + (0.48 + bp * 0.22).toFixed(3) + ')';
+        ctx.lineWidth = 1.5;
+        for (let i = 0; i < pVerts.length; i++) {
+          for (let j = i + 1; j < pVerts.length; j++) {
+            if (!pVerts[i] || !pVerts[j]) continue;
+            const d0 = Math.hypot(verts[i][0] - verts[j][0], verts[i][1] - verts[j][1], verts[i][2] - verts[j][2]);
+            if (d0 < 2.35) {
+              ctx.beginPath();
+              ctx.moveTo(pVerts[i].x, pVerts[i].y);
+              ctx.lineTo(pVerts[j].x, pVerts[j].y);
+              ctx.stroke();
+            }
+          }
+        }
+        [2.9, 3.85, 4.75].forEach((rad, ri) => {
+          ctx.strokeStyle = 'rgba(' + (ri % 2 === 1 ? rgbB : rgbA) + ',0.44)';
+          ctx.lineWidth = 1.3;
+          ctx.beginPath();
+          const segs = 40;
+          for (let s = 0; s <= segs; s++) {
+            const a = (s / segs) * Math.PI * 2;
+            const [rx, ry, rz] = rot3D(
+              Math.cos(a) * rad,
+              Math.sin(a) * rad,
+              0,
+              0.92 + ri * 0.5 + t * (ri % 2 === 0 ? 0.4 : -0.35),
+              t * (0.28 + ri * 0.14),
+              ri * 0.65
+            );
+            const pt = proj3D(rx, ry, rz, 8.2);
+            if (!pt) continue;
+            if (s === 0) ctx.moveTo(pt.x, pt.y);
+            else ctx.lineTo(pt.x, pt.y);
+          }
+          ctx.stroke();
+        });
+      }
+      ctx.restore();
     }
 
     function drawGlow(ctx, x, y, r, col, a) {
@@ -1580,6 +1717,7 @@ export function buildRichHtmlVideo(script) {
       // Render Background Canvas (#fxb)
       fxb.clearRect(0, 0, CFG.width, CFG.height);
       drawStars(fxb, t, 85, 0.42, CFG.rgbAccent);
+      drawThreeCyberStage(fxb, t, activeIdx, meta, beatPulse(t, true));
 
       // Render Scene Animations
       if (cur) {

@@ -1,11 +1,11 @@
 # 🎬 DSH Video Workbench (`dsh-video-workbench`)
 
-> **面向 DeepSeek Harness (DSH) 的双引擎（Remotion 4.x TSX & HyperFrames HTML5/Canvas）多智能体 AI 视频全链路工作台插件套件**  
-> **Dual-Engine (Remotion & HTML5) Multi-Agent AI Video Studio for DeepSeek Harness — Import Assets, AI Script & Prompt Polish, BGM Beat-Sync, IndexTTS-2.5 Voice & Clone, Custom TSX Coding & Full-FPS MP4**
+> **面向 DeepSeek Harness (DSH) 的双引擎（Remotion 4.x + Three.js 3D & HyperFrames HTML5 + Three.js）多智能体 AI 视频全链路工作台插件套件**  
+> **Dual-Engine (Remotion 4.x + Three.js 3D & HTML5 + Three.js) Multi-Agent AI Video Studio for DeepSeek Harness — Import Assets, AI Script & Prompt Polish, BGM Beat-Sync, IndexTTS-2.5 / GPT-SoVITS Voice & Clone, Opus 5.5 Vibecoding 3D TSX Coding & Full-FPS MP4**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
 [![Platform: Windows 11](https://img.shields.io/badge/Platform-Windows%2011-0078D6.svg)](#)
-[![Engine: Remotion 4.x & HTML5](https://img.shields.io/badge/Engine-Remotion%204.x%20%7C%20HTML5-38bdf8.svg)](#)
+[![Engine: Remotion 4.x + Three.js 3D & HTML5](https://img.shields.io/badge/Engine-Remotion%204.x%20%2B%20Three.js%203D%20%7C%20HTML5-38bdf8.svg)](#)
 [![TTS: IndexTTS-2.5 & GPT-SoVITS](https://img.shields.io/badge/TTS-IndexTTS--2.5%20%7C%20GPT--SoVITS-10b981.svg)](#)
 
 ---
@@ -37,8 +37,9 @@
      - `⚡ AI 配音+踩拍切镜`：保留真人旁白并让分镜切入贴合音乐节拍；
      - `🔥 纯音乐卡点 (免 TTS)`：跳过语音合成，按 `0.5` / `1` / `2` / `4` 拍自动对准重拍与高潮切镜，输出高燃纯动画 MV 与卡点音效。
    - **依题材自适应节奏 (`auto` / `calm` / `balanced` / `dynamic`)**：不再一刀切套用历史片快闪节奏——品牌故事温情短片自动保持 `4~7s/镜` 从容留白，产品功能/教程保持 `3~5s/镜` 清晰解说，历史卡点 MV 才启用高速半拍闪烁切镜。
-4. **🎬 Remotion 批量自定义 TSX 编码 + Step 3 成片原画同步精修**：
-   - **Remotion 4.x 引擎** 由大模型分批次手写逐镜 TSX 矢量动画/排版组件（经静态安全沙箱 + `video_lint` + `tsc --noEmit` 最多 3 轮自动修复），无素材题材同样可生成高密度矢量舞台与视觉演出。
+4. **🪐 Opus 5.5 级 Vibecoding（`Remotion 4.x + Three.js 3D` 空间动效）+ 作战大屏全参数前置自选**：
+   - **原生集成 `three` + `@remotion/three` (`<ThreeCyberStage />` / `ThreeCanvas`)**：内置 6 大帧级确定性 Three.js 3D 空间舞台预设（`orbital-core` 3D 量子二十面体与三轴陀螺仪星环、`cyber-terrain` 3D 赛博山谷网格与日冕门户、`particle-vortex` 3D 星云漩涡与神经网络突触、`floating-monoliths` 3D 空间悬浮晶碑矩阵、`chrono-helix` 3D 时空双螺旋隧道、`matrix-cubes` 3D 算力矩阵波浪），严禁非确定性 `requestAnimationFrame` 漂移，逐帧随音乐重拍脉冲与相机推拉同步响应。
+   - **AI 作战大屏一站式发车控制台**：无需跳转进入分步精修第 2 步，直接在作战大屏第 3 卡片即可自由切换 **`⚛️ Remotion + Three.js 3D`** 与 **`🌐 HTML5 + Three.js`** 渲染引擎、**`🪐 Three.js 3D 空间光影模式`**（智能开启 / 强化全屏 3D / 纯 2D）、**`📺 画质与帧率`**（`1080p`/`2K`/`4K` · `30fps`/`60fps`）、**`🎹 背景配乐方案`**、**`🎙 主讲音色/克隆`** 与 **`数字人口播`**，所有参数实时同步落盘。
    - **Step 3 监看台与作战大屏互动分镜预览**：自动通过 FFmpeg 从 `final.mp4` 为全部分镜抽取实景关键帧缩略图 (`output/scene-thumbs/*.jpg`)，Remotion AI 成片直接支持 **「🎬 成片原画时间轴」** 点击分镜精准跳转，彻底避免 HTML5 骨架稿与 Remotion 实景成片画面不一致的错位感。
    - **AI 辅助创作角标 (`aiBadge`)**：支持自由开启/关闭及 **右上角（默认）/ 左上角 / 右下角 / 左下角** 四角自由切换，避免遮挡主体标题。
 5. **🎙️ 多引擎灵活配音（`IndexTTS-2.5` / `IndexTTS-2` · `GPT-SoVITS` 低显存 · 自定义模型导入）(`@dsh-video/tool-local-tts`)**：

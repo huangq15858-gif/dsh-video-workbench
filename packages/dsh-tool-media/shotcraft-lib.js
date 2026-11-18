@@ -12,11 +12,11 @@ import { join, resolve } from 'node:path'
  */
 
 export const SHOTCRAFT_TSX_SOURCE = `/**
- * @dsh-video/shotcraft — Reusable Remotion Motion Primitives
- * Adapted from Apache-2.0 open-source video-shotcraft & remotion-dev/skills patterns.
- * Strictly driven by useCurrentFrame() + spring() + interpolate() — zero CSS transition / keyframes.
+ * @dsh-video/shotcraft — Reusable Remotion + Three.js 3D Vibecoding Motion Primitives
+ * Adapted from Apache-2.0 open-source video-shotcraft, @remotion/three & remotion-dev/skills patterns.
+ * Strictly driven by useCurrentFrame() + spring() + interpolate() + THREE — zero CSS transition / keyframes.
  */
-import React from 'react'
+import React, { useEffect, useLayoutEffect, useRef } from 'react'
 import {
   AbsoluteFill,
   Easing,
@@ -28,6 +28,10 @@ import {
   useCurrentFrame,
   useVideoConfig,
 } from 'remotion'
+import * as THREE from 'three'
+import { ThreeCanvas } from '@remotion/three'
+
+export { THREE, ThreeCanvas }
 
 export const FONT_SANS = "'Noto Sans SC', 'Source Han Sans SC', 'PingFang SC', 'HarmonyOS Sans SC', sans-serif"
 export const FONT_SERIF = "'Source Han Serif SC Heavy', 'Noto Serif SC', 'Noto Sans SC', serif"
@@ -1238,6 +1242,480 @@ export const ParallaxHorizon: React.FC<{
     </svg>
   )
 }
+
+export type ThreeStagePreset =
+  | 'orbital-core'
+  | 'cyber-terrain'
+  | 'particle-vortex'
+  | 'floating-monoliths'
+  | 'chrono-helix'
+  | 'matrix-cubes'
+  | 'auto'
+
+export const THREE_STAGE_PRESETS: ThreeStagePreset[] = [
+  'orbital-core',
+  'cyber-terrain',
+  'particle-vortex',
+  'floating-monoliths',
+  'chrono-helix',
+  'matrix-cubes',
+]
+
+export interface ThreeCyberStageProps {
+  preset?: ThreeStagePreset | string
+  primaryColor?: string
+  secondaryColor?: string
+  bgColor?: string
+  beatPulse?: number
+  cameraSpeed?: number
+  opacity?: number
+  seed?: number
+  wireframe?: boolean
+  style?: React.CSSProperties
+}
+
+function detRand(seed: number): number {
+  const x = Math.sin(seed * 127.1 + 311.7) * 43758.5453123
+  return x - Math.floor(x)
+}
+
+/**
+ * Opus 5.5 Vibecoding 3D Spatial Engine powered by Three.js (\`THREE.Scene\`, \`THREE.PerspectiveCamera\`,
+ * \`THREE.IcosahedronGeometry\`, \`THREE.TorusGeometry\`, \`THREE.BoxGeometry\`, \`THREE.OctahedronGeometry\`,
+ * \`THREE.Matrix4\`, \`THREE.Vector3\`, \`THREE.Color\`).
+ * Synchronously driven by \`useCurrentFrame()\` with zero delayRender deadlock and 100% deterministic frame capture.
+ */
+export const ThreeCyberStage: React.FC<ThreeCyberStageProps> = ({
+  preset = 'auto',
+  primaryColor = '#38BDF8',
+  secondaryColor = '#F59E0B',
+  bgColor = 'transparent',
+  beatPulse = 0,
+  cameraSpeed = 1,
+  opacity = 0.88,
+  seed = 1,
+  wireframe = true,
+  style = {},
+}) => {
+  const frame = useCurrentFrame()
+  const { fps, width, height } = useVideoConfig()
+  const canvasRef = useRef<HTMLCanvasElement | null>(null)
+
+  const resolvedPreset: ThreeStagePreset =
+    preset && preset !== 'auto' && THREE_STAGE_PRESETS.includes(preset as ThreeStagePreset)
+      ? (preset as ThreeStagePreset)
+      : THREE_STAGE_PRESETS[Math.abs(Math.round(seed)) % THREE_STAGE_PRESETS.length]
+
+  const renderThreeFrame = () => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+
+    const w = width || 1920
+    const h = height || 1080
+    if (canvas.width !== w) canvas.width = w
+    if (canvas.height !== h) canvas.height = h
+
+    ctx.clearRect(0, 0, w, h)
+    if (bgColor && bgColor !== 'transparent') {
+      ctx.fillStyle = bgColor
+      ctx.fillRect(0, 0, w, h)
+    }
+
+    const t = (frame / Math.max(1, fps || 30)) * cameraSpeed
+    const bp = Math.max(0, Math.min(1.5, Number(beatPulse) || 0))
+    const colA = new THREE.Color(primaryColor || '#38BDF8')
+    const colB = new THREE.Color(secondaryColor || '#F59E0B')
+    const rgbA = \`\${Math.round(colA.r * 255)}, \${Math.round(colA.g * 255)}, \${Math.round(colA.b * 255)}\`
+    const rgbB = \`\${Math.round(colB.r * 255)}, \${Math.round(colB.g * 255)}, \${Math.round(colB.b * 255)}\`
+
+    // 1. Setup Three.js PerspectiveCamera & Scene
+    const fov = 52 - bp * 3.5
+    const camera = new THREE.PerspectiveCamera(fov, w / h, 0.1, 160)
+    const scene = new THREE.Scene()
+
+    if (resolvedPreset === 'cyber-terrain') {
+      camera.position.set(Math.sin(t * 0.45) * 1.4, 2.5 + Math.cos(t * 0.35) * 0.35, 9.2)
+      camera.lookAt(0, 0.3, -12)
+      camera.rotation.z = Math.sin(t * 0.3) * 0.04
+    } else if (resolvedPreset === 'chrono-helix') {
+      camera.position.set(Math.sin(t * 0.6) * 0.85, Math.cos(t * 0.5) * 0.65, 8.5)
+      camera.lookAt(Math.sin(t * 0.3) * 0.3, 0, -18)
+      camera.rotation.z = t * 0.18
+    } else if (resolvedPreset === 'matrix-cubes') {
+      camera.position.set(Math.sin(t * 0.38) * 6.8, 5.2 + Math.sin(t * 0.5) * 0.6, Math.cos(t * 0.38) * 7.8 + 2.5)
+      camera.lookAt(0, -0.4, 0)
+    } else {
+      const orbitAngle = t * 0.32 + seed * 0.7
+      const radius = 8.4 - bp * 0.45
+      camera.position.set(
+        Math.sin(orbitAngle) * radius * 0.55,
+        Math.sin(t * 0.42 + seed) * 1.65 + 0.6,
+        Math.cos(orbitAngle) * radius,
+      )
+      camera.lookAt(0, 0, 0)
+      camera.rotation.z = Math.sin(t * 0.25) * 0.035
+    }
+
+    camera.updateMatrixWorld(true)
+    camera.updateProjectionMatrix()
+    const viewProj = new THREE.Matrix4().multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse)
+    const lightDir = new THREE.Vector3(0.55, 0.78, 0.65).normalize()
+
+    const projectVec = (v: THREE.Vector3): { x: number; y: number; z: number; visible: boolean } => {
+      const p = v.clone().applyMatrix4(viewProj)
+      if (p.z < -1 || p.z > 1) {
+        return { x: 0, y: 0, z: p.z, visible: false }
+      }
+      return {
+        x: (p.x * 0.5 + 0.5) * w,
+        y: (-p.y * 0.5 + 0.5) * h,
+        z: p.z,
+        visible: true,
+      }
+    }
+
+    interface DrawFace {
+      pts: Array<{ x: number; y: number }>
+      depth: number
+      fill: string
+      stroke: string
+      lineWidth: number
+    }
+    const drawQueue: DrawFace[] = []
+
+    const pushGeometryToQueue = (
+      geom: THREE.BufferGeometry,
+      meshMatrix: THREE.Matrix4,
+      useSecondary: boolean,
+      faceAlphaScale = 0.22,
+      strokeAlphaScale = 0.78,
+      lineW = 1.4,
+    ) => {
+      const posAttr = geom.getAttribute('position')
+      if (!posAttr) return
+      const indexAttr = geom.getIndex()
+      const triCount = indexAttr ? Math.floor(indexAttr.count / 3) : Math.floor(posAttr.count / 3)
+      const vA = new THREE.Vector3()
+      const vB = new THREE.Vector3()
+      const vC = new THREE.Vector3()
+      const edge1 = new THREE.Vector3()
+      const edge2 = new THREE.Vector3()
+      const normal = new THREE.Vector3()
+      const rgb = useSecondary ? rgbB : rgbA
+
+      for (let i = 0; i < triCount; i++) {
+        const i0 = indexAttr ? indexAttr.getX(i * 3) : i * 3
+        const i1 = indexAttr ? indexAttr.getX(i * 3 + 1) : i * 3 + 1
+        const i2 = indexAttr ? indexAttr.getX(i * 3 + 2) : i * 3 + 2
+        vA.fromBufferAttribute(posAttr, i0).applyMatrix4(meshMatrix)
+        vB.fromBufferAttribute(posAttr, i1).applyMatrix4(meshMatrix)
+        vC.fromBufferAttribute(posAttr, i2).applyMatrix4(meshMatrix)
+
+        const pA = projectVec(vA)
+        const pB = projectVec(vB)
+        const pC = projectVec(vC)
+        if (!pA.visible || !pB.visible || !pC.visible) continue
+
+        edge1.subVectors(vB, vA)
+        edge2.subVectors(vC, vA)
+        normal.crossVectors(edge1, edge2).normalize()
+        const lit = Math.max(0.15, Math.abs(normal.dot(lightDir)))
+        const depth = (pA.z + pB.z + pC.z) / 3
+        const fAlpha = Math.min(0.65, faceAlphaScale * (0.45 + lit * 0.85) + bp * 0.08)
+        const sAlpha = Math.min(0.96, strokeAlphaScale * (0.55 + lit * 0.5) + bp * 0.14)
+
+        drawQueue.push({
+          pts: [
+            { x: pA.x, y: pA.y },
+            { x: pB.x, y: pB.y },
+            { x: pC.x, y: pC.y },
+          ],
+          depth,
+          fill: \`rgba(\${rgb}, \${fAlpha.toFixed(3)})\`,
+          stroke: wireframe ? \`rgba(\${rgb}, \${sAlpha.toFixed(3)})\` : 'transparent',
+          lineWidth: lineW,
+        })
+      }
+      geom.dispose()
+    }
+
+    // Ambient volumetric center glow
+    const grad = ctx.createRadialGradient(w * 0.5, h * 0.48, 20, w * 0.5, h * 0.48, Math.max(w, h) * 0.52)
+    grad.addColorStop(0, \`rgba(\${rgbA}, \${(0.16 + bp * 0.09).toFixed(3)})\`)
+    grad.addColorStop(0.45, \`rgba(\${rgbB}, \${(0.07 + bp * 0.04).toFixed(3)})\`)
+    grad.addColorStop(1, 'rgba(0, 0, 0, 0)')
+    ctx.fillStyle = grad
+    ctx.fillRect(0, 0, w, h)
+
+    // 2. Build Preset-Specific 3D Meshes & Lines via Three.js
+    if (resolvedPreset === 'orbital-core') {
+      const coreScale = 1 + bp * 0.24 + Math.sin(t * 2.4) * 0.06
+      const coreMesh = new THREE.Mesh(new THREE.IcosahedronGeometry(1.85, 1))
+      coreMesh.rotation.set(t * 0.55, t * 0.78, t * 0.32)
+      coreMesh.scale.setScalar(coreScale)
+      coreMesh.updateMatrixWorld(true)
+      scene.add(coreMesh)
+      pushGeometryToQueue(coreMesh.geometry, coreMesh.matrixWorld, false, 0.2, 0.86, 1.7)
+
+      const innerMesh = new THREE.Mesh(new THREE.OctahedronGeometry(1.08, 0))
+      innerMesh.rotation.set(-t * 0.9, t * 0.5, -t * 0.6)
+      innerMesh.scale.setScalar(1 + bp * 0.32)
+      innerMesh.updateMatrixWorld(true)
+      pushGeometryToQueue(innerMesh.geometry, innerMesh.matrixWorld, true, 0.34, 0.92, 1.9)
+
+      const ringRadii = [2.95, 3.85, 4.75]
+      ringRadii.forEach((rad, ri) => {
+        const ringMesh = new THREE.Mesh(new THREE.TorusGeometry(rad, 0.035 + ri * 0.008, 6, 40))
+        ringMesh.rotation.set(
+          0.95 + ri * 0.52 + t * (ri % 2 === 0 ? 0.42 : -0.36),
+          t * (0.3 + ri * 0.14),
+          ri * 0.7,
+        )
+        ringMesh.scale.setScalar(1 + bp * 0.08)
+        ringMesh.updateMatrixWorld(true)
+        pushGeometryToQueue(ringMesh.geometry, ringMesh.matrixWorld, ri % 2 === 1, 0.14, 0.72, 1.2)
+      })
+
+      for (let si = 0; si < 10; si++) {
+        const ang = (si / 10) * Math.PI * 2 + t * (0.65 + (si % 3) * 0.15)
+        const r = 3.2 + (si % 3) * 0.95
+        const sat = new THREE.Mesh(new THREE.OctahedronGeometry(0.18 + (si % 2) * 0.07, 0))
+        sat.position.set(Math.cos(ang) * r, Math.sin(ang * 1.5 + si) * 1.25, Math.sin(ang) * r)
+        sat.rotation.set(t * 1.5 + si, t * 1.2, 0)
+        sat.updateMatrixWorld(true)
+        pushGeometryToQueue(sat.geometry, sat.matrixWorld, si % 2 === 0, 0.38, 0.9, 1.3)
+      }
+    } else if (resolvedPreset === 'cyber-terrain') {
+      // 3D Procedural Wireframe Canyon Grid + Horizon Sun Portal + Monoliths
+      const cols = 22
+      const rows = 16
+      const spacingX = 0.95
+      const spacingZ = 1.05
+      const zScroll = (t * 2.8) % spacingZ
+      ctx.lineWidth = 1.25
+      for (let rz = 0; rz < rows - 1; rz++) {
+        const z0 = 4.5 - rz * spacingZ + zScroll
+        const z1 = 4.5 - (rz + 1) * spacingZ + zScroll
+        const depthFade = Math.max(0.08, Math.min(0.85, 1 - rz / rows))
+        for (let cx = 0; cx < cols - 1; cx++) {
+          const x0 = (cx - (cols - 1) / 2) * spacingX
+          const x1 = (cx + 1 - (cols - 1) / 2) * spacingX
+          const canyon0 = Math.pow(Math.min(1, Math.abs(x0) / 3.2), 1.6) * 2.3
+          const canyon1 = Math.pow(Math.min(1, Math.abs(x1) / 3.2), 1.6) * 2.3
+          const wave00 = Math.sin(x0 * 0.65 + (rz - t * 2.8) * 0.45) * 0.42 + bp * 0.28 * Math.cos(x0)
+          const wave10 = Math.sin(x1 * 0.65 + (rz - t * 2.8) * 0.45) * 0.42 + bp * 0.28 * Math.cos(x1)
+          const wave01 = Math.sin(x0 * 0.65 + (rz + 1 - t * 2.8) * 0.45) * 0.42
+          const y00 = -1.75 + canyon0 + wave00
+          const y10 = -1.75 + canyon1 + wave10
+          const y01 = -1.75 + canyon0 + wave01
+
+          const p00 = projectVec(new THREE.Vector3(x0, y00, z0))
+          const p10 = projectVec(new THREE.Vector3(x1, y10, z0))
+          const p01 = projectVec(new THREE.Vector3(x0, y01, z1))
+          if (p00.visible && p10.visible) {
+            ctx.strokeStyle = Math.abs(x0) < 2.2 ? \`rgba(\${rgbB}, \${(depthFade * 0.62).toFixed(3)})\` : \`rgba(\${rgbA}, \${(depthFade * 0.58).toFixed(3)})\`
+            ctx.beginPath()
+            ctx.moveTo(p00.x, p00.y)
+            ctx.lineTo(p10.x, p10.y)
+            if (p01.visible) ctx.lineTo(p01.x, p01.y)
+            ctx.stroke()
+          }
+        }
+      }
+
+      const sunCore = new THREE.Mesh(new THREE.IcosahedronGeometry(2.3, 1))
+      sunCore.position.set(0, 1.85, -10.5)
+      sunCore.rotation.set(t * 0.25, t * 0.45, 0)
+      sunCore.scale.setScalar(1 + bp * 0.2)
+      sunCore.updateMatrixWorld(true)
+      pushGeometryToQueue(sunCore.geometry, sunCore.matrixWorld, true, 0.25, 0.88, 1.6)
+
+      const sunRing = new THREE.Mesh(new THREE.TorusGeometry(3.4, 0.05, 6, 36))
+      sunRing.position.set(0, 1.85, -10.5)
+      sunRing.rotation.set(0.35, t * 0.3, t * 0.5)
+      sunRing.updateMatrixWorld(true)
+      pushGeometryToQueue(sunRing.geometry, sunRing.matrixWorld, false, 0.18, 0.82, 1.4)
+    } else if (resolvedPreset === 'floating-monoliths') {
+      for (let mi = 0; mi < 9; mi++) {
+        const spread = (mi - 4) * 1.55
+        const zPos = -Math.abs(mi - 4) * 0.85 - 0.5 + Math.sin(t * 0.9 + mi) * 0.45
+        const yPos = Math.sin(t * 1.15 + mi * 0.8) * 0.42
+        const slab = new THREE.Mesh(new THREE.BoxGeometry(0.92, 2.55 + (mi % 3) * 0.45, 0.24))
+        slab.position.set(spread, yPos, zPos)
+        slab.rotation.set(Math.sin(t * 0.6 + mi) * 0.14, -spread * 0.12 + Math.cos(t * 0.5 + mi) * 0.22, 0)
+        slab.scale.setScalar(1 + bp * 0.12)
+        slab.updateMatrixWorld(true)
+        pushGeometryToQueue(slab.geometry, slab.matrixWorld, mi % 2 === 1, 0.24, 0.85, 1.5)
+      }
+    } else if (resolvedPreset === 'chrono-helix') {
+      const tunnelCount = 12
+      const zSpan = 22
+      for (let ti = 0; ti < tunnelCount; ti++) {
+        const rawZ = ((ti * (zSpan / tunnelCount) + t * 3.8) % zSpan) - zSpan + 6.5
+        const portal = new THREE.Mesh(new THREE.TorusGeometry(2.85 + (ti % 2) * 0.35, 0.045, 6, 8))
+        portal.position.set(Math.sin(rawZ * 0.15 + t) * 0.3, Math.cos(rawZ * 0.15 + t) * 0.22, rawZ)
+        portal.rotation.set(0, 0, ti * 0.35 + t * 0.45)
+        portal.scale.setScalar(1 + bp * 0.15)
+        portal.updateMatrixWorld(true)
+        pushGeometryToQueue(portal.geometry, portal.matrixWorld, ti % 2 === 0, 0.16, 0.8, 1.5)
+      }
+      // Double Helix DNA / Timeline Strands
+      const strandPtsA: Array<{ x: number; y: number; visible: boolean }> = []
+      const strandPtsB: Array<{ x: number; y: number; visible: boolean }> = []
+      for (let hi = 0; hi < 44; hi++) {
+        const hz = 5.5 - hi * 0.48
+        const hang = hi * 0.38 - t * 2.4
+        const rad = 1.65 + bp * 0.22
+        const p1 = projectVec(new THREE.Vector3(Math.cos(hang) * rad, Math.sin(hang) * rad, hz))
+        const p2 = projectVec(new THREE.Vector3(Math.cos(hang + Math.PI) * rad, Math.sin(hang + Math.PI) * rad, hz))
+        strandPtsA.push(p1)
+        strandPtsB.push(p2)
+        if (hi % 2 === 0 && p1.visible && p2.visible) {
+          ctx.strokeStyle = \`rgba(\${rgbB}, 0.42)\`
+          ctx.lineWidth = 1.3
+          ctx.beginPath()
+          ctx.moveTo(p1.x, p1.y)
+          ctx.lineTo(p2.x, p2.y)
+          ctx.stroke()
+        }
+      }
+      ;[strandPtsA, strandPtsB].forEach((pts, si) => {
+        ctx.strokeStyle = si === 0 ? \`rgba(\${rgbA}, 0.85)\` : \`rgba(\${rgbB}, 0.85)\`
+        ctx.lineWidth = 2.4
+        ctx.beginPath()
+        let started = false
+        for (const pt of pts) {
+          if (!pt.visible) continue
+          if (!started) {
+            ctx.moveTo(pt.x, pt.y)
+            started = true
+          } else {
+            ctx.lineTo(pt.x, pt.y)
+          }
+        }
+        ctx.stroke()
+      })
+    } else if (resolvedPreset === 'matrix-cubes') {
+      const gxCount = 6
+      const gzCount = 5
+      for (let gx = 0; gx < gxCount; gx++) {
+        for (let gz = 0; gz < gzCount; gz++) {
+          const wx = (gx - (gxCount - 1) / 2) * 1.35
+          const wz = (gz - (gzCount - 1) / 2) * 1.35
+          const dist = Math.sqrt(wx * wx + wz * wz)
+          const waveH = 0.75 + (Math.sin(dist * 0.95 - t * 3.1) * 0.5 + 0.5) * 1.65 + bp * 0.55
+          const cube = new THREE.Mesh(new THREE.BoxGeometry(0.76, waveH, 0.76))
+          cube.position.set(wx, waveH * 0.5 - 1.5, wz)
+          cube.updateMatrixWorld(true)
+          pushGeometryToQueue(cube.geometry, cube.matrixWorld, (gx + gz) % 2 === 1, 0.25, 0.84, 1.35)
+        }
+      }
+    } else {
+      // 'particle-vortex': Central Singularity + 3D Neural Constellation & Spiral Arms
+      const sing = new THREE.Mesh(new THREE.IcosahedronGeometry(1.25, 0))
+      sing.rotation.set(t * 0.8, -t * 1.1, t * 0.4)
+      sing.scale.setScalar(1 + bp * 0.3)
+      sing.updateMatrixWorld(true)
+      pushGeometryToQueue(sing.geometry, sing.matrixWorld, true, 0.28, 0.9, 1.8)
+
+      const outerCage = new THREE.Mesh(new THREE.IcosahedronGeometry(2.85, 1))
+      outerCage.rotation.set(-t * 0.32, t * 0.44, 0)
+      outerCage.updateMatrixWorld(true)
+      pushGeometryToQueue(outerCage.geometry, outerCage.matrixWorld, false, 0.08, 0.55, 1.15)
+    }
+
+    // 3. Depth-Sort & Paint All 3D Polygons (Painter's Algorithm back-to-front)
+    drawQueue.sort((a, b) => b.depth - a.depth)
+    for (const face of drawQueue) {
+      ctx.beginPath()
+      ctx.moveTo(face.pts[0].x, face.pts[0].y)
+      ctx.lineTo(face.pts[1].x, face.pts[1].y)
+      ctx.lineTo(face.pts[2].x, face.pts[2].y)
+      ctx.closePath()
+      ctx.fillStyle = face.fill
+      ctx.fill()
+      if (face.stroke !== 'transparent') {
+        ctx.strokeStyle = face.stroke
+        ctx.lineWidth = face.lineWidth
+        ctx.stroke()
+      }
+    }
+
+    // 4. 3D Starfield / Neural Vortex Particles & Synaptic Connections
+    const pCount = resolvedPreset === 'particle-vortex' ? 110 : 56
+    const projNodes: Array<{ x: number; y: number; z: number; r: number; isGold: boolean }> = []
+    for (let pi = 0; pi < pCount; pi++) {
+      const r1 = detRand(pi * 3.1 + seed)
+      const r2 = detRand(pi * 7.3 + seed)
+      const r3 = detRand(pi * 13.7 + seed)
+      const armAngle = r1 * Math.PI * 2 + t * (0.35 + r2 * 0.45) + (resolvedPreset === 'particle-vortex' ? r3 * 4.2 : 0)
+      const radius = (resolvedPreset === 'particle-vortex' ? 1.4 : 2.2) + r3 * 6.2
+      const vy = (r2 - 0.5) * 5.2 + Math.sin(t * 0.9 + pi) * 0.35
+      const worldPt = new THREE.Vector3(Math.cos(armAngle) * radius, vy, Math.sin(armAngle) * radius)
+      const pr = projectVec(worldPt)
+      if (!pr.visible) continue
+      const depthScale = Math.max(0.3, Math.min(2.2, (1 - pr.z) * 1.4))
+      projNodes.push({
+        x: pr.x,
+        y: pr.y,
+        z: pr.z,
+        r: (1.5 + (pi % 3) * 1.1 + bp * 1.2) * depthScale,
+        isGold: pi % 3 === 0,
+      })
+    }
+
+    if (resolvedPreset === 'particle-vortex' || resolvedPreset === 'orbital-core') {
+      const maxDistSq = Math.pow(w * 0.095, 2)
+      ctx.lineWidth = 1.0
+      for (let i = 0; i < projNodes.length; i++) {
+        let links = 0
+        for (let j = i + 1; j < projNodes.length && links < 3; j++) {
+          const dx = projNodes[i].x - projNodes[j].x
+          const dy = projNodes[i].y - projNodes[j].y
+          const dSq = dx * dx + dy * dy
+          if (dSq < maxDistSq) {
+            const alpha = (1 - dSq / maxDistSq) * (0.28 + bp * 0.18)
+            ctx.strokeStyle = projNodes[i].isGold ? \`rgba(\${rgbB}, \${alpha.toFixed(3)})\` : \`rgba(\${rgbA}, \${alpha.toFixed(3)})\`
+            ctx.beginPath()
+            ctx.moveTo(projNodes[i].x, projNodes[i].y)
+            ctx.lineTo(projNodes[j].x, projNodes[j].y)
+            ctx.stroke()
+            links++
+          }
+        }
+      }
+    }
+
+    for (const nd of projNodes) {
+      const rgb = nd.isGold ? rgbB : rgbA
+      ctx.fillStyle = \`rgba(\${rgb}, 0.85)\`
+      ctx.beginPath()
+      ctx.arc(nd.x, nd.y, nd.r, 0, Math.PI * 2)
+      ctx.fill()
+    }
+  }
+
+  useLayoutEffect(() => {
+    renderThreeFrame()
+  }, [frame, fps, width, height, resolvedPreset, primaryColor, secondaryColor, bgColor, beatPulse, cameraSpeed, seed, wireframe])
+
+  useEffect(() => {
+    renderThreeFrame()
+  }, [frame, resolvedPreset])
+
+  return (
+    <AbsoluteFill style={{ pointerEvents: 'none', opacity, ...style }}>
+      <canvas
+        ref={canvasRef}
+        width={width || 1920}
+        height={height || 1080}
+        style={{ width: '100%', height: '100%', display: 'block' }}
+      />
+    </AbsoluteFill>
+  )
+}
 `
 
 export function writeShotcraftRemotionLib(projectDir) {
@@ -1292,10 +1770,11 @@ ${beatInfoText}
 2. **依题材适配节奏（${zeroPacingSpec.label}）**：根据主题语境与音乐起承转合拆分为 **${zeroPacingSpec.shotRange} 个镜头**！${zeroPacingSpec.durRule}；narrationMode=${narrationMode}：
    - 若用户指定第二人称（如"你"）或科普/叙事人称，全篇严格统一；单句字幕 <= 18 字，充满具体时间节点、实体细节、金句或客观指标，杜绝空洞废话！accentWords 标出 1~2 个亮点金色词汇；
    - narration 与 subChunks 逐字一致，严禁空洞套话！
-3. 每镜必须携带完整 \`visualBlueprint\`（下游逐镜 TSX 程序员直读：具体描述 SVG 角色/器械/图表/地图/符号结构与镜内中段动作变化）、\`layout: "narrative-diorama"\` 与精雕 \`stageSpec\`：
+3. 每镜必须携带完整 \`visualBlueprint\`（下游逐镜 TSX 程序员直读：具体描述 3D Three.js 空间镜头 + SVG 角色/器械/图表/地图/符号结构与镜内中段动作变化）、\`threePreset\`（Three.js 3D 空间舞台预设："orbital-core" | "cyber-terrain" | "particle-vortex" | "floating-monoliths" | "chrono-helix" | "matrix-cubes"）、\`layout: "narrative-diorama"\` 与精雕 \`stageSpec\`：
    - mood: "dawn-amber" | "crimson-war" | "indigo-night" | "ash-twilight" | "bronze-hall" | "jade-river" | "void-gold"
    - setting: "palace-stairs" | "mountain-camp" | "city-siege" | "river-gorge" | "vast-plain"
    - archetype: "hero-numeral" | "hero-stand" | "oath-break" | "cavalry-rush" | "slash-climax" | "duel-confront" | "farewell-tent" | "strategic-map" | "scroll-calligraphy" | "plaque-summary" | "channel-end"
+   - threePreset: "orbital-core" | "cyber-terrain" | "particle-vortex" | "floating-monoliths" | "chrono-helix" | "matrix-cubes"
    - transition 仅允许: "cut" | "flash-cut" | "slash-wipe" | "iris-circle" | "block-wipe" | "glitch-cut" | "zoom-punch" | "light-wipe"（禁止填入配方名）
    - 可选精致参数：heroNum/heroUnit（开篇核心数值）、bannerChar（旗帜/核心字）、calligraphy（1~3列竖排古典引文）+ sealText（朱红篆章）、strategic-map 专属 zones/routes/stamps（印章字如"破"/"胜"/"围"/"霸"）、plaque-summary 专属 plaques（4~7枚总结匾额词）。
 4. 每个分镜搭配精确落拍的 sfxCues，可在 0.00s 放置 "hit"/"sub_drop"/"slash"/"stamp"/"whoosh" 等音效。`
@@ -1439,8 +1918,9 @@ export function buildRemotionCoderSkillsPrompt({
 3. 禁止使用 Math.random()，如需随机数必须从 'remotion' 导入 random(seed)。
 4. 禁止使用 Node 内置模块 (fs/path/child_process)、eval、new Function、外部网络字体/CDN 脚本链接或本地盘符路径。
 5. 商业版权字体安全铁律：禁止声明或使用微软雅黑 (Microsoft YaHei)、宋体 (SimSun)、黑体 (SimHei) 等受限商业字体！必须使用系统随包分发的 SIL OFL 开源商用字体栈：\`FONT_SANS\` ('Noto Sans SC', sans-serif) 与 \`FONT_MONO\` ('JetBrains Mono', monospace)。
-6. 可从 '../lib/shotcraft'（在 src/scenes/Scenes.tsx 中）或 './lib/shotcraft'（在 src/VideoComposition.tsx 中）导入已提供的组件：
-   - PageCam, ClipCard, DigitRoll, FlashCut, ShotCaption, AIBadge, EndNotice, AvatarOverlay, AppWindow, HotspotMark, FocusShot, WorkflowBar, BeforeAfterWipe, MetricPanel, FONT_SANS, FONT_MONO, FONT_SERIF
+6. 可从 '../lib/shotcraft'（在 src/scenes/Scenes.tsx 中）或 './lib/shotcraft'（在 src/VideoComposition.tsx 中）导入已提供的 Remotion + Three.js 3D Vibecoding 组件：
+   - ThreeCyberStage, THREE, ThreeCanvas, THREE_STAGE_PRESETS, PageCam, ClipCard, DigitRoll, FlashCut, ShotCaption, AIBadge, EndNotice, AvatarOverlay, AppWindow, HotspotMark, FocusShot, WorkflowBar, BeforeAfterWipe, MetricPanel, FONT_SANS, FONT_MONO, FONT_SERIF
+   - 推荐在每个分镜底层挂载 \`<ThreeCyberStage preset={scene.threePreset || 'orbital-core'} primaryColor={...} secondaryColor={...} beatPulse={...} seed={idx + 1} />\`（预设支持 'orbital-core' | 'cyber-terrain' | 'particle-vortex' | 'floating-monoliths' | 'chrono-helix' | 'matrix-cubes'），为画面赋予 Opus 5.5 级 Three.js 3D 透视景深、星环陀螺仪、赛博山谷网格与时空螺旋隧道！
    还可从 './lib/narrative-diorama'（或 '../lib/narrative-diorama'）导入无素材纯叙事 SVG 动画舞台组件：
    - NarrativeDioramaStage, HeroWarriorFigure, StrategicMapStage, SlashBurstOverlay, CalligraphyColumnPanel, MOOD_PRESETS, computeBeatSignal（当场景没有截图素材 publicAssetFiles 为空或 layout === 'narrative-diorama' 时，优先用自定义内联 &lt;svg&gt; 动画与舞台原语联动演绎，严禁臆造假 staticFile('assets/...') 路径！同时严禁把 Sequence 的 durationInFrames 硬钳到 >=30，必须使用 Math.max(8, Number(s.durationInFrames)) 支持急速踩拍切镜！）。
 7. 合规与数字人叠层铁律：src/VideoComposition.tsx 必须在合成器最外层强制挂载 <AIBadge visible={true} /> 与末尾 <EndNotice />；当 script.json 中存在 avatarClip.path 且 avatarLayout !== 'off' 时，必须渲染 <AvatarOverlay clipPath={scriptData.avatarClip.path} layout={scriptData.avatarLayout || 'pip-br'} />（使用 transparent 透明通道合成）；字幕 <ShotCaption bottomPx={...} /> 必须遵循目标平台安全区留白（竖屏底部至少留白 22%）。
@@ -1464,6 +1944,7 @@ export function buildRemotionCoderSkillsPrompt({
         index: s.index,
         title: s.title,
         layout: plan.scenes?.[i]?.layout || 'hero-title',
+        threePreset: plan.scenes?.[i]?.threePreset || plan.scenes?.[i]?.stageSpec?.threePreset || undefined,
         stageSpec: plan.scenes?.[i]?.stageSpec || undefined,
         accentWords: plan.scenes?.[i]?.accentWords || undefined,
         startFrame: s.startFrame,
@@ -1509,13 +1990,22 @@ export function buildBatchedRemotionScenesPrompt({
   const filePath = `src/scenes/Batch${pad}.tsx`
   const exportName = `BATCH_${pad}_SCENES`
 
-  const system = `你是全球顶尖的 Remotion (v4) 视频动效创意主程与 SVG 视觉艺术家。
-你的核心使命：不是套用枯燥的静态模板卡片，而是为本批次的每一个分镜，用纯 React + 内联动态 <svg> + 逐帧数学插值，编写**各具特色、帧帧流畅变化、信息明确、直击题材灵魂**的定制动画组件！
+  const system = `你是全球顶尖的 Opus 5.5 Vibecoding 视频动效创意主程（精通 Remotion v4 + Three.js 3D 空间渲染 + 动态矢量 SVG 架构与高密度节拍视觉）。
+你的核心使命：不是套用枯燥的静态模板卡片，而是为本批次的每一个分镜，用 **Three.js 3D 空间舞台 (\`<ThreeCyberStage />\`) + 纯 React + 多层内联动态 <svg> + 逐帧弹簧/插值数学计算**，编写**各具特色、帧帧流畅变化、具有强烈 3D 空间纵深感、直击题材灵魂**的定制动画组件！
 
-=== 适用全题材动态视觉创作指南（按每个分镜自身场景自适应 · 当前画布 ${width}x${height} ${isPortrait ? '竖屏短视频构图' : '横屏影院构图'}） ===
-1. **有截图/实拍素材时 (publicAssetFiles 非空)**：请优先通过 \`<AppWindow title={scene.title} kicker="DSH WORKBENCH" style={{ width: '100%', height: ${isPortrait ? 720 : 680} }}><FocusShot src={scene.publicAssetFiles?.[0] || scene.assetPaths?.[0] || scene.media?.[0]?.path} cams={scene.cams} marks={scene.marks} /></AppWindow>\`（或者 \`<BeforeAfterWipe>\`、3D 悬浮卡片、多窗口并排等配合外框动态标题与指标）高清呈现真实画面，禁止把文字盖住截图主体，更禁止自己在组件里画占位假框替代截图！严禁虚构不存在的 staticFile 路径！
-2. **纯代码/无外部素材时 (publicAssetFiles 为空 —— 涵盖历史人物/建筑史诗、软件原理/架构拓扑图解、数据图表、产品发布会概念视觉、文字动能 MV)**：
-   - **禁止**把所有分镜写成一模一样的单个背景模板调用！你必须在每个分镜中手写富有个性的**多层次内联 <svg viewBox="0 0 ${width} ${height}"> 动态场景**（严格匹配画布 ${width}x${height}；${isPortrait ? '竖屏采用上下分栏强冲击构图，主视觉与大数字放在居中上部，留出右下侧互动与底部字幕空间' : '横屏采用景深错落全景构图'}！可搭配 \`ParallaxHorizon\` / \`CameraRig\` / \`AnimatedRoutePath\` / \`MetricPanel\` 等组件拼装，在前景绘制独属于本镜具体剧情/技术架构的动态 SVG 节点、关节挥动、数据脉冲连线、柱状增长图、实时波纹、大字号动能标题与粒子！）
+=== 适用全题材 Opus 5.5 Vibecoding 动态视觉指南（按每个分镜自身场景自适应 · 当前画布 ${width}x${height} ${isPortrait ? '竖屏短视频构图' : '横屏影院构图'}） ===
+1. **Three.js 3D 空间纵深层 (强烈推荐每个分镜挂载)**：
+   - 可直接调用 \`<ThreeCyberStage preset={scene.threePreset || 'orbital-core'} primaryColor={...} secondaryColor={...} beatPulse={pulse} opacity={0.72} seed={idx + 1} />\` 作为 3D 透视空间层！
+   - 6 种内置 Three.js 3D 预设按分镜语义自由选用：
+     * \`'orbital-core'\`: 3D 量子二十面体核心 + 三轴陀螺仪星环 + 轨道卫星（适合 AI 核心、系统枢杻、开篇高能亮相）
+     * \`'cyber-terrain'\`: 3D 赛博等高线山谷网格 + 远方日冕门户飞越（适合宏大征途、技术底座、全景推进）
+     * \`'particle-vortex'\`: 3D 双旋臂星云漩涡 + 神经网络突触拓扑连线（适合大模型推理、数据洪流、思维碰撞）
+     * \`'floating-monoliths'\`: 3D 空间悬浮晶碑矩阵环绕（适合多模块架构、诸侯并起、多维特性展示）
+     * \`'chrono-helix'\`: 3D 时空双螺旋隧道穿梭（适合历史纪年演进、决战冲锋、工作流管道）
+     * \`'matrix-cubes'\`: 3D 算力矩阵立方体波浪起伏（适合性能跑分、并发吞吐、规模化对比）
+2. **有截图/实拍素材时 (publicAssetFiles 非空)**：请优先在 \`<ThreeCyberStage opacity={0.55} ... />\` 之上，通过 \`<AppWindow title={scene.title} kicker="DSH WORKBENCH" style={{ width: '100%', height: ${isPortrait ? 720 : 680} }}><FocusShot src={scene.publicAssetFiles?.[0] || scene.assetPaths?.[0] || scene.media?.[0]?.path} cams={scene.cams} marks={scene.marks} /></AppWindow>\`（或者 \`<BeforeAfterWipe>\`、3D 悬浮卡片、多窗口并排等配合外框动态标题与指标）高清呈现真实画面，禁止把文字盖住截图主体，更禁止自己在组件里画占位假框替代截图！严禁虚构不存在的 staticFile 路径！
+3. **纯代码/无外部素材时 (publicAssetFiles 为空 —— 涵盖历史人物/建筑史诗、软件原理/架构拓扑图解、数据图表、产品发布会概念视觉、文字动能 MV)**：
+   - **禁止**把所有分镜写成一模一样的单个背景模板调用！你必须在每个分镜中结合 \`<ThreeCyberStage />\` 3D 空间层 + 手写富有个性的**多层次内联 <svg viewBox="0 0 ${width} ${height}"> 动态前景/中景场景**（严格匹配画布 ${width}x${height}；${isPortrait ? '竖屏采用上下分栏强冲击构图，主视觉与大数字放在居中上部，留出右下侧互动与底部字幕空间' : '横屏采用景深错落全景构图'}！可搭配 \`ParallaxHorizon\` / \`CameraRig\` / \`AnimatedRoutePath\` / \`MetricPanel\` / \`DigitRoll\` / \`ClipCard\` 等组件拼装，在前景绘制独属于本镜具体剧情/技术架构的动态 SVG 节点、关节挥动、数据脉冲连线、柱状增长图、实时波纹、大字号动能标题与粒子！）
    - **反静止僵硬法则**：每一个分镜从 progress=0 到 progress=1 必须具备肉眼可见的连续演进：
      * 相机动势：\`CameraRig\` 或外层 \`transform\` 持续缓推/平移 + 在节奏点 \`pulse\` 触发微微冲击缩放与震动；
      * 中段形态变化：例如前半拍立势/起笔/构架展开 -> 节拍命中时脉冲连线贯通/框选高亮/数值跃迁；
@@ -1541,7 +2031,7 @@ export function buildBatchedRemotionScenesPrompt({
    - 若需要使用 \`staticFile\`，只可传入 \`publicAssetFiles\` 里明确存在的文件；不要 import 用不到的变量。
    - 可用的稳定导入路径与符号（不要臆造其它不存在的导出！）：
      * \`from 'remotion'\`: \`AbsoluteFill, Easing, Img, interpolate, random, spring, staticFile, useCurrentFrame, useVideoConfig\`
-     * \`from '../lib/shotcraft'\`: \`CameraRig, AnimatedRoutePath, ParallaxHorizon, AppWindow, FocusShot, BeforeAfterWipe, MetricPanel, DigitRoll, ClipCard, PageCam, computeBeatPulse, FONT_SANS, FONT_MONO, FONT_SERIF\`
+     * \`from '../lib/shotcraft'\`: \`ThreeCyberStage, THREE, ThreeCanvas, THREE_STAGE_PRESETS, CameraRig, AnimatedRoutePath, ParallaxHorizon, AppWindow, FocusShot, BeforeAfterWipe, MetricPanel, DigitRoll, ClipCard, PageCam, computeBeatPulse, FONT_SANS, FONT_MONO, FONT_SERIF\`
      * \`from '../lib/narrative-diorama'\`: \`NarrativeDioramaStage, HeroWarriorFigure, StrategicMapStage, SlashBurstOverlay, CalligraphyColumnPanel, MOOD_PRESETS, computeBeatSignal\``
 
   const user = JSON.stringify(
@@ -1564,6 +2054,7 @@ export function buildBatchedRemotionScenesPrompt({
         highlights: s.highlights || [],
         visualBlueprint: s.visualBlueprint || s.motionNotes || s.visualPrompt || s.title,
         layout: s.layout,
+        threePreset: s.threePreset || s.stageSpec?.threePreset || undefined,
         txKind: s.transition || 'cut',
         durationSec: s.durationSec,
         durationInFrames: s.durationInFrames,

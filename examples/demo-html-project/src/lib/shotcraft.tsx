@@ -1,9 +1,9 @@
 /**
- * @dsh-video/shotcraft — Reusable Remotion Motion Primitives
- * Adapted from Apache-2.0 open-source video-shotcraft & remotion-dev/skills patterns.
- * Strictly driven by useCurrentFrame() + spring() + interpolate() — zero CSS transition / keyframes.
+ * @dsh-video/shotcraft — Reusable Remotion + Three.js 3D Vibecoding Motion Primitives
+ * Adapted from Apache-2.0 open-source video-shotcraft, @remotion/three & remotion-dev/skills patterns.
+ * Strictly driven by useCurrentFrame() + spring() + interpolate() + THREE — zero CSS transition / keyframes.
  */
-import React from 'react'
+import React, { useEffect, useLayoutEffect, useRef } from 'react'
 import {
   AbsoluteFill,
   Easing,
@@ -15,6 +15,10 @@ import {
   useCurrentFrame,
   useVideoConfig,
 } from 'remotion'
+import * as THREE from 'three'
+import { ThreeCanvas } from '@remotion/three'
+
+export { THREE, ThreeCanvas }
 
 export const FONT_SANS = "'Noto Sans SC', 'Source Han Sans SC', 'PingFang SC', 'HarmonyOS Sans SC', sans-serif"
 export const FONT_SERIF = "'Source Han Serif SC Heavy', 'Noto Serif SC', 'Noto Sans SC', serif"
@@ -1223,5 +1227,479 @@ export const ParallaxHorizon: React.FC<{
         return <circle key={`st-${si}`} cx={x} cy={y} r={r} fill={si % 3 === 0 ? accentColor : gridColor} opacity={op} />
       })}
     </svg>
+  )
+}
+
+export type ThreeStagePreset =
+  | 'orbital-core'
+  | 'cyber-terrain'
+  | 'particle-vortex'
+  | 'floating-monoliths'
+  | 'chrono-helix'
+  | 'matrix-cubes'
+  | 'auto'
+
+export const THREE_STAGE_PRESETS: ThreeStagePreset[] = [
+  'orbital-core',
+  'cyber-terrain',
+  'particle-vortex',
+  'floating-monoliths',
+  'chrono-helix',
+  'matrix-cubes',
+]
+
+export interface ThreeCyberStageProps {
+  preset?: ThreeStagePreset | string
+  primaryColor?: string
+  secondaryColor?: string
+  bgColor?: string
+  beatPulse?: number
+  cameraSpeed?: number
+  opacity?: number
+  seed?: number
+  wireframe?: boolean
+  style?: React.CSSProperties
+}
+
+function detRand(seed: number): number {
+  const x = Math.sin(seed * 127.1 + 311.7) * 43758.5453123
+  return x - Math.floor(x)
+}
+
+/**
+ * Opus 5.5 Vibecoding 3D Spatial Engine powered by Three.js (`THREE.Scene`, `THREE.PerspectiveCamera`,
+ * `THREE.IcosahedronGeometry`, `THREE.TorusGeometry`, `THREE.BoxGeometry`, `THREE.OctahedronGeometry`,
+ * `THREE.Matrix4`, `THREE.Vector3`, `THREE.Color`).
+ * Synchronously driven by `useCurrentFrame()` with zero delayRender deadlock and 100% deterministic frame capture.
+ */
+export const ThreeCyberStage: React.FC<ThreeCyberStageProps> = ({
+  preset = 'auto',
+  primaryColor = '#38BDF8',
+  secondaryColor = '#F59E0B',
+  bgColor = 'transparent',
+  beatPulse = 0,
+  cameraSpeed = 1,
+  opacity = 0.88,
+  seed = 1,
+  wireframe = true,
+  style = {},
+}) => {
+  const frame = useCurrentFrame()
+  const { fps, width, height } = useVideoConfig()
+  const canvasRef = useRef<HTMLCanvasElement | null>(null)
+
+  const resolvedPreset: ThreeStagePreset =
+    preset && preset !== 'auto' && THREE_STAGE_PRESETS.includes(preset as ThreeStagePreset)
+      ? (preset as ThreeStagePreset)
+      : THREE_STAGE_PRESETS[Math.abs(Math.round(seed)) % THREE_STAGE_PRESETS.length]
+
+  const renderThreeFrame = () => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+
+    const w = width || 1920
+    const h = height || 1080
+    if (canvas.width !== w) canvas.width = w
+    if (canvas.height !== h) canvas.height = h
+
+    ctx.clearRect(0, 0, w, h)
+    if (bgColor && bgColor !== 'transparent') {
+      ctx.fillStyle = bgColor
+      ctx.fillRect(0, 0, w, h)
+    }
+
+    const t = (frame / Math.max(1, fps || 30)) * cameraSpeed
+    const bp = Math.max(0, Math.min(1.5, Number(beatPulse) || 0))
+    const colA = new THREE.Color(primaryColor || '#38BDF8')
+    const colB = new THREE.Color(secondaryColor || '#F59E0B')
+    const rgbA = `${Math.round(colA.r * 255)}, ${Math.round(colA.g * 255)}, ${Math.round(colA.b * 255)}`
+    const rgbB = `${Math.round(colB.r * 255)}, ${Math.round(colB.g * 255)}, ${Math.round(colB.b * 255)}`
+
+    // 1. Setup Three.js PerspectiveCamera & Scene
+    const fov = 52 - bp * 3.5
+    const camera = new THREE.PerspectiveCamera(fov, w / h, 0.1, 160)
+    const scene = new THREE.Scene()
+
+    if (resolvedPreset === 'cyber-terrain') {
+      camera.position.set(Math.sin(t * 0.45) * 1.4, 2.5 + Math.cos(t * 0.35) * 0.35, 9.2)
+      camera.lookAt(0, 0.3, -12)
+      camera.rotation.z = Math.sin(t * 0.3) * 0.04
+    } else if (resolvedPreset === 'chrono-helix') {
+      camera.position.set(Math.sin(t * 0.6) * 0.85, Math.cos(t * 0.5) * 0.65, 8.5)
+      camera.lookAt(Math.sin(t * 0.3) * 0.3, 0, -18)
+      camera.rotation.z = t * 0.18
+    } else if (resolvedPreset === 'matrix-cubes') {
+      camera.position.set(Math.sin(t * 0.38) * 6.8, 5.2 + Math.sin(t * 0.5) * 0.6, Math.cos(t * 0.38) * 7.8 + 2.5)
+      camera.lookAt(0, -0.4, 0)
+    } else {
+      const orbitAngle = t * 0.32 + seed * 0.7
+      const radius = 8.4 - bp * 0.45
+      camera.position.set(
+        Math.sin(orbitAngle) * radius * 0.55,
+        Math.sin(t * 0.42 + seed) * 1.65 + 0.6,
+        Math.cos(orbitAngle) * radius,
+      )
+      camera.lookAt(0, 0, 0)
+      camera.rotation.z = Math.sin(t * 0.25) * 0.035
+    }
+
+    camera.updateMatrixWorld(true)
+    camera.updateProjectionMatrix()
+    const viewProj = new THREE.Matrix4().multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse)
+    const lightDir = new THREE.Vector3(0.55, 0.78, 0.65).normalize()
+
+    const projectVec = (v: THREE.Vector3): { x: number; y: number; z: number; visible: boolean } => {
+      const p = v.clone().applyMatrix4(viewProj)
+      if (p.z < -1 || p.z > 1) {
+        return { x: 0, y: 0, z: p.z, visible: false }
+      }
+      return {
+        x: (p.x * 0.5 + 0.5) * w,
+        y: (-p.y * 0.5 + 0.5) * h,
+        z: p.z,
+        visible: true,
+      }
+    }
+
+    interface DrawFace {
+      pts: Array<{ x: number; y: number }>
+      depth: number
+      fill: string
+      stroke: string
+      lineWidth: number
+    }
+    const drawQueue: DrawFace[] = []
+
+    const pushGeometryToQueue = (
+      geom: THREE.BufferGeometry,
+      meshMatrix: THREE.Matrix4,
+      useSecondary: boolean,
+      faceAlphaScale = 0.22,
+      strokeAlphaScale = 0.78,
+      lineW = 1.4,
+    ) => {
+      const posAttr = geom.getAttribute('position')
+      if (!posAttr) return
+      const indexAttr = geom.getIndex()
+      const triCount = indexAttr ? Math.floor(indexAttr.count / 3) : Math.floor(posAttr.count / 3)
+      const vA = new THREE.Vector3()
+      const vB = new THREE.Vector3()
+      const vC = new THREE.Vector3()
+      const edge1 = new THREE.Vector3()
+      const edge2 = new THREE.Vector3()
+      const normal = new THREE.Vector3()
+      const rgb = useSecondary ? rgbB : rgbA
+
+      for (let i = 0; i < triCount; i++) {
+        const i0 = indexAttr ? indexAttr.getX(i * 3) : i * 3
+        const i1 = indexAttr ? indexAttr.getX(i * 3 + 1) : i * 3 + 1
+        const i2 = indexAttr ? indexAttr.getX(i * 3 + 2) : i * 3 + 2
+        vA.fromBufferAttribute(posAttr, i0).applyMatrix4(meshMatrix)
+        vB.fromBufferAttribute(posAttr, i1).applyMatrix4(meshMatrix)
+        vC.fromBufferAttribute(posAttr, i2).applyMatrix4(meshMatrix)
+
+        const pA = projectVec(vA)
+        const pB = projectVec(vB)
+        const pC = projectVec(vC)
+        if (!pA.visible || !pB.visible || !pC.visible) continue
+
+        edge1.subVectors(vB, vA)
+        edge2.subVectors(vC, vA)
+        normal.crossVectors(edge1, edge2).normalize()
+        const lit = Math.max(0.15, Math.abs(normal.dot(lightDir)))
+        const depth = (pA.z + pB.z + pC.z) / 3
+        const fAlpha = Math.min(0.65, faceAlphaScale * (0.45 + lit * 0.85) + bp * 0.08)
+        const sAlpha = Math.min(0.96, strokeAlphaScale * (0.55 + lit * 0.5) + bp * 0.14)
+
+        drawQueue.push({
+          pts: [
+            { x: pA.x, y: pA.y },
+            { x: pB.x, y: pB.y },
+            { x: pC.x, y: pC.y },
+          ],
+          depth,
+          fill: `rgba(${rgb}, ${fAlpha.toFixed(3)})`,
+          stroke: wireframe ? `rgba(${rgb}, ${sAlpha.toFixed(3)})` : 'transparent',
+          lineWidth: lineW,
+        })
+      }
+      geom.dispose()
+    }
+
+    // Ambient volumetric center glow
+    const grad = ctx.createRadialGradient(w * 0.5, h * 0.48, 20, w * 0.5, h * 0.48, Math.max(w, h) * 0.52)
+    grad.addColorStop(0, `rgba(${rgbA}, ${(0.16 + bp * 0.09).toFixed(3)})`)
+    grad.addColorStop(0.45, `rgba(${rgbB}, ${(0.07 + bp * 0.04).toFixed(3)})`)
+    grad.addColorStop(1, 'rgba(0, 0, 0, 0)')
+    ctx.fillStyle = grad
+    ctx.fillRect(0, 0, w, h)
+
+    // 2. Build Preset-Specific 3D Meshes & Lines via Three.js
+    if (resolvedPreset === 'orbital-core') {
+      const coreScale = 1 + bp * 0.24 + Math.sin(t * 2.4) * 0.06
+      const coreMesh = new THREE.Mesh(new THREE.IcosahedronGeometry(1.85, 1))
+      coreMesh.rotation.set(t * 0.55, t * 0.78, t * 0.32)
+      coreMesh.scale.setScalar(coreScale)
+      coreMesh.updateMatrixWorld(true)
+      scene.add(coreMesh)
+      pushGeometryToQueue(coreMesh.geometry, coreMesh.matrixWorld, false, 0.2, 0.86, 1.7)
+
+      const innerMesh = new THREE.Mesh(new THREE.OctahedronGeometry(1.08, 0))
+      innerMesh.rotation.set(-t * 0.9, t * 0.5, -t * 0.6)
+      innerMesh.scale.setScalar(1 + bp * 0.32)
+      innerMesh.updateMatrixWorld(true)
+      pushGeometryToQueue(innerMesh.geometry, innerMesh.matrixWorld, true, 0.34, 0.92, 1.9)
+
+      const ringRadii = [2.95, 3.85, 4.75]
+      ringRadii.forEach((rad, ri) => {
+        const ringMesh = new THREE.Mesh(new THREE.TorusGeometry(rad, 0.035 + ri * 0.008, 6, 40))
+        ringMesh.rotation.set(
+          0.95 + ri * 0.52 + t * (ri % 2 === 0 ? 0.42 : -0.36),
+          t * (0.3 + ri * 0.14),
+          ri * 0.7,
+        )
+        ringMesh.scale.setScalar(1 + bp * 0.08)
+        ringMesh.updateMatrixWorld(true)
+        pushGeometryToQueue(ringMesh.geometry, ringMesh.matrixWorld, ri % 2 === 1, 0.14, 0.72, 1.2)
+      })
+
+      for (let si = 0; si < 10; si++) {
+        const ang = (si / 10) * Math.PI * 2 + t * (0.65 + (si % 3) * 0.15)
+        const r = 3.2 + (si % 3) * 0.95
+        const sat = new THREE.Mesh(new THREE.OctahedronGeometry(0.18 + (si % 2) * 0.07, 0))
+        sat.position.set(Math.cos(ang) * r, Math.sin(ang * 1.5 + si) * 1.25, Math.sin(ang) * r)
+        sat.rotation.set(t * 1.5 + si, t * 1.2, 0)
+        sat.updateMatrixWorld(true)
+        pushGeometryToQueue(sat.geometry, sat.matrixWorld, si % 2 === 0, 0.38, 0.9, 1.3)
+      }
+    } else if (resolvedPreset === 'cyber-terrain') {
+      // 3D Procedural Wireframe Canyon Grid + Horizon Sun Portal + Monoliths
+      const cols = 22
+      const rows = 16
+      const spacingX = 0.95
+      const spacingZ = 1.05
+      const zScroll = (t * 2.8) % spacingZ
+      ctx.lineWidth = 1.25
+      for (let rz = 0; rz < rows - 1; rz++) {
+        const z0 = 4.5 - rz * spacingZ + zScroll
+        const z1 = 4.5 - (rz + 1) * spacingZ + zScroll
+        const depthFade = Math.max(0.08, Math.min(0.85, 1 - rz / rows))
+        for (let cx = 0; cx < cols - 1; cx++) {
+          const x0 = (cx - (cols - 1) / 2) * spacingX
+          const x1 = (cx + 1 - (cols - 1) / 2) * spacingX
+          const canyon0 = Math.pow(Math.min(1, Math.abs(x0) / 3.2), 1.6) * 2.3
+          const canyon1 = Math.pow(Math.min(1, Math.abs(x1) / 3.2), 1.6) * 2.3
+          const wave00 = Math.sin(x0 * 0.65 + (rz - t * 2.8) * 0.45) * 0.42 + bp * 0.28 * Math.cos(x0)
+          const wave10 = Math.sin(x1 * 0.65 + (rz - t * 2.8) * 0.45) * 0.42 + bp * 0.28 * Math.cos(x1)
+          const wave01 = Math.sin(x0 * 0.65 + (rz + 1 - t * 2.8) * 0.45) * 0.42
+          const y00 = -1.75 + canyon0 + wave00
+          const y10 = -1.75 + canyon1 + wave10
+          const y01 = -1.75 + canyon0 + wave01
+
+          const p00 = projectVec(new THREE.Vector3(x0, y00, z0))
+          const p10 = projectVec(new THREE.Vector3(x1, y10, z0))
+          const p01 = projectVec(new THREE.Vector3(x0, y01, z1))
+          if (p00.visible && p10.visible) {
+            ctx.strokeStyle = Math.abs(x0) < 2.2 ? `rgba(${rgbB}, ${(depthFade * 0.62).toFixed(3)})` : `rgba(${rgbA}, ${(depthFade * 0.58).toFixed(3)})`
+            ctx.beginPath()
+            ctx.moveTo(p00.x, p00.y)
+            ctx.lineTo(p10.x, p10.y)
+            if (p01.visible) ctx.lineTo(p01.x, p01.y)
+            ctx.stroke()
+          }
+        }
+      }
+
+      const sunCore = new THREE.Mesh(new THREE.IcosahedronGeometry(2.3, 1))
+      sunCore.position.set(0, 1.85, -10.5)
+      sunCore.rotation.set(t * 0.25, t * 0.45, 0)
+      sunCore.scale.setScalar(1 + bp * 0.2)
+      sunCore.updateMatrixWorld(true)
+      pushGeometryToQueue(sunCore.geometry, sunCore.matrixWorld, true, 0.25, 0.88, 1.6)
+
+      const sunRing = new THREE.Mesh(new THREE.TorusGeometry(3.4, 0.05, 6, 36))
+      sunRing.position.set(0, 1.85, -10.5)
+      sunRing.rotation.set(0.35, t * 0.3, t * 0.5)
+      sunRing.updateMatrixWorld(true)
+      pushGeometryToQueue(sunRing.geometry, sunRing.matrixWorld, false, 0.18, 0.82, 1.4)
+    } else if (resolvedPreset === 'floating-monoliths') {
+      for (let mi = 0; mi < 9; mi++) {
+        const spread = (mi - 4) * 1.55
+        const zPos = -Math.abs(mi - 4) * 0.85 - 0.5 + Math.sin(t * 0.9 + mi) * 0.45
+        const yPos = Math.sin(t * 1.15 + mi * 0.8) * 0.42
+        const slab = new THREE.Mesh(new THREE.BoxGeometry(0.92, 2.55 + (mi % 3) * 0.45, 0.24))
+        slab.position.set(spread, yPos, zPos)
+        slab.rotation.set(Math.sin(t * 0.6 + mi) * 0.14, -spread * 0.12 + Math.cos(t * 0.5 + mi) * 0.22, 0)
+        slab.scale.setScalar(1 + bp * 0.12)
+        slab.updateMatrixWorld(true)
+        pushGeometryToQueue(slab.geometry, slab.matrixWorld, mi % 2 === 1, 0.24, 0.85, 1.5)
+      }
+    } else if (resolvedPreset === 'chrono-helix') {
+      const tunnelCount = 12
+      const zSpan = 22
+      for (let ti = 0; ti < tunnelCount; ti++) {
+        const rawZ = ((ti * (zSpan / tunnelCount) + t * 3.8) % zSpan) - zSpan + 6.5
+        const portal = new THREE.Mesh(new THREE.TorusGeometry(2.85 + (ti % 2) * 0.35, 0.045, 6, 8))
+        portal.position.set(Math.sin(rawZ * 0.15 + t) * 0.3, Math.cos(rawZ * 0.15 + t) * 0.22, rawZ)
+        portal.rotation.set(0, 0, ti * 0.35 + t * 0.45)
+        portal.scale.setScalar(1 + bp * 0.15)
+        portal.updateMatrixWorld(true)
+        pushGeometryToQueue(portal.geometry, portal.matrixWorld, ti % 2 === 0, 0.16, 0.8, 1.5)
+      }
+      // Double Helix DNA / Timeline Strands
+      const strandPtsA: Array<{ x: number; y: number; visible: boolean }> = []
+      const strandPtsB: Array<{ x: number; y: number; visible: boolean }> = []
+      for (let hi = 0; hi < 44; hi++) {
+        const hz = 5.5 - hi * 0.48
+        const hang = hi * 0.38 - t * 2.4
+        const rad = 1.65 + bp * 0.22
+        const p1 = projectVec(new THREE.Vector3(Math.cos(hang) * rad, Math.sin(hang) * rad, hz))
+        const p2 = projectVec(new THREE.Vector3(Math.cos(hang + Math.PI) * rad, Math.sin(hang + Math.PI) * rad, hz))
+        strandPtsA.push(p1)
+        strandPtsB.push(p2)
+        if (hi % 2 === 0 && p1.visible && p2.visible) {
+          ctx.strokeStyle = `rgba(${rgbB}, 0.42)`
+          ctx.lineWidth = 1.3
+          ctx.beginPath()
+          ctx.moveTo(p1.x, p1.y)
+          ctx.lineTo(p2.x, p2.y)
+          ctx.stroke()
+        }
+      }
+      ;[strandPtsA, strandPtsB].forEach((pts, si) => {
+        ctx.strokeStyle = si === 0 ? `rgba(${rgbA}, 0.85)` : `rgba(${rgbB}, 0.85)`
+        ctx.lineWidth = 2.4
+        ctx.beginPath()
+        let started = false
+        for (const pt of pts) {
+          if (!pt.visible) continue
+          if (!started) {
+            ctx.moveTo(pt.x, pt.y)
+            started = true
+          } else {
+            ctx.lineTo(pt.x, pt.y)
+          }
+        }
+        ctx.stroke()
+      })
+    } else if (resolvedPreset === 'matrix-cubes') {
+      const gxCount = 6
+      const gzCount = 5
+      for (let gx = 0; gx < gxCount; gx++) {
+        for (let gz = 0; gz < gzCount; gz++) {
+          const wx = (gx - (gxCount - 1) / 2) * 1.35
+          const wz = (gz - (gzCount - 1) / 2) * 1.35
+          const dist = Math.sqrt(wx * wx + wz * wz)
+          const waveH = 0.75 + (Math.sin(dist * 0.95 - t * 3.1) * 0.5 + 0.5) * 1.65 + bp * 0.55
+          const cube = new THREE.Mesh(new THREE.BoxGeometry(0.76, waveH, 0.76))
+          cube.position.set(wx, waveH * 0.5 - 1.5, wz)
+          cube.updateMatrixWorld(true)
+          pushGeometryToQueue(cube.geometry, cube.matrixWorld, (gx + gz) % 2 === 1, 0.25, 0.84, 1.35)
+        }
+      }
+    } else {
+      // 'particle-vortex': Central Singularity + 3D Neural Constellation & Spiral Arms
+      const sing = new THREE.Mesh(new THREE.IcosahedronGeometry(1.25, 0))
+      sing.rotation.set(t * 0.8, -t * 1.1, t * 0.4)
+      sing.scale.setScalar(1 + bp * 0.3)
+      sing.updateMatrixWorld(true)
+      pushGeometryToQueue(sing.geometry, sing.matrixWorld, true, 0.28, 0.9, 1.8)
+
+      const outerCage = new THREE.Mesh(new THREE.IcosahedronGeometry(2.85, 1))
+      outerCage.rotation.set(-t * 0.32, t * 0.44, 0)
+      outerCage.updateMatrixWorld(true)
+      pushGeometryToQueue(outerCage.geometry, outerCage.matrixWorld, false, 0.08, 0.55, 1.15)
+    }
+
+    // 3. Depth-Sort & Paint All 3D Polygons (Painter's Algorithm back-to-front)
+    drawQueue.sort((a, b) => b.depth - a.depth)
+    for (const face of drawQueue) {
+      ctx.beginPath()
+      ctx.moveTo(face.pts[0].x, face.pts[0].y)
+      ctx.lineTo(face.pts[1].x, face.pts[1].y)
+      ctx.lineTo(face.pts[2].x, face.pts[2].y)
+      ctx.closePath()
+      ctx.fillStyle = face.fill
+      ctx.fill()
+      if (face.stroke !== 'transparent') {
+        ctx.strokeStyle = face.stroke
+        ctx.lineWidth = face.lineWidth
+        ctx.stroke()
+      }
+    }
+
+    // 4. 3D Starfield / Neural Vortex Particles & Synaptic Connections
+    const pCount = resolvedPreset === 'particle-vortex' ? 110 : 56
+    const projNodes: Array<{ x: number; y: number; z: number; r: number; isGold: boolean }> = []
+    for (let pi = 0; pi < pCount; pi++) {
+      const r1 = detRand(pi * 3.1 + seed)
+      const r2 = detRand(pi * 7.3 + seed)
+      const r3 = detRand(pi * 13.7 + seed)
+      const armAngle = r1 * Math.PI * 2 + t * (0.35 + r2 * 0.45) + (resolvedPreset === 'particle-vortex' ? r3 * 4.2 : 0)
+      const radius = (resolvedPreset === 'particle-vortex' ? 1.4 : 2.2) + r3 * 6.2
+      const vy = (r2 - 0.5) * 5.2 + Math.sin(t * 0.9 + pi) * 0.35
+      const worldPt = new THREE.Vector3(Math.cos(armAngle) * radius, vy, Math.sin(armAngle) * radius)
+      const pr = projectVec(worldPt)
+      if (!pr.visible) continue
+      const depthScale = Math.max(0.3, Math.min(2.2, (1 - pr.z) * 1.4))
+      projNodes.push({
+        x: pr.x,
+        y: pr.y,
+        z: pr.z,
+        r: (1.5 + (pi % 3) * 1.1 + bp * 1.2) * depthScale,
+        isGold: pi % 3 === 0,
+      })
+    }
+
+    if (resolvedPreset === 'particle-vortex' || resolvedPreset === 'orbital-core') {
+      const maxDistSq = Math.pow(w * 0.095, 2)
+      ctx.lineWidth = 1.0
+      for (let i = 0; i < projNodes.length; i++) {
+        let links = 0
+        for (let j = i + 1; j < projNodes.length && links < 3; j++) {
+          const dx = projNodes[i].x - projNodes[j].x
+          const dy = projNodes[i].y - projNodes[j].y
+          const dSq = dx * dx + dy * dy
+          if (dSq < maxDistSq) {
+            const alpha = (1 - dSq / maxDistSq) * (0.28 + bp * 0.18)
+            ctx.strokeStyle = projNodes[i].isGold ? `rgba(${rgbB}, ${alpha.toFixed(3)})` : `rgba(${rgbA}, ${alpha.toFixed(3)})`
+            ctx.beginPath()
+            ctx.moveTo(projNodes[i].x, projNodes[i].y)
+            ctx.lineTo(projNodes[j].x, projNodes[j].y)
+            ctx.stroke()
+            links++
+          }
+        }
+      }
+    }
+
+    for (const nd of projNodes) {
+      const rgb = nd.isGold ? rgbB : rgbA
+      ctx.fillStyle = `rgba(${rgb}, 0.85)`
+      ctx.beginPath()
+      ctx.arc(nd.x, nd.y, nd.r, 0, Math.PI * 2)
+      ctx.fill()
+    }
+  }
+
+  useLayoutEffect(() => {
+    renderThreeFrame()
+  }, [frame, fps, width, height, resolvedPreset, primaryColor, secondaryColor, bgColor, beatPulse, cameraSpeed, seed, wireframe])
+
+  useEffect(() => {
+    renderThreeFrame()
+  }, [frame, resolvedPreset])
+
+  return (
+    <AbsoluteFill style={{ pointerEvents: 'none', opacity, ...style }}>
+      <canvas
+        ref={canvasRef}
+        width={width || 1920}
+        height={height || 1080}
+        style={{ width: '100%', height: '100%', display: 'block' }}
+      />
+    </AbsoluteFill>
   )
 }

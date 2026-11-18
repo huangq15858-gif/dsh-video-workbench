@@ -693,21 +693,23 @@ export async function handleWorkbenchApiRequest(req) {
         projectDir: body.projectDir,
         sources: body.sources,
       })
-      if (body.role && Array.isArray(res.added)) {
-        for (const item of res.added) {
-          updateAsset(body.projectDir, item.id, { role: String(body.role) })
+      const targetItems = [...(res.added || []), ...(res.existing || [])]
+      if (body.role && targetItems.length > 0) {
+        for (const item of targetItems) {
+          if (item?.id) updateAsset(body.projectDir, item.id, { role: String(body.role) })
         }
       }
       const manifest = readAssets(body.projectDir)
       return jsonResponse({
         ok: true,
+        importedCount: res.matchedCount || res.addedCount || 0,
         ...res,
         manifest,
         summary: summarizeAssets(manifest),
       })
     }
 
-    // 3c. POST /api/video-workbench/assets/upload (supports raw binary stream OR legacy JSON base64 files[])
+    // 3c. POST /api/video-workbench/assets/upload (supports raw binary stream, localPath fallback, OR JSON base64 files[])
     if (pathname === '/api/video-workbench/assets/upload' && req.method === 'POST') {
       const ct = String(req.headers.get('content-type') || '').toLowerCase()
       let projectDir = ''
@@ -723,6 +725,10 @@ export async function handleWorkbenchApiRequest(req) {
           return jsonResponse({ ok: false, error: 'projectDir and files[] are required' }, 400)
         }
         for (const file of files) {
+          if (file?.localPath && existsSync(file.localPath)) {
+            savedPaths.push(file.localPath)
+            continue
+          }
           if (!file?.name || typeof file.dataBase64 !== 'string') continue
           const cleanB64 = file.dataBase64.replace(/^data:[^;]+;base64,/, '')
           const buf = Buffer.from(cleanB64, 'base64')
@@ -732,31 +738,49 @@ export async function handleWorkbenchApiRequest(req) {
       } else {
         projectDir = url.searchParams.get('projectDir') || ''
         uploadRole = url.searchParams.get('role') || ''
-        const fileName = url.searchParams.get('fileName') || `upload-${Date.now()}.bin`
+        const fileName = url.searchParams.get('fileName') || `upload-${Date.now()}.mp4`
+        const localPath = url.searchParams.get('localPath') || ''
         if (!projectDir) {
           return jsonResponse({ ok: false, error: 'projectDir is required' }, 400)
         }
-        const buf = Buffer.from(await req.arrayBuffer())
-        if (!buf || buf.length === 0) {
-          return jsonResponse({ ok: false, error: 'Uploaded binary file is empty' }, 400)
+        let buf = Buffer.alloc(0)
+        try {
+          buf = Buffer.from(await req.arrayBuffer())
+        } catch {}
+        if ((!buf || buf.length === 0) && localPath && existsSync(localPath)) {
+          savedPaths.push(localPath)
+        } else {
+          if (!buf || buf.length === 0) {
+            return jsonResponse({ ok: false, error: 'Uploaded binary file is empty' }, 400)
+          }
+          const savedPath = await saveUploadedAsset(projectDir, fileName, buf)
+          savedPaths.push(savedPath)
         }
-        const savedPath = await saveUploadedAsset(projectDir, fileName, buf)
-        savedPaths.push(savedPath)
       }
 
       const res = await importAssets({
         projectDir,
         sources: savedPaths,
       })
-      if (uploadRole && Array.isArray(res.added)) {
-        for (const item of res.added) {
-          updateAsset(projectDir, item.id, { role: uploadRole })
+      const targetItems = [...(res.added || []), ...(res.existing || [])]
+      if (uploadRole && targetItems.length > 0) {
+        for (const item of targetItems) {
+          if (item?.id) updateAsset(projectDir, item.id, { role: uploadRole })
         }
       }
       const manifest = readAssets(projectDir)
+      const effectiveCount = res.matchedCount ?? ((res.addedCount || 0) + (res.existingCount || 0))
+      if (effectiveCount === 0) {
+        return jsonResponse({
+          ok: false,
+          error: '未识别到受支持的图片、视频或音频格式（支持 MP4/MOV/WEBM/MKV/AVI/JPG/PNG/WEBP/MP3/WAV 等）',
+          manifest,
+          summary: summarizeAssets(manifest),
+        }, 400)
+      }
       return jsonResponse({
         ok: true,
-        uploadedCount: savedPaths.length,
+        uploadedCount: effectiveCount,
         ...res,
         manifest,
         summary: summarizeAssets(manifest),
@@ -1302,11 +1326,19 @@ export async function handleWorkbenchApiRequest(req) {
           requestedAspectRatio: dims.requestedAspectRatio,
           quality: dims.quality,
           dimensionReason: dims.reason,
-          ...(body.aiBadge !== undefined ? { aiBadge: Boolean(body.aiBadge) } : {}),
+          ...(body.aiBadge !== undefined ? { aiBadge: Boolean(body.aiBadge), aiBadgeEnabled: Boolean(body.aiBadge) } : {}),
+          ...(body.aiBadgeEnabled !== undefined ? { aiBadge: Boolean(body.aiBadgeEnabled), aiBadgeEnabled: Boolean(body.aiBadgeEnabled) } : {}),
+          ...(body.aiBadgePosition ? { aiBadgePosition: String(body.aiBadgePosition) } : {}),
+          ...(body.aiBadgeText !== undefined ? { aiBadgeText: String(body.aiBadgeText) } : {}),
           ...(body.targetPlatform ? { targetPlatform: body.targetPlatform } : {}),
           ...(body.bgmMode ? { bgmMode: body.bgmMode, audioSpec: { ...(data.audioSpec || {}), bgmMode: body.bgmMode } } : {}),
           ...(body.creationMode ? { creationMode: body.creationMode } : {}),
           ...(body.narrationMode ? { narrationMode: body.narrationMode } : {}),
+          ...(body.pacingMode ? { pacingMode: body.pacingMode } : {}),
+          ...(body.visual3dMode ? { visual3dMode: body.visual3dMode } : {}),
+          ...(body.style ? { style: body.style } : {}),
+          ...(body.fps ? { fps: Number(body.fps) || 30 } : {}),
+          ...(body.voiceId ? { defaultVoiceId: body.voiceId } : {}),
           ...(body.engine ? { engine: body.engine } : {}),
         })
         syncProjectCodeFromScript(projectDir, updated.data)
@@ -1811,12 +1843,14 @@ export function apply(ctx) {
       { path: '/api/video-workbench/asset', methods: ['GET'] },
     ]
     for (const r of routes) {
-      innerCtx.connection.fetch.register({
-        path: r.path,
-        methods: r.methods,
-        requestBody: 'buffered',
-        fetch: handleWorkbenchApiRequest,
-      })
+      try {
+        innerCtx.connection.fetch.register({
+          path: r.path,
+          methods: r.methods,
+          requestBody: 'buffered',
+          fetch: handleWorkbenchApiRequest,
+        })
+      } catch {}
     }
   })
 

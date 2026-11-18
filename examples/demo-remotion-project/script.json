@@ -5,6 +5,7 @@
   "fps": 30,
   "width": 1920,
   "height": 1080,
+  "visual3dMode": "auto",
   "audience": "开发者与数字内容创作者",
   "goal": "展示素材导入、AI 分镜策划、音效配乐混音、双引擎动效与本地真人配音全链路能力",
   "aiBadge": true,
@@ -228,5 +229,5 @@
   "quality": "1080p",
   "totalDurationSec": 14,
   "totalDurationInFrames": 420,
-  "updatedAt": "2026-11-16T15:32:32.035Z"
+  "updatedAt": "2026-11-18T06:54:05.984Z"
 }

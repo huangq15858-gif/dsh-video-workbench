@@ -171,7 +171,7 @@ import {
   useVideoConfig,
 } from 'remotion';
 import scriptData from '../script.json';
-import { AIBadge, AppWindow, AvatarOverlay, BeforeAfterWipe, EndNotice, FocusShot, MetricPanel, SceneTransitionOverlay, WorkflowBar, FONT_SANS, FONT_MONO, FONT_SERIF } from './lib/shotcraft';
+import { AIBadge, AppWindow, AvatarOverlay, BeforeAfterWipe, EndNotice, FocusShot, MetricPanel, SceneTransitionOverlay, ThreeCyberStage, THREE_STAGE_PRESETS, WorkflowBar, FONT_SANS, FONT_MONO, FONT_SERIF } from './lib/shotcraft';
 import { NarrativeDioramaStage } from './lib/narrative-diorama';
 ${hasCustomRegistry ? "import { CUSTOM_SCENE_MAP } from './scenes';" : 'const CUSTOM_SCENE_MAP: Record<string, React.ComponentType<any>> = {};'}
 
@@ -477,6 +477,13 @@ const SceneStage: React.FC<{
   const layout = scene.layout || (idx === 0 ? '3d-stage-opener' : idx === total - 1 ? 'radial-climax' : 'media-split-motion');
 
   const CustomSceneComp = CUSTOM_SCENE_MAP && scene?.id ? CUSTOM_SCENE_MAP[scene.id] : undefined;
+  const visual3dMode = String((scriptData as any)?.visual3dMode || 'auto').toLowerCase();
+  const enable3dStage = visual3dMode !== 'off';
+  const sceneThreePreset =
+    scene.threePreset ||
+    scene?.stageSpec?.threePreset ||
+    THREE_STAGE_PRESETS[idx % THREE_STAGE_PRESETS.length];
+
   if (CustomSceneComp) {
     const publicAssetFiles =
       Array.isArray(scene.publicAssetFiles) && scene.publicAssetFiles.length > 0
@@ -488,10 +495,20 @@ const SceneStage: React.FC<{
             : scene.mediaPath
               ? [String(scene.mediaPath).replace(/^[/\\\\]+/, '').replace(/\\\\/g, '/')]
               : [];
-    const hydratedScene = { ...scene, publicAssetFiles };
+    const hydratedScene = { ...scene, publicAssetFiles, threePreset: sceneThreePreset };
     return (
       <AbsoluteFill style={{ overflow: 'hidden', backgroundColor: PALETTE.background }}>
         <CustomSceneComp scene={hydratedScene} idx={idx} total={total} beats={beats} />
+        {enable3dStage ? (
+          <ThreeCyberStage
+            preset={sceneThreePreset}
+            primaryColor={PALETTE.accent}
+            secondaryColor={PALETTE.gold || PALETTE.accent2}
+            beatPulse={bp}
+            opacity={0.36}
+            seed={idx + 1}
+          />
+        ) : null}
         <SceneTransitionOverlay
           txKind={txKind}
           localFrame={localFrame}
@@ -508,6 +525,16 @@ const SceneStage: React.FC<{
     return (
       <AbsoluteFill style={{ overflow: 'hidden', backgroundColor: PALETTE.background }}>
         <NarrativeDioramaStage scene={scene} idx={idx} total={total} beats={beats} />
+        {enable3dStage ? (
+          <ThreeCyberStage
+            preset={sceneThreePreset}
+            primaryColor={PALETTE.accent}
+            secondaryColor={PALETTE.gold || PALETTE.accent2}
+            beatPulse={bp}
+            opacity={0.48}
+            seed={idx + 1}
+          />
+        ) : null}
         <SceneTransitionOverlay
           txKind={txKind}
           localFrame={localFrame}
@@ -582,6 +609,18 @@ const SceneStage: React.FC<{
             background: \`radial-gradient(circle at 50% 42%, rgba(\${PALETTE.rgbAccent || '60,140,255'}, \${0.16 + bp * 0.08}), transparent 58%), radial-gradient(circle at 15% 82%, rgba(\${PALETTE.rgbGold || '245,185,46'}, 0.1), transparent 46%)\`,
           }}
         />
+
+        {/* Three.js 3D Vibecoding Spatial Stage */}
+        {enable3dStage ? (
+          <ThreeCyberStage
+            preset={sceneThreePreset}
+            primaryColor={PALETTE.accent}
+            secondaryColor={PALETTE.gold || PALETTE.accent2}
+            beatPulse={bp}
+            opacity={primary ? 0.58 : 0.86}
+            seed={idx + 1}
+          />
+        ) : null}
 
         {/* Ambient Floating Particles & Dot Grid */}
         <AbsoluteFill style={{ pointerEvents: 'none' }}>

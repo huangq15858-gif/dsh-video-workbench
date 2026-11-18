@@ -110,6 +110,15 @@ const VALID_STAGE_ARCHETYPES = [
   'channel-end',
 ]
 
+export const VALID_THREE_PRESETS = [
+  'orbital-core',
+  'cyber-terrain',
+  'particle-vortex',
+  'floating-monoliths',
+  'chrono-helix',
+  'matrix-cubes',
+]
+
 export const VALID_TRANSITIONS = [
   'cut',
   'flash-cut',
@@ -301,23 +310,36 @@ export function repairPromoPlanRules(
   const minDurClamp = isNarrativeMv ? 0.26 : resolvedPacing.id === 'calm' ? 2.4 : 1.5
   const defaultShotDur = resolvedPacing.id === 'calm' ? 5.2 : resolvedPacing.id === 'balanced' ? 3.8 : 2.6
   const maxTransitionsLimit = isNarrativeMv ? 64 : 8
-  const rawShots = Array.isArray(rawPlan?.shots) && rawPlan.shots.length > 0
-    ? rawPlan.shots
+  const candidateShots =
+    Array.isArray(rawPlan?.shots) && rawPlan.shots.length > 0
+      ? rawPlan.shots
+      : Array.isArray(rawPlan?.scenes) && rawPlan.scenes.length > 0
+        ? rawPlan.scenes
+        : Array.isArray(rawPlan?.storyboard) && rawPlan.storyboard.length > 0
+          ? rawPlan.storyboard
+          : null
+
+  const rawShots = candidateShots
+    ? candidateShots
     : existingScenes.length > 0
       ? existingScenes.map((sc, i) => ({
           id: sc.id,
           title: sc.title,
           narration: sc.narration,
           durationSec: sc.durationSec,
+          threePreset: sc.threePreset || sc?.stageSpec?.threePreset,
           stageSpec: sc.stageSpec,
           beatCount: sc.beatCount,
           accentWords: sc.accentWords,
           recipe: i === 0 ? 'pull_out' : i === existingScenes.length - 1 ? 'freeze_end' : VALID_SHOT_KINDS[(i % 5) + 1],
         }))
       : [
-          { title: topic || '开场核心亮点', narration: `${topic || '项目核心价值'}，从构想到成片全面加速。`, recipe: 'pull_out', durationSec: defaultShotDur + 0.4 },
-          { title: '精准帧级呈现', narration: '智能编排运镜与安全区字幕，每一帧清晰可控。', recipe: 'push_in', durationSec: defaultShotDur + 0.4 },
-          { title: '立即高效交付', narration: '声画同步成片导出，直接面向全平台上线发布。', recipe: 'freeze_end', durationSec: defaultShotDur },
+          { title: topic || '开场核心亮点', narration: `${topic || '项目核心价值'}，从构想到成片全面加速。`, recipe: 'pull_out', threePreset: 'orbital-core', durationSec: defaultShotDur + 0.4 },
+          { title: '智能架构与多维空间', narration: '结合 Three.js 三维空间舞台与帧级确定性动效，让技术细节跃然屏上。', recipe: 'push_in', threePreset: 'cyber-terrain', durationSec: defaultShotDur + 0.2 },
+          { title: '高密度视听与节奏对齐', narration: '配音、参数化音效与背景配乐精准锁拍，杜绝拖沓与音画错位。', recipe: 'pan_across', threePreset: 'particle-vortex', durationSec: defaultShotDur },
+          { title: '精准帧级呈现', narration: '智能编排运镜与安全区字幕，每一帧清晰可控。', recipe: 'face_focus', threePreset: 'floating-monoliths', durationSec: defaultShotDur + 0.2 },
+          { title: '全链路自动化协同', narration: '四大智能体分工协作，一键完成从脚本、剪辑到混音与渲染。', recipe: 'impact', threePreset: 'chrono-helix', durationSec: defaultShotDur },
+          { title: '立即高效交付', narration: '声画同步成片导出，直接面向全平台上线发布。', recipe: 'freeze_end', threePreset: 'matrix-cubes', durationSec: defaultShotDur },
         ]
 
   const cleanStyle = normalizeVideoStyle(rawPlan?.style || style || 'tech')
@@ -375,13 +397,19 @@ export function repairPromoPlanRules(
           ? deriveVerbalSubtitleParts(nextNarration, null, '', 16)
           : existingScenes[idx]?.subChunks
 
+    const reqThree = String(s?.threePreset || s?.stageSpec?.threePreset || existingScenes[idx]?.threePreset || '').trim()
+    const chosenThreePreset = VALID_THREE_PRESETS.includes(reqThree)
+      ? reqThree
+      : VALID_THREE_PRESETS[idx % VALID_THREE_PRESETS.length]
+
     return {
       id: s?.id || existingScenes[idx]?.id || `scene-${String(idx + 1).padStart(2, '0')}`,
       title: (sanitizeSpokenNarration(s?.title || existingScenes[idx]?.title || `镜头 ${idx + 1}`) || `镜头 ${idx + 1}`).slice(0, 32),
       narration: nextNarration,
       subChunks: cleanSubChunks,
       accentWords: Array.isArray(s?.accentWords) && s.accentWords.length > 0 ? s.accentWords : existingScenes[idx]?.accentWords,
-      stageSpec: s?.stageSpec || existingScenes[idx]?.stageSpec,
+      threePreset: chosenThreePreset,
+      stageSpec: s?.stageSpec ? { ...s.stageSpec, threePreset: s.stageSpec.threePreset || chosenThreePreset } : existingScenes[idx]?.stageSpec,
       beatCount: Number.isFinite(Number(s?.beatCount)) ? Number(s.beatCount) : existingScenes[idx]?.beatCount,
       visualBlueprint: String(s?.visualBlueprint || existingScenes[idx]?.visualBlueprint || '').trim() || undefined,
       motionNotes: String(s?.motionNotes || s?.visualBlueprint || existingScenes[idx]?.motionNotes || '').trim() || undefined,
@@ -448,6 +476,7 @@ export function resolvePlanSchedule(plan, baseScript = {}) {
       narration: shot.narration || baseScene.narration || shot.title,
       subChunks: Array.isArray(shot.subChunks) ? shot.subChunks : baseScene.subChunks,
       accentWords: Array.isArray(shot.accentWords) ? shot.accentWords : baseScene.accentWords,
+      threePreset: shot.threePreset || shot?.stageSpec?.threePreset || baseScene.threePreset || VALID_THREE_PRESETS[idx % VALID_THREE_PRESETS.length],
       stageSpec: shot.stageSpec || baseScene.stageSpec,
       beatCount: Number.isFinite(Number(shot.beatCount)) ? Number(shot.beatCount) : baseScene.beatCount,
       visualBlueprint: shot.visualBlueprint || baseScene.visualBlueprint,
@@ -523,9 +552,9 @@ function safeExtractJson(text) {
       try {
         return JSON.parse(raw.slice(a, b + 1))
       } catch {
-        // Recover partial truncated shots array cleanly if relay clipped tail
+        // Recover partial truncated shots/scenes array cleanly if relay clipped tail
         const slice = raw.slice(a)
-        const shotsIdx = slice.indexOf('"shots"')
+        const shotsIdx = slice.indexOf('"shots"') >= 0 ? slice.indexOf('"shots"') : slice.indexOf('"scenes"')
         if (shotsIdx >= 0) {
           const lastObjEnd = slice.lastIndexOf('}')
           if (lastObjEnd > shotsIdx) {
@@ -660,7 +689,9 @@ ${pacingLabelHint}
           responseFormat: 'json',
         })
         const candidate = safeExtractJson(res?.text)
-        const repaired = candidate
+        const candShots = candidate?.shots || candidate?.scenes || candidate?.storyboard
+        const hasExplicitCandidateShots = Array.isArray(candShots) && candShots.length >= 2
+        const repaired = hasExplicitCandidateShots
           ? repairPromoPlanRules(candidate, { topic, style, assetsManifest, existingScript: scriptData, bgmMeta: effectiveBgm, narrationMode, pacingMode: effectivePacingMode })
           : null
         if (repaired && validatePromoPlan(repaired).ok) {

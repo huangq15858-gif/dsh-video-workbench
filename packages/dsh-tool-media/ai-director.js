@@ -16,6 +16,7 @@ import { buildBeatGrid, ensureProjectAudioAssets } from './audio-synth.js'
 const TRANSITIONS = ['iris-circle', 'block-wipe', 'glitch-cut', 'zoom-punch', 'light-wipe']
 const MOTIONS = ['zoom-in', 'pan-left', 'zoom-out', 'pan-right']
 const VFX_MODES = ['3d-depth+sweep', 'sparks+shockwave', 'halftone+glitch', 'grid+scan', 'radial-speedlines']
+const THREE_PRESETS = ['orbital-core', 'cyber-terrain', 'particle-vortex', 'floating-monoliths', 'chrono-helix', 'matrix-cubes']
 
 const STYLE_CONFIG = VIDEO_STYLES
 
@@ -203,6 +204,7 @@ export async function planVideoFromAssets(options = {}) {
     aiBadgePosition = 'top-right',
     aiBadgeText = '',
     pacingMode = 'auto',
+    visual3dMode = 'auto',
     fps: requestedFps,
     voiceId = 'auto',
     audience = '大众与创作者',
@@ -268,6 +270,7 @@ export async function planVideoFromAssets(options = {}) {
   })
 
   const scenesSpec = Array.isArray(options.scenesSpec) && options.scenesSpec.length > 0 ? options.scenesSpec : null
+  const defaultZeroAssetCount = String(coreTopic || '').trim().length >= 28 ? 6 : 4
   const sceneCount = scenesSpec
     ? scenesSpec.length
     : Math.max(
@@ -277,7 +280,7 @@ export async function planVideoFromAssets(options = {}) {
           Number(options.sceneCount) ||
             Math.max(
               noteChunks.length >= 4 ? Math.min(16, noteChunks.length) : 0,
-              orderedVisuals.length >= 4 ? Math.min(14, orderedVisuals.length + 2) : contentVisuals.length || 4,
+              orderedVisuals.length >= 4 ? Math.min(14, orderedVisuals.length + 2) : contentVisuals.length || defaultZeroAssetCount,
             ),
         ),
       )
@@ -497,6 +500,7 @@ export async function planVideoFromAssets(options = {}) {
       tailSec: Number.isFinite(Number(spec?.tailSec)) ? Number(spec.tailSec) : sceneCount >= 6 ? 0.32 : 0.65,
       tag,
       layout,
+      threePreset: spec?.threePreset || spec?.stageSpec?.threePreset || THREE_PRESETS[i % THREE_PRESETS.length],
       transition: spec?.transition || transitionPool[i % transitionPool.length],
       kenBurns: spec?.kenBurns || MOTIONS[i % MOTIONS.length],
       vfx: spec?.vfx || VFX_MODES[i % VFX_MODES.length],
@@ -568,6 +572,7 @@ export async function planVideoFromAssets(options = {}) {
     aiBadgePosition: String(aiBadgePosition || existing.aiBadgePosition || 'top-right'),
     aiBadgeText: String(aiBadgeText || existing.aiBadgeText || (typeof aiBadge === 'string' && aiBadge.trim() ? aiBadge : '') || ''),
     pacingMode: String(pacingMode || existing.pacingMode || 'auto'),
+    visual3dMode: String(visual3dMode || existing.visual3dMode || 'auto'),
     brandMark: resolvedBrandMark || undefined,
     workflowSteps: resolvedWorkflowSteps,
     audience,

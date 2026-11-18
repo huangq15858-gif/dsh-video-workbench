@@ -200,6 +200,8 @@ async function executeMultiAgentRunner(run, helpers) {
         aiBadgePosition: spec.aiBadgePosition || 'top-right',
         aiBadgeText: spec.aiBadgeText || (typeof spec.aiBadge === 'string' ? spec.aiBadge : ''),
         pacingMode: spec.pacingMode || 'auto',
+        visual3dMode: spec.visual3dMode || 'auto',
+        fps: Number(spec.fps) || 30,
         voiceId,
         narrationMode: spec.narrationMode || '',
         goal: spec.userPrompt || '',
@@ -298,6 +300,7 @@ async function executeMultiAgentRunner(run, helpers) {
               subtitleText: narrationChanged ? nextNarration : sanitizeSpokenNarration(shot.subtitleText || nextNarration),
               subChunks: Array.isArray(shot.subChunks) && shot.subChunks.length > 0 ? shot.subChunks.map((c) => sanitizeSpokenNarration(c)).filter(Boolean) : (narrationChanged ? undefined : oldSc.subChunks),
               accentWords: Array.isArray(shot.accentWords) ? shot.accentWords : oldSc.accentWords,
+              threePreset: shot.threePreset || shot?.stageSpec?.threePreset || oldSc.threePreset,
               stageSpec: shot.stageSpec || oldSc.stageSpec,
               beatCount: Number.isFinite(Number(shot.beatCount)) ? Number(shot.beatCount) : oldSc.beatCount,
               visualBlueprint: shot.visualBlueprint || oldSc.visualBlueprint,
@@ -355,6 +358,8 @@ async function executeMultiAgentRunner(run, helpers) {
     if (spec.aiBadgePosition) sAfterDir.aiBadgePosition = String(spec.aiBadgePosition)
     if (spec.aiBadgeText !== undefined) sAfterDir.aiBadgeText = String(spec.aiBadgeText)
     if (spec.pacingMode) sAfterDir.pacingMode = String(spec.pacingMode)
+    if (spec.visual3dMode) sAfterDir.visual3dMode = String(spec.visual3dMode)
+    if (spec.fps) sAfterDir.fps = Number(spec.fps) || 30
     if (spec.avatarLayout) sAfterDir.avatarLayout = spec.avatarLayout
     writeScriptJson(absDir, sAfterDir)
     updateTask('t-director', {
@@ -782,8 +787,8 @@ async function executeMultiAgentRunner(run, helpers) {
             absDir,
             lockedScript: curScript,
             llmConfig: spec.llmOverride || {},
-            batchSize: 3,
-            concurrency: 1,
+            batchSize: 4,
+            concurrency: 2,
             maxRepairRounds: Math.max(1, Math.min(3, Number(llmSummary.maxRepairRounds) || 2)),
             signal,
             onProgress: (_stage, pct, msg) => {
@@ -832,13 +837,18 @@ async function executeMultiAgentRunner(run, helpers) {
           }
         }
 
-        if (repairRes?.ok && Number(repairRes.authoredBatchCount || 0) > 0) {
+        const hasValidAiCode =
+          engine === 'remotion'
+            ? Number(repairRes?.authoredBatchCount || 0) > 0
+            : Boolean(repairRes?.files?.['index.html'])
+
+        if (repairRes?.ok && hasValidAiCode) {
           curScript.authoringMode = 'ai-coded'
           curScript.aiMeta = {
             ...(curScript.aiMeta || {}),
             model: llmSummary.model,
             protocol: llmSummary.protocol,
-            authoredBatchCount: Number(repairRes.authoredBatchCount || 0),
+            authoredBatchCount: Number(repairRes.authoredBatchCount || 1),
             totalBatches: Number(repairRes.totalBatches || 1),
             isolatedBatches: repairRes.isolatedBatches || [],
             batchErrors: repairRes.batchErrors || [],
@@ -846,9 +856,11 @@ async function executeMultiAgentRunner(run, helpers) {
             builtAt: new Date().toISOString(),
           }
           writeScriptJson(absDir, curScript)
-          try {
-            writeFileSync(join(absDir, 'index.html'), buildRichHtmlVideo(curScript), 'utf8')
-          } catch {}
+          if (engine === 'remotion') {
+            try {
+              writeFileSync(join(absDir, 'index.html'), buildRichHtmlVideo(curScript), 'utf8')
+            } catch {}
+          }
           mkdirSync(join(absDir, 'output'), { recursive: true })
           writeFileSync(
             join(absDir, 'output', 'ai_build_log.json'),
