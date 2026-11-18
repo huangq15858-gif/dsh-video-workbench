@@ -18,6 +18,18 @@ function endpoint(engineId = 'indextts25') {
 
 export async function getTtsServerHealth(timeoutMs = 2500, engineId = '') {
   const spec = resolveTtsEngineSpec(engineId)
+  if (spec.kind === 'windows-sapi') {
+    const ok = process.platform === 'win32'
+    return {
+      reachable: ok,
+      ready: ok,
+      engine: spec.id,
+      engineName: spec.name,
+      kind: spec.kind,
+      vramBadge: spec.vramBadge,
+      message: ok ? 'Windows 系统内置语音就绪（0 显存纯 CPU）' : '仅支持 Windows 平台',
+    }
+  }
   if (spec.kind === 'openai-tts' || spec.kind === 'http-json') {
     const ep = String(spec.endpoint || '').trim()
     if (!ep) return { reachable: false, ready: false, engine: spec.id, engineName: spec.name, kind: spec.kind, message: '未填写接口地址' }
@@ -208,7 +220,7 @@ function spawnServer(engineId = 'indextts25') {
  */
 export async function ensureTtsServer({ waitMs = 300_000, onWait, engineId = '' } = {}) {
   const spec = resolveTtsEngineSpec(engineId)
-  if (!['indextts25', 'indextts2', 'gptvoice'].includes(spec.kind)) {
+  if (spec.kind === 'windows-sapi' || !['indextts25', 'indextts2', 'gptvoice'].includes(spec.kind)) {
     return await getTtsServerHealth(2500, spec.id)
   }
   const h = await getTtsServerHealth(2500, spec.id)

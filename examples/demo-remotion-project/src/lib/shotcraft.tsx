@@ -1258,6 +1258,7 @@ export interface ThreeCyberStageProps {
   opacity?: number
   seed?: number
   wireframe?: boolean
+  lowSpecSafe?: boolean
   style?: React.CSSProperties
 }
 
@@ -1282,11 +1283,13 @@ export const ThreeCyberStage: React.FC<ThreeCyberStageProps> = ({
   opacity = 0.88,
   seed = 1,
   wireframe = true,
+  lowSpecSafe = false,
   style = {},
 }) => {
   const frame = useCurrentFrame()
   const { fps, width, height } = useVideoConfig()
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
+  const isLowSpec = Boolean(lowSpecSafe || (typeof globalThis !== 'undefined' && (globalThis as any).__DSH_LOW_SPEC_SAFE))
 
   const resolvedPreset: ThreeStagePreset =
     preset && preset !== 'auto' && THREE_STAGE_PRESETS.includes(preset as ThreeStagePreset)
@@ -1299,8 +1302,9 @@ export const ThreeCyberStage: React.FC<ThreeCyberStageProps> = ({
     const ctx = canvas.getContext('2d')
     if (!ctx) return
 
-    const w = width || 1920
-    const h = height || 1080
+    const scaleLow = isLowSpec ? 0.72 : 1
+    const w = Math.max(320, Math.round((width || 1920) * scaleLow))
+    const h = Math.max(320, Math.round((height || 1080) * scaleLow))
     if (canvas.width !== w) canvas.width = w
     if (canvas.height !== h) canvas.height = h
 
@@ -1631,7 +1635,8 @@ export const ThreeCyberStage: React.FC<ThreeCyberStageProps> = ({
     }
 
     // 4. 3D Starfield / Neural Vortex Particles & Synaptic Connections
-    const pCount = resolvedPreset === 'particle-vortex' ? 110 : 56
+    const rawPCount = resolvedPreset === 'particle-vortex' ? 110 : 56
+    const pCount = isLowSpec ? Math.round(rawPCount * 0.55) : rawPCount
     const projNodes: Array<{ x: number; y: number; z: number; r: number; isGold: boolean }> = []
     for (let pi = 0; pi < pCount; pi++) {
       const r1 = detRand(pi * 3.1 + seed)
@@ -1771,6 +1776,7 @@ export interface FreeformThreeStageProps {
   beatPulse?: number
   durationInFrames?: number
   seed?: number
+  lowSpecSafe?: boolean
   style?: React.CSSProperties
 }
 
@@ -1784,11 +1790,13 @@ export const FreeformThreeStage: React.FC<FreeformThreeStageProps> = ({
   beatPulse = 0,
   durationInFrames = 120,
   seed = 1,
+  lowSpecSafe = false,
   style = {},
 }) => {
   const frame = useCurrentFrame()
   const { fps, width, height } = useVideoConfig()
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
+  const isLowSpec = Boolean(lowSpecSafe || (typeof globalThis !== 'undefined' && (globalThis as any).__DSH_LOW_SPEC_SAFE))
 
   if (typeof buildScene !== 'function') {
     return (
@@ -1800,6 +1808,7 @@ export const FreeformThreeStage: React.FC<FreeformThreeStageProps> = ({
         opacity={opacity}
         beatPulse={beatPulse}
         seed={seed}
+        lowSpecSafe={isLowSpec}
         style={style}
       />
     )
@@ -1811,8 +1820,9 @@ export const FreeformThreeStage: React.FC<FreeformThreeStageProps> = ({
     const ctx = canvas.getContext('2d')
     if (!ctx) return
 
-    const w = width || 1920
-    const h = height || 1080
+    const scaleLow = isLowSpec ? 0.72 : 1
+    const w = Math.max(320, Math.round((width || 1920) * scaleLow))
+    const h = Math.max(320, Math.round((height || 1080) * scaleLow))
     if (canvas.width !== w) canvas.width = w
     if (canvas.height !== h) canvas.height = h
 

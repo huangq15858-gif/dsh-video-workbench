@@ -36,7 +36,7 @@
       "role": "host",
       "voiceId": "pack-中年-男声-男-专题-纪录-旁白",
       "voiceLocked": false,
-      "voiceMatchReason": "AI 自动匹配: [中年-男声] 男-专题 纪录 旁白 [匹配度 99% — 黄金参考时长(8.52s) + 情绪支持(平静) + 科技/专业解说语境 + 广播级解说音色]",
+      "voiceMatchReason": "AI 自动匹配: [中年-男声] 男-专题 纪录 旁白 [匹配度 99% — 黄金参考时长(8.52s) + 全片主讲连贯音色 + 情绪支持(平静) + 教程实战讲解语境 + 科技/专业解说语境 + 广播级解说音色]",
       "visualPrompt": "3D 透视浮动卡片环绕聚拢，配合逐字弹性冲击标题与光束扫过。",
       "audioFile": "",
       "durationSec": 4.5,
@@ -116,7 +116,7 @@
       "role": "storyteller",
       "voiceId": "pack-中年-男声-男-专题-纪录-旁白",
       "voiceLocked": false,
-      "voiceMatchReason": "AI 自动匹配: [中年-男声] 男-专题 纪录 旁白 [匹配度 99% — 黄金参考时长(8.52s) + 情绪支持(高兴) + 科技/专业解说语境 + 广播级解说音色]",
+      "voiceMatchReason": "AI 自动匹配: [中年-男声] 男-专题 纪录 旁白 [匹配度 99% — 黄金参考时长(8.52s) + 情绪支持(高兴) + 教程实战讲解语境 + 科技/专业解说语境 + 广播级解说音色]",
       "visualPrompt": "动态 SVG 节点拓扑与贝塞尔光子脉冲随节拍弹簧跃动。",
       "audioFile": "",
       "durationSec": 5,
@@ -180,7 +180,7 @@
       "role": "narrator",
       "voiceId": "pack-中年-男声-男-专题-纪录-旁白",
       "voiceLocked": false,
-      "voiceMatchReason": "AI 自动匹配: [中年-男声] 男-专题 纪录 旁白 [匹配度 99% — 黄金参考时长(8.52s) + 角色契合(narrator) + 科技/专业解说语境 + 广播级解说音色]",
+      "voiceMatchReason": "AI 自动匹配: [中年-男声] 男-专题 纪录 旁白 [匹配度 99% — 黄金参考时长(8.52s) + 全片主讲连贯音色 + 角色契合(narrator) + 教程实战讲解语境 + 科技/专业解说语境 + 广播级解说音色]",
       "visualPrompt": "全息 HUD 环形仪表盘与 TSX 代码流同步滚动，定格品牌印章。",
       "audioFile": "",
       "durationSec": 4.5,
@@ -240,5 +240,5 @@
   "quality": "1080p",
   "totalDurationSec": 14,
   "totalDurationInFrames": 420,
-  "updatedAt": "2026-11-18T09:39:21.202Z"
+  "updatedAt": "2026-11-18T11:30:18.906Z"
 }

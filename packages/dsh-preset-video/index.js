@@ -2,7 +2,12 @@ import { writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import {
   ensureWin11ProjectGuards,
+  loadHardwarePreferences,
   PACKAGE_ROOT,
+  probeHardwareProfile,
+  REPO_ROOT,
+  resolveLowSpecPolicy,
+  saveHardwarePreferences,
   writeScriptJson,
 } from '../shared/index.js'
 import LocalTtsPlugin from '../dsh-tool-local-tts/index.js'
@@ -35,7 +40,16 @@ export const VIDEO_MAKER_SYSTEM_PROMPT = `你是 DeepSeek Harness「视频制作
 2. **商用合规字体栈**：\`"Noto Sans SC", "Source Han Serif SC Heavy", sans-serif\` 与 \`"JetBrains Mono", Consolas, monospace\`（禁止使用 \`Microsoft YaHei\` 等闭源商用系统字体）。
 3. **零硬编码敏感信息**：禁止在源码写出个人本地盘符路径或明文密钥。
 
-## 三、可用核心工具清单
+## 三、电脑配置要求与低配电脑保护机制（面向大众开源 · 严禁误拒低配用户）
+1. **硬件最低 vs 推荐要求（必须准确告知用户，切勿仅因“无独显/8GB内存”拒用插件）**：
+   - **最低可运行配置（开启低配保护模式）**：\`4 核 CPU\` · \`8 GB 内存（可用 ≥ 2.5 GB）\` · \`核显或无独显均可\` · \`3 GB 可用磁盘\`。工作台 Three.js 舞台基于 2D 安全光栅化，无 WebGL 上下文丢失崩溃风险；配音可选 **\`Windows 系统原生语音 (0 显存纯 CPU 开箱即用)\`**、**\`Edge-TTS\`** 或 **\`纯音乐卡点 (免 TTS)\`**。
+   - **流畅推荐配置**：\`8 核+ CPU\` · \`16 GB 内存\` · \`NVIDIA 6GB–8GB+ 显存\`（可流畅运行本地 IndexTTS-2.5 / GPT-SoVITS 与 1080p60 渲染）。
+   - **4K 旗舰配置**：\`12 核+ CPU\` · \`32 GB+ 内存\` · \`NVIDIA RTX 8GB–16GB+ 显存\`。
+2. **低配电脑保护机制**：当检测到内存/CPU/显存偏低或用户开启「低配保护模式 (\`lowSpecMode: "safe"\`)」时，工作台会自动将 Remotion 渲染降为 **单并发 + 128MB 轻缓存 + 延长渲染超时 + FFmpeg 限线程 \`veryfast\` 编码 + Three.js 粒子减载 + 必要时自动护航为 720p/1080p 30fps**。
+   - 若用户询问“我电脑配置够不够/为何提示配置低”，请先调用 \`check_hardware_profile\` 实测其 CPU、内存、显存与磁盘空间，并给出精准档位与「纯CPU配音/低配保护」方案。
+
+## 四、可用核心工具清单
+- 算力体检与低配保护：\`check_hardware_profile\`（实时检测 CPU / 内存 / GPU 显存 / 磁盘与低配保护开关 \`auto\` / \`safe\` / \`performance\`）
 - 素材与智能剪辑：\`import_assets\`、\`list_assets\`、\`curate_and_edit_assets\`（ffmpeg 裁切构图、调色增强、抠图匹配）、\`generate_sfx_bgm\`、\`plan_video_from_assets\`、\`produce_video\`、\`import_vendor_motion\`
 - 多 Agent 协同与数字人：\`run_agent_pipeline\`（⚡ 一键全自动出片 4-Agent 流水线：策划导演 -> 素材剪辑 -> 配音混音 -> 动效质检）、\`generate_avatar\`（透明通道 yuva420p 克隆真人 / 纯 AI 数字人口播叠层）
 - 模型与 AI 编程：\`get_llm_config\`、\`configure_llm_model\`、\`ai_master_voice\`、\`ai_create_video\`、\`ai_refine_scene\`、\`video_qa\`
@@ -168,6 +182,57 @@ export function scaffoldVideoProject(projectDir, options = {}) {
 export const name = 'dsh-preset-video'
 
 export function apply(ctx) {
+  // 0. Register `check_hardware_profile` tool so DSH Assistant can verify PC specs & low-spec protection accurately
+  if (ctx?.tools && typeof ctx.tools.register === 'function') {
+    try {
+      ctx.tools.register({
+        name: 'check_hardware_profile',
+        description:
+          'Probe host PC hardware (CPU cores, total/free RAM, GPU VRAM, disk space), return minimum vs recommended requirements, recommend optimal TTS engine for low-spec PCs, and inspect or update Low-Spec Protection mode (auto | safe | performance).',
+        parameters: {
+          type: 'object',
+          properties: {
+            lowSpecMode: {
+              type: 'string',
+              enum: ['auto', 'safe', 'performance'],
+              description: 'Optional mode update: auto (adaptive protection), safe (forced low-spec protection), performance (full multi-tab speed).',
+            },
+            requestedQuality: {
+              type: 'string',
+              description: 'Optional target quality to evaluate protection policy against (720p, 1080p, 2k, 4k).',
+            },
+            requestedFps: {
+              type: 'number',
+              description: 'Optional target fps (30 or 60).',
+            },
+          },
+          additionalProperties: false,
+        },
+        output: {
+          schema: { type: 'object', additionalProperties: true },
+        },
+        timeoutMs: 15_000,
+        isReadOnly: () => true,
+        isConcurrencySafe: () => true,
+        async execute(args = {}) {
+          if (args.lowSpecMode) {
+            saveHardwarePreferences(REPO_ROOT, { lowSpecMode: args.lowSpecMode })
+          }
+          const hardware = probeHardwareProfile({ targetDir: REPO_ROOT, forceRefresh: true })
+          const pref = loadHardwarePreferences(REPO_ROOT)
+          const policy = resolveLowSpecPolicy({
+            repoRoot: REPO_ROOT,
+            hardware,
+            modePref: pref.lowSpecMode,
+            requestedQuality: args.requestedQuality || '1080p',
+            requestedFps: Number(args.requestedFps) || 30,
+          })
+          return { ok: true, hardware, preferences: pref, policy }
+        },
+      })
+    } catch {}
+  }
+
   // 1. Register local TTS, Video Suite, and Media Production tools directly in current context
   for (const subPlugin of [LocalTtsPlugin, AvatarPlugin, VideoSuitePlugin, MediaPlugin]) {
     try {

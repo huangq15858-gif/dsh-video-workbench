@@ -279,11 +279,11 @@ export async function planVideoFromAssets(options = {}) {
     : Math.max(
         3,
         Math.min(
-          16,
+          48,
           Number(options.sceneCount) ||
             Math.max(
-              noteChunks.length >= 4 ? Math.min(16, noteChunks.length) : 0,
-              orderedVisuals.length >= 4 ? Math.min(14, orderedVisuals.length + 2) : contentVisuals.length || defaultZeroAssetCount,
+              noteChunks.length >= 4 ? Math.min(36, noteChunks.length) : 0,
+              orderedVisuals.length >= 4 ? Math.min(32, orderedVisuals.length + 2) : contentVisuals.length || defaultZeroAssetCount,
             ),
         ),
       )
@@ -506,6 +506,7 @@ export async function planVideoFromAssets(options = {}) {
       subtitleLine,
       emotion: spec?.emotion || (isFirst || isLast ? '激昂' : st.emotion),
       role: spec?.role || st.role,
+      speechRate: Number(spec?.speechRate || (isFirst || isLast ? 1.05 : 1.0)),
       voiceId: spec?.voiceId || voiceId || 'auto',
       voiceLeadSec: Number.isFinite(Number(spec?.voiceLeadSec)) ? Number(spec.voiceLeadSec) : sceneCount >= 6 ? 0.22 : 0.35,
       tailSec: Number.isFinite(Number(spec?.tailSec)) ? Number(spec.tailSec) : sceneCount >= 6 ? 0.32 : 0.65,

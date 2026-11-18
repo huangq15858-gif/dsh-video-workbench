@@ -210,32 +210,32 @@ export const PACING_PROFILES = {
     id: 'calm',
     label: '舒缓叙事（故事/品牌/教学）',
     minDurSec: 3.8,
-    maxDurSec: 7.5,
-    shotsPerMin: 10,
+    maxDurSec: 12.0,
+    shotsPerMin: 9,
     minShots: 6,
-    maxShots: 14,
+    maxShots: 28,
     allowHalfBeatBlitz: false,
-    ruleHint: '每镜保持 4.2~7.5 秒从容留白与自然呼吸，让观众充分理解故事情绪与画面细节，切忌急促闪切。',
+    ruleHint: '每镜保持 4.5~10 秒从容留白与自然呼吸，让观众充分理解故事情绪与画面细节，切忌急促闪切。',
   },
   balanced: {
     id: 'balanced',
     label: '稳健解说（产品功能/教程/评测）',
     minDurSec: 2.8,
-    maxDurSec: 5.5,
-    shotsPerMin: 15,
+    maxDurSec: 12.0,
+    shotsPerMin: 12,
     minShots: 10,
-    maxShots: 18,
+    maxShots: 36,
     allowHalfBeatBlitz: false,
-    ruleHint: '以产品功能清晰传达为先：开场与高潮结尾可轻快收束（2.2~3.0s），功能讲解与界面实拍保持 3.2~5.5s 舒适节奏，字数适中易读、不赶语速。',
+    ruleHint: '以产品功能与操作逻辑清晰传达为先：开场与高潮结尾可轻快收束（2.5~3.5s），每个功能模块讲解与界面实拍保持 4.0~12.0s 舒适节奏，口播完整易懂、不赶语速。',
   },
   dynamic: {
     id: 'dynamic',
     label: '高燃快节奏（历史史诗/卡点 MV/快闪预告）',
     minDurSec: 0.26,
-    maxDurSec: 3.6,
+    maxDurSec: 5.5,
     shotsPerMin: 24,
     minShots: 18,
-    maxShots: 36,
+    maxShots: 48,
     allowHalfBeatBlitz: true,
     ruleHint: '高密度快节奏拆镜：常规叙事设 1.3~3.0s（2~4 拍），高潮冲击/鼓点突降(drops)/转折闪切可设 0.5 拍(0.33s) 或 1 拍(0.67s)，紧密踩准音乐节拍。',
   },
@@ -278,7 +278,7 @@ export function validatePromoPlan(plan) {
     plan.narrationMode === 'tts-beat-sync' ||
     plan.narrationMode === 'subtitle-mv'
   const minDur = isBeatNarrative ? 0.26 : 1.5
-  const maxTransitions = isBeatNarrative ? 64 : 8
+  const maxTransitions = isBeatNarrative ? 64 : Math.max(12, Math.min(64, shots.length))
 
   let nonCutTransitions = 0
   for (let i = 0; i < shots.length; i++) {
@@ -338,8 +338,8 @@ export function repairPromoPlanRules(
   const explicitSlowPacing = (explicitPacing === 'calm' || explicitPacing === 'balanced') && !isBeatMode
   const isNarrativeMv = (!explicitSlowPacing && mediaItems.length === 0 && resolvedPacing.id === 'dynamic') || isBeatMode || resolvedPacing.id === 'dynamic'
   const minDurClamp = isNarrativeMv ? 0.26 : resolvedPacing.id === 'calm' ? 2.4 : 1.5
-  const defaultShotDur = resolvedPacing.id === 'calm' ? 5.2 : resolvedPacing.id === 'balanced' ? 3.8 : 2.6
-  const maxTransitionsLimit = isNarrativeMv ? 64 : 8
+  const defaultShotDur = resolvedPacing.id === 'calm' ? 5.2 : resolvedPacing.id === 'balanced' ? 4.2 : 2.6
+  const maxTransitionsLimit = isNarrativeMv ? 64 : Math.max(12, Math.min(64, rawPlan?.shots?.length || existingScenes.length || 24))
   const candidateShots =
     Array.isArray(rawPlan?.shots) && rawPlan.shots.length > 0
       ? rawPlan.shots
@@ -399,7 +399,7 @@ export function repairPromoPlanRules(
     const spec = PROMO_SHOT_RECIPES[recipeKey]
 
     const durRaw = Number(s?.durationSec || existingScenes[idx]?.durationSec || defaultShotDur)
-    const durationSec = Math.max(minDurClamp, Math.min(30, Number.isFinite(durRaw) ? durRaw : defaultShotDur))
+    const durationSec = Math.max(minDurClamp, Math.min(60, Number.isFinite(durRaw) ? durRaw : defaultShotDur))
     const fromScale = Math.max(0.95, Math.min(1.25, Number(s?.fromScale || spec.fromScale)))
     const toScale = Math.max(0.95, Math.min(1.25, Number(s?.toScale || spec.toScale)))
 
@@ -464,7 +464,22 @@ export function repairPromoPlanRules(
       beatCount: Number.isFinite(Number(s?.beatCount)) ? Number(s.beatCount) : existingScenes[idx]?.beatCount,
       visualBlueprint: String(s?.visualBlueprint || existingScenes[idx]?.visualBlueprint || '').trim() || undefined,
       motionNotes: String(s?.motionNotes || s?.visualBlueprint || existingScenes[idx]?.motionNotes || '').trim() || undefined,
-      emotion: String(s?.emotion || existingScenes[idx]?.emotion || (idx === rawShots.length - 1 ? '激昂' : '平静')),
+      emotion: String(s?.emotion || existingScenes[idx]?.emotion || (idx === 0 ? '热情' : idx === rawShots.length - 1 ? '激昂' : '自信')),
+      role: String(s?.role || existingScenes[idx]?.role || 'narrator'),
+      speechRate: Number(
+        Math.max(
+          0.78,
+          Math.min(
+            1.28,
+            Number(
+              s?.speechRate ||
+                s?.speed ||
+                existingScenes[idx]?.speechRate ||
+                (idx === 0 || idx === rawShots.length - 1 ? 1.05 : 1.0),
+            ) || 1.0,
+          ),
+        ).toFixed(2),
+      ),
       recipe: recipeKey,
       layout: chosenLayout,
       kenBurns: spec.kenBurns,
@@ -533,6 +548,8 @@ export function resolvePlanSchedule(plan, baseScript = {}) {
       visualBlueprint: shot.visualBlueprint || baseScene.visualBlueprint,
       motionNotes: shot.motionNotes || shot.visualBlueprint || baseScene.motionNotes,
       emotion: shot.emotion || baseScene.emotion || '平静',
+      role: shot.role || baseScene.role || 'narrator',
+      speechRate: Number(shot.speechRate || baseScene.speechRate || 1.0),
       layout: shot.layout || 'media-split-motion',
       kenBurns: shot.kenBurns || 'zoom-in',
       transition: normalizeTransitionKind(shot.transition || 'iris-circle', idx, plan?.mode === 'narrative-mv' || Boolean(plan?.beatSync)),
@@ -707,39 +724,48 @@ export async function runSchemaDirectorWithDegradation({
                 highlights: s.highlights,
               })),
         }
-        const targetSpanSec = Number(scriptData?.totalDurationSec) || Number(effectiveBgm?.durationSec) || 60
+        const rawGoalText = `${topic || ''} ${scriptData?.title || ''} ${scriptData?.goal || ''} ${noteSummaries || ''}`
+        const isComprehensiveUnlimited = /不限制时长|不限时长|全量教程|完整教程|全功能教程|从头到尾教程|全部功能板块/.test(rawGoalText) || noteSummaries.length >= 420 || mediaNames.length >= 6
+        const targetSpanSec = Number(scriptData?.totalDurationSec) || Number(effectiveBgm?.durationSec) || (isComprehensiveUnlimited ? 160 : 60)
         const approxShots = Math.round((targetSpanSec / 60) * pacingProfile.shotsPerMin)
-        const desiredZeroShotsMin = Math.max(pacingProfile.minShots, Math.min(pacingProfile.maxShots - 2, approxShots - 2))
-        const desiredZeroShotsMax = Math.min(pacingProfile.maxShots, desiredZeroShotsMin + (pacingProfile.id === 'dynamic' ? 6 : 4))
-        const desiredUiShotsMin = Math.max(pacingProfile.minShots, Math.min(pacingProfile.maxShots - 2, approxShots - 2))
-        const desiredUiShotsMax = Math.min(pacingProfile.maxShots, desiredUiShotsMin + 4)
-        const isHistoricalPrompt = /历史|霸王|项羽|秦|汉|楚|三国|唐|宋|明|古风|武侠|战役|将军|帝王|演义/i.test(
-          `${topic || ''} ${scriptData?.title || ''} ${scriptData?.goal || ''} ${noteSummaries || ''}`,
-        )
-        const pacingLabelHint = `当前选用节奏方案【${pacingProfile.label}】：${pacingProfile.ruleHint}`
+        const desiredZeroShotsMin = isComprehensiveUnlimited
+          ? Math.max(12, Math.min(pacingProfile.maxShots - 6, approxShots))
+          : Math.max(pacingProfile.minShots, Math.min(pacingProfile.maxShots - 2, approxShots - 2))
+        const desiredZeroShotsMax = Math.min(pacingProfile.maxShots, desiredZeroShotsMin + (isComprehensiveUnlimited ? 10 : pacingProfile.id === 'dynamic' ? 6 : 4))
+        const desiredUiShotsMin = isComprehensiveUnlimited
+          ? Math.max(14, Math.min(20, mediaNames.length * 2))
+          : Math.max(pacingProfile.minShots, Math.min(pacingProfile.maxShots - 2, approxShots - 2))
+        const desiredUiShotsMax = isComprehensiveUnlimited
+          ? Math.min(pacingProfile.maxShots, desiredUiShotsMin + 8)
+          : Math.min(pacingProfile.maxShots, desiredUiShotsMin + 4)
+        const isHistoricalPrompt = /历史|霸王|项羽|秦|汉|楚|三国|唐|宋|明|古风|武侠|战役|将军|帝王|演义/i.test(rawGoalText)
+        const unlimitedDurationHint = isComprehensiveUnlimited
+          ? '\n- **【不限制时长模式】**：用户明确需要完整详细的全功能教程/长片，请**不要强行压缩成 60 秒短片**！请按章节与功能模块逐一拆镜（16~24 镜、总时长 2.5~4.5+ 分钟精炼讲透），每镜口播讲透操作步骤、交互逻辑与原理；并为每幕贴心标注 `emotion`（温和/自信/高兴/激昂/严肃）与 `speechRate`（0.92~1.12 语速倍率）！'
+          : ''
+        const pacingLabelHint = `当前选用节奏方案【${pacingProfile.label}】：${pacingProfile.ruleHint}${unlimitedDurationHint}`
         const systemPrompt = zeroVisualAssets
           ? `你是顶级音画动态导演 (AI Visual & Motion Director)，擅长 Opus 5.5 级无限制自由编程视频创作（Remotion + 原生 Three.js 3D 自由造景 + 动态矢量 SVG 创作 + 弹簧物理动画）。
 当前没有任何图片/视频素材 (zeroVisualAssets=true)，全部画面将由下游 AI 主程根据你为每一幕撰写的 \`visualBlueprint\`，使用 \`<FreeformThreeStage buildScene={(api) => { ... }} />\` + 动态 \`<svg>\` **100% 从零自由编写专属代码**（\`layout\` 字段仅作为断网/离线时的保底备份）！
 ${pacingLabelHint}
-输出严格紧凑 JSON：{ "version": "promo-plan/1", "mode": "${pacingProfile.id === 'dynamic' ? 'narrative-mv' : 'promo-ui'}", "beatSync": ${pacingProfile.id === 'dynamic' || narrationMode === 'subtitle-mv' || narrationMode === 'tts-beat-sync'}, "title": "...", "style": "cinematic|tech|emerald|energetic|documentary", "bpm": ${effectiveBgm?.bpm || (pacingProfile.id === 'calm' ? 88 : 110)}, "shots": [{ "id": "scene-01", "title": "...", "narration": "...", "accentWords": ["核心关键词"], "layout": "${isHistoricalPrompt ? 'narrative-diorama' : '3d-stage-opener|svg-architecture-flow|hud-telemetry-dashboard|vibecoding-spring-stage|metric-dashboard|workflow-steps|kinetic-impact|radial-climax'}", "threePreset": "orbital-core|cyber-terrain|particle-vortex|floating-monoliths|chrono-helix|matrix-cubes", "beatCount": ${pacingProfile.id === 'dynamic' ? 2 : 4}, "durationSec": ${pacingProfile.id === 'calm' ? 5.0 : pacingProfile.id === 'balanced' ? 3.8 : 2.0}, "transition": "${pacingProfile.id === 'calm' ? 'light-wipe' : 'slash-wipe'}", "visualBlueprint": "具体描述本镜专属的 3D 场景构建（如 3D 旋转地球跨洋飞线 / 3D 太阳系行星轨道 / 3D 芯片多层爆炸拆解 / 3D 柱状矩阵 / 3D 分子球棍 / 3D 机械齿轮等）与 2D 动态 SVG 视觉（如定制 K线/折线/雷达图 / 动态生长思维导图 / 公式推导 / 实时代码树 / 矢量插画等）及镜内弹簧物理演进", "highlights": ["要点1","要点2","要点3"]${isHistoricalPrompt ? ', "stageSpec": { "mood": "dawn-amber|crimson-war|indigo-night|ash-twilight|bronze-hall|jade-river|void-gold", "setting": "palace-stairs|mountain-camp|city-siege|river-gorge|vast-plain", "archetype": "hero-numeral|hero-stand|oath-break|cavalry-rush|slash-climax|duel-confront|farewell-tent|strategic-map|scroll-calligraphy|plaque-summary|channel-end", "heroNum": "24", "heroUnit": "岁", "bannerChar": "楚", "plaques": ["要点1","要点2"], "headline": "结尾主标题", "subheadline": "副标题" }' : ''} }] }。
+输出严格紧凑 JSON：{ "version": "promo-plan/1", "mode": "${pacingProfile.id === 'dynamic' ? 'narrative-mv' : 'promo-ui'}", "beatSync": ${pacingProfile.id === 'dynamic' || narrationMode === 'subtitle-mv' || narrationMode === 'tts-beat-sync'}, "title": "...", "style": "cinematic|tech|emerald|energetic|documentary", "bpm": ${effectiveBgm?.bpm || (pacingProfile.id === 'calm' ? 88 : 110)}, "shots": [{ "id": "scene-01", "title": "...", "narration": "...", "emotion": "热情|自信|温和|高兴|激昂|严肃|平静", "speechRate": 1.02, "role": "narrator|host", "accentWords": ["核心关键词"], "layout": "${isHistoricalPrompt ? 'narrative-diorama' : '3d-stage-opener|svg-architecture-flow|hud-telemetry-dashboard|vibecoding-spring-stage|metric-dashboard|workflow-steps|kinetic-impact|radial-climax'}", "threePreset": "orbital-core|cyber-terrain|particle-vortex|floating-monoliths|chrono-helix|matrix-cubes", "beatCount": ${pacingProfile.id === 'dynamic' ? 2 : 4}, "durationSec": ${pacingProfile.id === 'calm' ? 5.0 : pacingProfile.id === 'balanced' ? 4.5 : 2.0}, "transition": "${pacingProfile.id === 'calm' ? 'light-wipe' : 'slash-wipe'}", "visualBlueprint": "具体描述本镜专属的 3D 场景构建（如 3D 旋转地球跨洋飞线 / 3D 太阳系行星轨道 / 3D 芯片多层爆炸拆解 / 3D 柱状矩阵 / 3D 分子球棍 / 3D 机械齿轮等）与 2D 动态 SVG 视觉（如定制 K线/折线/雷达图 / 动态生长思维导图 / 公式推导 / 实时代码树 / 矢量插画等）及镜内弹簧物理演进", "highlights": ["要点1","要点2","要点3"]${isHistoricalPrompt ? ', "stageSpec": { "mood": "dawn-amber|crimson-war|indigo-night|ash-twilight|bronze-hall|jade-river|void-gold", "setting": "palace-stairs|mountain-camp|city-siege|river-gorge|vast-plain", "archetype": "hero-numeral|hero-stand|oath-break|cavalry-rush|slash-climax|duel-confront|farewell-tent|strategic-map|scroll-calligraphy|plaque-summary|channel-end", "heroNum": "24", "heroUnit": "岁", "bannerChar": "楚", "plaques": ["要点1","要点2"], "headline": "结尾主标题", "subheadline": "副标题" }' : ''} }] }。
 核心硬性要求：
-1. **贴合题材的拆镜与节奏**：拆分为 **${desiredZeroShotsMin}~${desiredZeroShotsMax} 个镜头**，${pacingProfile.ruleHint}（单镜口播长度与时长严格匹配，避免字多时长短）。
+1. **贴合题材的拆镜与节奏**：拆分为 **${desiredZeroShotsMin}~${desiredZeroShotsMax} 个镜头**，${pacingProfile.ruleHint}（单镜口播长度与时长严格匹配，避免字多时长短；为每幕设置合适的 \`emotion\` 语调情感与 \`speechRate\` 语速 \`0.90~1.12\`）。
 2. **零预设束缚，每个镜头写出独一无二的 \`visualBlueprint\`（下游 TSX 代码生成员直读！）**：不要受限于固定模板！请根据用户主题与本句台词，在 \`visualBlueprint\` 中自由设计最契合主题的专属 Three.js 3D 物体/轨道/空间与 2D 动态 SVG 图表/拓扑/插画动作；同时填好保底 \`layout\`（${isHistoricalPrompt ? '历史古风可用 `narrative-diorama`' : '轮换 `3d-stage-opener`、`svg-architecture-flow`、`hud-telemetry-dashboard`、`vibecoding-spring-stage`、`metric-dashboard`、`workflow-steps`、`radial-climax`'}）。
 3. **绝对禁止输出任何网址 URL、参考来源标注或 Markdown 链接**（严禁 \`utm_source\` 等；除非用户明确要求展示项目仓库网址）：所有旁白与字幕纯正中文短句，\`accentWords\` 标出 1~2 个核心高亮词。
 4. \`transition\` 仅允许 \`${VALID_TRANSITIONS.join(' | ')}\` 中的合法值（首镜用 \`cut\`）。`
-          : `你是顶级商业与开源技术宣传片/产品介绍导演，擅长依据题材调整叙事节奏。
+          : `你是顶级商业与开源技术宣传片/产品教程导演，擅长依据题材调整叙事节奏与声画表现。
 ${pacingLabelHint}
-输出严格紧凑 JSON：{ "version": "promo-plan/1", "beatSync": ${narrationMode === 'subtitle-mv' || narrationMode === 'tts-beat-sync' || pacingProfile.id === 'dynamic'}, "title": "...", "style": "tech|energetic|emerald|cinematic|documentary", "bpm": ${effectiveBgm?.bpm || (pacingProfile.id === 'calm' ? 92 : 114)}, "shots": [{ "id": "scene-01", "title": "...", "narration": "...", "subChunks": ["短句1","短句2"], "accentWords": ["亮点"], "visualBlueprint": "具体描述镜头动态构图：无截图时由 AI 主程用 FreeformThreeStage + 动态 SVG 自由编写专属 3D 场景与图表/架构；有截图时用 AppWindow+cams 局部聚焦推镜", "recipe": "push_in", "layout": "app-focus-shot|svg-architecture-flow|hud-telemetry-dashboard|vibecoding-spring-stage|workflow-steps|split-wipe-compare|metric-dashboard|multi-window-trio", "threePreset": "orbital-core|cyber-terrain|particle-vortex|floating-monoliths|chrono-helix|matrix-cubes", "windowTitle": "模块名称", "highlights": ["标签1","标签2"], "cams": [{ "t": 0, "fx": 0.5, "fy": 0.5, "z": 1.0 }, { "t": 0.55, "fx": 0.5, "fy": 0.48, "z": 1.15 }], "durationSec": ${pacingProfile.id === 'calm' ? 5.0 : pacingProfile.id === 'balanced' ? 3.8 : 2.5}, "transition": "${pacingProfile.id === 'calm' ? 'light-wipe' : 'slash-wipe'}", "assetRefs": [] }] }。
+输出严格紧凑 JSON：{ "version": "promo-plan/1", "beatSync": ${narrationMode === 'subtitle-mv' || narrationMode === 'tts-beat-sync' || pacingProfile.id === 'dynamic'}, "title": "...", "style": "tech|energetic|emerald|cinematic|documentary", "bpm": ${effectiveBgm?.bpm || (pacingProfile.id === 'calm' ? 92 : 114)}, "shots": [{ "id": "scene-01", "title": "...", "narration": "...", "subChunks": ["短句1","短句2"], "emotion": "高兴|自信|温和|激昂|严肃|平静", "speechRate": 1.0, "role": "narrator", "accentWords": ["亮点"], "visualBlueprint": "具体描述镜头动态构图：无截图时由 AI 主程用 FreeformThreeStage + 动态 SVG 自由编写专属 3D 场景与图表/架构；有截图时用 AppWindow+cams 局部聚焦推镜", "recipe": "push_in", "layout": "app-focus-shot|svg-architecture-flow|hud-telemetry-dashboard|vibecoding-spring-stage|workflow-steps|split-wipe-compare|metric-dashboard|multi-window-trio", "threePreset": "orbital-core|cyber-terrain|particle-vortex|floating-monoliths|chrono-helix|matrix-cubes", "windowTitle": "模块名称", "highlights": ["标签1","标签2"], "cams": [{ "t": 0, "fx": 0.5, "fy": 0.5, "z": 1.0 }, { "t": 0.55, "fx": 0.5, "fy": 0.48, "z": 1.15 }], "durationSec": ${pacingProfile.id === 'calm' ? 5.5 : pacingProfile.id === 'balanced' ? 4.8 : 2.5}, "transition": "${pacingProfile.id === 'calm' ? 'light-wipe' : 'slash-wipe'}", "assetRefs": [] }] }。
 核心硬性要求：
-1. **依应用场景适配节奏**：拆分为 **${desiredUiShotsMin}~${desiredUiShotsMax} 个镜头**，${pacingProfile.ruleHint} 口播文案口语自然、句式清晰。
-2. **虚实交替混剪（真实截图特写 + AI 自由编写 3D/SVG 视觉）**：软件截图/实拍场景填入 exact \`relativeAssets\` 路径并配 \`app-focus-shot / split-wipe-compare / workflow-steps / multi-window-trio\`；开篇钩子、原理剖析、行业数据或结尾镜头置 \`assetRefs: []\` 并写清独具创意的 \`visualBlueprint\`（由下游 AI 主程用 \`<FreeformThreeStage>\` + 动态 \`<svg>\` 自由编写专属 3D 场景与动态图表/架构）。
+1. **依应用场景适配节奏与声线情感**：拆分为 **${desiredUiShotsMin}~${desiredUiShotsMax} 个镜头**，${pacingProfile.ruleHint} 口播文案口语自然、句式清晰；为每幕设置贴合内容的 \`emotion\`（开场 \`高兴\`/\`激昂\`、操作步骤教学 \`温和\`/\`自信\`、注意事项/配置校验 \`严肃\`、总结展望 \`激昂\`）与 \`speechRate\`（重点快节奏 \`1.06~1.12\`、界面详解 \`0.95~1.00\`）。
+2. **虚实交替混剪（真实截图特写 + AI 自由编写 3D/SVG 视觉）**：软件截图/实拍场景填入 exact \`relativeAssets\` 路径并配 \`app-focus-shot / split-wipe-compare / workflow-steps / multi-window-trio\`；开篇钩子、架构原理剖析、工作流总览或结尾镜头置 \`assetRefs: []\` 并写清独具创意的 \`visualBlueprint\`（由下游 AI 主程用 \`<FreeformThreeStage>\` + 动态 \`<svg>\` 自由编写专属 3D 场景与动态图表/架构）。**务必严格忠实于用户输入的主题与真实截图界面：引用某张截图时必须解说该截图对应的真实模块与操作逻辑，严禁凭空编造毫无关系的物品或示例故事（如咖啡滤杯、无关商品等）**。
 3. **严禁网页参考来源注释**（\`utm_source\` 等），如主题要求展示项目自身开源 GitHub 地址请完整准确保留。\`transition\` 仅允许 ${VALID_TRANSITIONS.join('/')}。`
         const res = await callLlmChatFn({
           system: systemPrompt,
           messages: [{ role: 'user', content: JSON.stringify(prompt) }],
           temperature: zeroVisualAssets ? 0.4 : 0.28,
-          maxTokens: zeroVisualAssets ? 12500 : 6500,
-          timeoutMs: zeroVisualAssets ? 260_000 : 180_000,
+          maxTokens: isComprehensiveUnlimited || zeroVisualAssets ? 15000 : 8500,
+          timeoutMs: 300_000,
           responseFormat: 'json',
         })
         const candidate = safeExtractJson(res?.text)

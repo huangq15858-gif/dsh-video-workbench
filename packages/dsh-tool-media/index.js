@@ -5,7 +5,7 @@
  */
 import { join, resolve } from 'node:path'
 import { readScriptJson, writeScriptJson } from '../shared/index.js'
-import { executeGenerateSpeech } from '../dsh-tool-local-tts/index.js'
+import { executeGenerateSpeech, getActiveTtsEngineId } from '../dsh-tool-local-tts/index.js'
 import {
   importAssets,
   readAssets,
@@ -188,7 +188,8 @@ export async function produceFullVideo(options = {}) {
       text: s.narration,
       emotion: s.emotion || '平静',
       voiceId: s.voiceId || voiceId || 'auto',
-      engine: ttsEngine || process.env.DEFAULT_TTS_ENGINE || 'indextts25',
+      engine: ttsEngine || getActiveTtsEngineId(),
+      speed: Number(s.speechRate) || 1.0,
       fps: curScript.fps || 30,
       outputPath: join(absDir, 'audio', `${s.id}.wav`),
       scriptPath: absDir,

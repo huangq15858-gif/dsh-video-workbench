@@ -102,6 +102,25 @@ def load_engine(root):
         traceback.print_exc()
 
 
+EMOTION_PROMPT_MAP = {
+    "高兴": "开心明快、热情饱满地分享介绍",
+    "开心": "开心明快、热情饱满地分享介绍",
+    "兴奋": "兴奋惊喜、节奏明快地讲解亮点",
+    "激昂": "充满激情与感染力、坚定自信地演讲号召",
+    "热血": "热血激昂、铿锵有力地讲述",
+    "温和": "温柔亲切、耐心细致地讲解",
+    "温柔": "温柔亲切、舒缓自然地娓娓道来",
+    "亲切": "亲切友好、自然微笑着讲解",
+    "自信": "专业自信、条理清晰地阐述原理",
+    "专业": "专业自信、条理清晰地阐述原理",
+    "严肃": "严肃认真、稳重清晰地提醒注意事项",
+    "期待": "满怀期待、生机勃勃地引出下文",
+    "伤心": "低沉感伤、真挚动情地诉说",
+    "深沉": "沉稳低沉、富有磁性和仪式感地讲述",
+    "害怕": "紧张警惕、压低嗓音提醒风险",
+}
+
+
 def synthesize(payload):
     tts = STATE["tts"]
     text = (payload.get("text") or "").strip()
@@ -134,10 +153,11 @@ def synthesize(payload):
 
     if emo_audio and os.path.exists(emo_audio):
         kwargs["emo_audio_prompt"] = emo_audio
-        kwargs["emo_alpha"] = float(payload.get("emo_alpha", 0.6))
+        kwargs["emo_alpha"] = float(payload.get("emo_alpha", 0.65))
     elif emotion and emotion not in ("平静", "neutral") and STATE["use_qwen_emo"]:
         kwargs["use_emo_text"] = True
-        kwargs["emo_text"] = emotion
+        kwargs["emo_text"] = EMOTION_PROMPT_MAP.get(emotion.strip(), emotion.strip())
+        kwargs["emo_alpha"] = float(payload.get("emo_alpha", 0.65))
 
     with LOCK:
         tts.infer(**kwargs)

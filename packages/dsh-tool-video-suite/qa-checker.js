@@ -241,7 +241,7 @@ export async function runPostRenderQa({ projectDir, mp4Path, script, expectedWid
       'null',
       '-',
     ],
-    { timeoutMs: 60_000 },
+    { timeoutMs: Math.max(120_000, Math.round((expectedDurationSec || 60) * 2000)) },
   )
   const logText = `${filterRes.stderr || ''}\n${filterRes.stdout || ''}`
 

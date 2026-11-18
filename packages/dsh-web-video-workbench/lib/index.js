@@ -15,14 +15,18 @@ import { fileURLToPath } from 'node:url'
 import {
   computeSafeZonePreflight,
   loadEnv,
+  loadHardwarePreferences,
   PACKAGE_ROOT,
   probeAudioDuration,
+  probeHardwareProfile,
   readScriptJson,
   REPO_ROOT,
   resolveBinaries,
   resolveEnvPath,
+  resolveLowSpecPolicy,
   resolveVideoDimensions,
   runCommandRedirected,
+  saveHardwarePreferences,
   writeScriptJson,
 } from '../../shared/index.js'
 import {
@@ -469,6 +473,16 @@ export async function handleWorkbenchApiRequest(req) {
       const catalog = getVoiceCatalog()
       const activeTtsId = getActiveTtsEngineId()
       const ttsStatus = await getTtsServerHealth(1800, activeTtsId)
+      const hardwareProfile = probeHardwareProfile({ targetDir: REPO_ROOT })
+      const hardwarePreferences = loadHardwarePreferences(REPO_ROOT)
+      const hardwarePolicy = resolveLowSpecPolicy({
+        repoRoot: REPO_ROOT,
+        hardware: hardwareProfile,
+        modePref: hardwarePreferences.lowSpecMode,
+        requestedQuality: activeProject?.script?.quality || '1080p',
+        requestedFps: Number(activeProject?.script?.fps) || 30,
+        totalDurationSec: Number(activeProject?.script?.totalDurationSec) || 60,
+      })
       return jsonResponse({
         ok: true,
         workspaceRoot,
@@ -480,12 +494,45 @@ export async function handleWorkbenchApiRequest(req) {
         voiceCategories: catalog.categories,
         availableEmotions: Object.keys(catalog.emotionReferences),
         ttsStatus,
+        hardwareProfile,
+        hardwarePreferences,
+        hardwarePolicy,
         avatarTemplates: AVATAR_TEMPLATES,
         avatarProvider: getAvatarProviderSummary(),
         taskRuns: requestedProject ? taskManager.listRuns(requestedProject) : [],
         presetId: 'video-maker',
         presetName: '视频制作模式',
       })
+    }
+
+    // 1b. GET / POST /api/video-workbench/hardware (PC specs check + Low-Spec Protection toggle)
+    if (pathname === '/api/video-workbench/hardware') {
+      if (req.method === 'GET') {
+        const forceRefresh = url.searchParams.get('refresh') === '1'
+        const hardwareProfile = probeHardwareProfile({ targetDir: REPO_ROOT, forceRefresh })
+        const hardwarePreferences = loadHardwarePreferences(REPO_ROOT)
+        const hardwarePolicy = resolveLowSpecPolicy({
+          repoRoot: REPO_ROOT,
+          hardware: hardwareProfile,
+          modePref: hardwarePreferences.lowSpecMode,
+          requestedQuality: url.searchParams.get('quality') || '1080p',
+          requestedFps: Number(url.searchParams.get('fps')) || 30,
+        })
+        return jsonResponse({ ok: true, hardwareProfile, hardwarePreferences, hardwarePolicy })
+      }
+      if (req.method === 'POST') {
+        const body = await parseRequestJson(req)
+        const hardwarePreferences = saveHardwarePreferences(REPO_ROOT, { lowSpecMode: body.lowSpecMode || 'auto' })
+        const hardwareProfile = probeHardwareProfile({ targetDir: REPO_ROOT, forceRefresh: true })
+        const hardwarePolicy = resolveLowSpecPolicy({
+          repoRoot: REPO_ROOT,
+          hardware: hardwareProfile,
+          modePref: hardwarePreferences.lowSpecMode,
+          requestedQuality: body.quality || '1080p',
+          requestedFps: Number(body.fps) || 30,
+        })
+        return jsonResponse({ ok: true, hardwareProfile, hardwarePreferences, hardwarePolicy })
+      }
     }
 
     // 1c. GET / POST /api/video-workbench/llm-config & POST /llm-test
@@ -1215,6 +1262,7 @@ export async function handleWorkbenchApiRequest(req) {
         const result = await executeGenerateSpeech({
           text: body.text || scene.narration,
           emotion: body.emotion || scene.emotion || '平静',
+          speed: Number(body.speechRate || scene.speechRate || 1.0),
           voiceId: body.voiceId || scene.voiceId || data.defaultVoiceId || 'auto',
           engine: body.ttsEngine || getActiveTtsEngineId(),
           fps: data.fps || 30,
@@ -1248,6 +1296,7 @@ export async function handleWorkbenchApiRequest(req) {
             const res = await executeGenerateSpeech({
               text: scene.narration,
               emotion: scene.emotion || '平静',
+              speed: Number(scene.speechRate || body.speechRate || 1.0),
               voiceId: scene.voiceId || data.defaultVoiceId || 'auto',
               engine: body.ttsEngine || getActiveTtsEngineId(),
               fps: data.fps || 30,
@@ -1798,6 +1847,7 @@ export function apply(ctx) {
   ctx.inject(['connection'], (innerCtx) => {
     const routes = [
       { path: '/api/video-workbench/state', methods: ['GET'] },
+      { path: '/api/video-workbench/hardware', methods: ['GET', 'POST'] },
       { path: '/api/video-workbench/jobs', methods: ['GET'] },
       { path: '/api/video-workbench/llm-config', methods: ['GET', 'POST'] },
       { path: '/api/video-workbench/llm-test', methods: ['POST'] },

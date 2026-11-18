@@ -902,10 +902,12 @@ async function readResponseTextSafe(res) {
   return await res.text()
 }
 
-function isTransientLlmError(err, status = 0) {
+function isTransientLlmError(err, status = 0, timeoutMs = 0) {
   if ([429, 502, 503, 504, 524].includes(status)) return true
   const msg = String(err?.message || err || '').toLowerCase()
   const code = String(err?.code || err?.cause?.code || '').toLowerCase()
+  // Do not amplify long (>2m) client request timeouts with 3x inner retries
+  const allowTimeoutRetry = msg.includes('超时') && Number(timeoutMs) > 0 && Number(timeoutMs) <= 120_000
   return (
     msg.includes('fetch failed') ||
     msg.includes('network') ||
@@ -914,7 +916,7 @@ function isTransientLlmError(err, status = 0) {
     msg.includes('socket') ||
     msg.includes('other side closed') ||
     msg.includes('terminated') ||
-    msg.includes('超时') ||
+    allowTimeoutRetry ||
     code.includes('econnreset') ||
     code.includes('etimedout') ||
     code.includes('und_err')
@@ -1101,7 +1103,7 @@ export async function callLlmChat({
     } catch (err) {
       lastErr = err
       if (err?.name === 'AbortError' || signal?.aborted) throw err
-      if (attempt < maxAttempts && isTransientLlmError(err, resStatus)) {
+      if (attempt < maxAttempts && isTransientLlmError(err, resStatus, timeoutMs)) {
         await new Promise((r) => setTimeout(r, baseBackoffMs * attempt))
         continue
       }

@@ -203,15 +203,20 @@ export function buildAudioCoderPromptPackage({
 
 function parseJsonFromLlmText(rawText) {
   const cleaned = String(rawText || '').trim()
-  const fenced = cleaned.match(/```(?:json)?\s*([\s\S]*?)```/i)
-  const candidate = fenced ? fenced[1].trim() : cleaned
   try {
-    return JSON.parse(candidate)
+    return extractJsonFromLlmText(cleaned)
   } catch {
-    const start = candidate.indexOf('{')
-    const end = candidate.lastIndexOf('}')
-    if (start >= 0 && end > start) {
-      return JSON.parse(candidate.slice(start, end + 1))
+    // Recover raw JS block or lightly unquoted/trailing-comma JSON cleanly
+    const jsBlock = cleaned.match(/```(?:javascript|js)?\s*\n([\s\S]*?function\s+synthesizeBgm[\s\S]*?)\n```/i)
+    if (jsBlock?.[1]) {
+      return { files: { 'audio/ai_bgm_synth.js': jsBlock[1].trim() }, summary: 'AI DSP 代码块提取渲染' }
+    }
+    const funcStart = cleaned.indexOf('function synthesizeBgm')
+    if (funcStart >= 0) {
+      const slice = cleaned.slice(funcStart).replace(/["}\s]+$/, '')
+      if (slice.includes('ctx.left') && slice.includes('ctx.right')) {
+        return { files: { 'audio/ai_bgm_synth.js': slice }, summary: 'AI DSP 内联代码提取渲染' }
+      }
     }
     throw new Error('AI 配乐返回内容不是有效的 JSON')
   }

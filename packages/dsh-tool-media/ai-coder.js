@@ -12,11 +12,14 @@ import { dirname, join, normalize, resolve } from 'node:path'
 import {
   createAbortError,
   probeAudioDuration,
+  probeHardwareProfile,
   readScriptJson,
+  REPO_ROOT,
+  resolveLowSpecPolicy,
   resolveVideoDimensions,
   writeScriptJson,
 } from '../shared/index.js'
-import { executeGenerateSpeech, matchAllScenesInScript } from '../dsh-tool-local-tts/index.js'
+import { executeGenerateSpeech, getActiveTtsEngineId, matchAllScenesInScript } from '../dsh-tool-local-tts/index.js'
 import { executeVideoLint, executeVideoRender, runTypecheckOnProject, scanAiGeneratedCodeSandbox } from '../dsh-tool-video-suite/index.js'
 import { importAssets, readAssets } from './asset-manager.js'
 import {
@@ -404,7 +407,8 @@ export async function authorBatchedRemotionScenes({
   writeNarrativeDioramaRemotionLib(absDir)
 
   let completedCount = 0
-  const maxConc = Math.max(1, Math.min(3, Number(concurrency) || 1))
+  const hwBatchPolicy = resolveLowSpecPolicy({ repoRoot: REPO_ROOT })
+  const maxConc = Math.max(1, Math.min(hwBatchPolicy.batchCoderConcurrency || 3, Number(concurrency) || 3))
   let nextIdx = 0
 
   const worker = async () => {
@@ -440,8 +444,8 @@ export async function authorBatchedRemotionScenes({
             system: pkg.system,
             messages: [{ role: 'user', content: pkg.user }],
             temperature: attempt === 1 ? 0.35 : 0.25,
-            maxTokens: 14000,
-            timeoutMs: 240_000,
+            maxTokens: item.batchScenes.length >= 5 ? 16000 : 14000,
+            timeoutMs: 300_000,
             signal,
           })
           extracted = extractTsxFromReply(res?.text, item.filePath, item.exportName)
@@ -453,6 +457,7 @@ export async function authorBatchedRemotionScenes({
         } catch (err) {
           if (err?.name === 'AbortError' || signal?.aborted) throw err
           lastBatchErr = err?.message || 'LLM 调用异常'
+          if (lastBatchErr.includes('超时')) break
         }
         if (attempt < 2) {
           await new Promise((r) => setTimeout(r, 1500))
@@ -464,6 +469,9 @@ export async function authorBatchedRemotionScenes({
         item.error = lastBatchErr || '未知解析失败'
         item.code = `import React from 'react';\nexport const ${item.exportName}: Record<string, React.FC<any>> = {};\n`
       }
+      try {
+        writeFileSync(join(absDir, item.filePath), item.code, 'utf8')
+      } catch {}
       completedCount++
     }
   }
@@ -715,9 +723,17 @@ export async function runAiStudioPipeline(options = {}) {
     }
   }
 
+  const baseHwProfile = probeHardwareProfile({ targetDir: absDir })
+  const baseHwPolicy = resolveLowSpecPolicy({
+    repoRoot: REPO_ROOT,
+    hardware: baseHwProfile,
+    requestedQuality: quality,
+    requestedFps: Number(options.fps) || 30,
+    totalDurationSec: Number(options.targetDurationSec) || 60,
+  })
   const baseDims = resolveVideoDimensions({
     aspectRatio,
-    quality,
+    quality: baseHwPolicy.effectiveQuality || quality,
     width,
     height,
     topic: `${coreTopic} ${userPrompt}`,
@@ -920,6 +936,7 @@ export async function runAiStudioPipeline(options = {}) {
       narration,
       emotion: sc.emotion || '平静',
       role: sc.role || 'narrator',
+      speechRate: Number(sc.speechRate || prev?.speechRate || 1.0),
       voiceId: chosenVoice,
       media: matchedMedia,
       assetPaths: matchedMedia.map((m) => m.path),
@@ -996,8 +1013,9 @@ export async function runAiStudioPipeline(options = {}) {
       await executeGenerateSpeech({
         text: s.narration,
         emotion: s.emotion || '平静',
+        speed: Number(s.speechRate) || 1.0,
         voiceId: s.voiceId || voiceId || 'auto',
-        engine: ttsEngine || process.env.DEFAULT_TTS_ENGINE || 'indextts25',
+        engine: ttsEngine || getActiveTtsEngineId(),
         fps,
         outputPath: join(absDir, 'audio', `${s.id}.wav`),
         scriptPath: absDir,
@@ -1192,6 +1210,7 @@ export async function runAiStudioPipeline(options = {}) {
       fetchImpl,
       system: coderPkg.system,
       messages: [{ role: 'user', content: coderPkg.user }],
+      maxTokens: 15000,
       temperature: 0.35,
     })
     const parsedCode = extractJsonFromLlmText(codeRes.text)

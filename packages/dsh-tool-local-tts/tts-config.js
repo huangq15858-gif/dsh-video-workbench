@@ -35,6 +35,20 @@ export const BUILTIN_TTS_ENGINES = [
     description: '专为低显存 / 中低配显卡优化的轻量配音与音色克隆方案，兼容 api_v2.py 与 v1 接口。',
     supportsZeroShotClone: true,
   },
+  ...(process.platform === 'win32'
+    ? [
+        {
+          id: 'windows-sapi-cpu',
+          builtin: true,
+          kind: 'windows-sapi',
+          name: 'Windows 系统原生中文语音 (零显卡纯CPU)',
+          shortName: 'Windows 原生',
+          vramBadge: '0GB 显存 · 免下载开箱即用',
+          description: '直接调用 Windows 10/11 内置 System.Speech 中文语音引擎并支持语速调节，无独立显卡/低配电脑零配置立即可用。',
+          supportsZeroShotClone: false,
+        },
+      ]
+    : []),
 ]
 
 export const QUICK_TTS_TEMPLATES = [
@@ -181,7 +195,12 @@ export function loadTtsConfig(repoRoot = REPO_ROOT) {
     ? saved.customEngines.filter((e) => e && typeof e === 'object' && e.id)
     : []
   const envDefault = String(process.env.DEFAULT_TTS_ENGINE || '').trim()
-  const activeEngineId = String(saved.activeEngineId || envDefault || 'indextts25').trim() || 'indextts25'
+  const hasLocalGpuRoots = Boolean(
+    (envBuiltins.indextts25?.rootDir && existsSync(envBuiltins.indextts25.rootDir)) ||
+      (envBuiltins.gptvoice?.rootDir && existsSync(envBuiltins.gptvoice.rootDir)),
+  )
+  const autoFallbackDefault = !hasLocalGpuRoots && process.platform === 'win32' ? 'windows-sapi-cpu' : 'indextts25'
+  const activeEngineId = String(saved.activeEngineId || envDefault || autoFallbackDefault).trim() || autoFallbackDefault
   return {
     version: 1,
     activeEngineId,
@@ -339,7 +358,10 @@ export function resolveTtsEngineSpec(requestedEngine = '', repoRoot = REPO_ROOT)
     return {
       ...builtin,
       ...overrides,
-      endpoint: overrides.endpoint || (builtin.id === 'gptvoice' ? 'http://127.0.0.1:9881' : 'http://127.0.0.1:9880'),
+      endpoint:
+        builtin.kind === 'windows-sapi'
+          ? ''
+          : overrides.endpoint || (builtin.id === 'gptvoice' ? 'http://127.0.0.1:9881' : 'http://127.0.0.1:9880'),
     }
   }
 

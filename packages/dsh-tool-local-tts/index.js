@@ -234,6 +234,51 @@ async function synthesizeViaCustomCliTts(spec, vars, absOutputPath) {
   return { ok: true, provider: `${spec.id}-cli`, outputPath: absOutputPath }
 }
 
+async function synthesizeViaWindowsSapi(text, speed = 1.0, gender = 'neutral', absOutputPath = '') {
+  if (process.platform !== 'win32') {
+    throw new Error('Windows SAPI 引擎仅在 Windows 系统可用')
+  }
+  const tmpDir = join(REPO_ROOT, '.tmp')
+  mkdirSync(tmpDir, { recursive: true })
+  const stamp = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`
+  const tmpTxt = join(tmpDir, `sapi-${stamp}.txt`)
+  const tmpRawWav = join(tmpDir, `sapi-${stamp}.wav`)
+  writeFileSync(tmpTxt, String(text || '').trim(), 'utf8')
+
+  // System.Speech Rate range is -10..10 (roughly +-10% speed per step)
+  const sapiRate = Math.max(-6, Math.min(6, Math.round((Number(speed || 1.0) - 1.0) * 14)))
+  const psScript = [
+    '$ErrorActionPreference = "Stop"',
+    'Add-Type -AssemblyName System.Speech',
+    '$s = New-Object System.Speech.Synthesis.SpeechSynthesizer',
+    `$voices = $s.GetInstalledVoices() | Where-Object { $_.Enabled }`,
+    '$zh = $voices | Where-Object { $_.VoiceInfo.Culture.Name -like "zh*" } | Select-Object -First 1',
+    'if ($zh) { $s.SelectVoice($zh.VoiceInfo.Name) }',
+    `$s.Rate = ${sapiRate}`,
+    '$s.Volume = 100',
+    `$s.SetOutputToWaveFile('${tmpRawWav.replace(/'/g, "''")}')`,
+    `$txt = [System.IO.File]::ReadAllText('${tmpTxt.replace(/'/g, "''")}', [System.Text.Encoding]::UTF8)`,
+    '$s.Speak($txt)',
+    '$s.Dispose()',
+  ].join('; ')
+
+  try {
+    const run = await runCommandRedirected(
+      'powershell.exe',
+      ['-NoProfile', '-NonInteractive', '-Command', psScript],
+      { cwd: tmpDir, timeoutMs: 60_000 },
+    )
+    if (run.code !== 0 || !existsSync(tmpRawWav) || statSync(tmpRawWav).size < 128) {
+      throw new Error(`Windows 原生语音合成失败: ${(run.stderr || run.stdout || `exit ${run.code}`).slice(0, 300)}`)
+    }
+    await normalizeOutputToPcmWav(tmpRawWav, absOutputPath)
+    return { ok: true, provider: 'windows-sapi-cpu', outputPath: absOutputPath }
+  } finally {
+    try { rmSync(tmpTxt, { force: true }) } catch {}
+    try { rmSync(tmpRawWav, { force: true }) } catch {}
+  }
+}
+
 /**
  * Core execution function for `generate_speech`.
  * Synthesizes WAV via IndexTTS-2.5, IndexTTS-2, GPT-SoVITS, or user-configured custom HTTP/OpenAI/CLI TTS engines,
@@ -319,14 +364,32 @@ export async function executeGenerateSpeech(args = {}) {
   const bridgeScript = resolvePackagePath('scripts', 'tts-bridge.py')
   const placeholderPythonBin = resolveEnvPath('INDEXTTS_PYTHON', '') || resolveEnvPath('GPTVOICE_PYTHON', '') || 'python'
 
+  const explicitSpeed = Number(args.speed)
+  const explicitDurFactor = args.durationFactor !== undefined ? Number(args.durationFactor) : NaN
+  const sceneSpeed = Number(targetScene?.speechRate)
+  const effectiveSpeed =
+    Number.isFinite(explicitSpeed) && explicitSpeed > 0
+      ? Math.max(0.7, Math.min(1.4, explicitSpeed))
+      : Number.isFinite(explicitDurFactor) && explicitDurFactor > 0
+        ? Math.max(0.7, Math.min(1.4, 1 / explicitDurFactor))
+        : Number.isFinite(sceneSpeed) && sceneSpeed > 0
+          ? Math.max(0.7, Math.min(1.4, sceneSpeed))
+          : 1.0
+  const effectiveDurationFactor =
+    Number.isFinite(explicitDurFactor) && explicitDurFactor > 0 && !(Number.isFinite(explicitSpeed) && explicitSpeed > 0)
+      ? Math.max(0.7, Math.min(1.4, explicitDurFactor))
+      : Number((1.0 / effectiveSpeed).toFixed(3))
+
   let providerInfo = {}
 
-  if (engineSpec.kind === 'openai-tts' || engineSpec.kind === 'http-json' || engineSpec.kind === 'cli-command') {
+  if (engineSpec.kind === 'windows-sapi') {
+    providerInfo = await synthesizeViaWindowsSapi(String(text).trim(), effectiveSpeed, effectiveVoice.gender || 'neutral', absOutputPath)
+  } else if (engineSpec.kind === 'openai-tts' || engineSpec.kind === 'http-json' || engineSpec.kind === 'cli-command') {
     const customVars = {
       text: String(text).trim(),
       emotion: String(emotion || '平静'),
       lang: String(lang || 'zh'),
-      speed: Number(durationFactor || engineSpec.speed || 1.0) || 1.0,
+      speed: Number((effectiveSpeed * (Number(engineSpec.speed) || 1.0)).toFixed(3)) || 1.0,
       voiceId: String(effectiveVoice.id || voiceId || 'default'),
       voice: String(engineSpec.voice || engineSpec.defaultVoice || effectiveVoice.name || 'default'),
       voiceName: String(effectiveVoice.name || engineSpec.voice || 'default'),
@@ -399,7 +462,8 @@ export async function executeGenerateSpeech(args = {}) {
       '--output', absOutputPath,
       '--emotion', emotion,
       '--lang', effectiveLang,
-      '--duration-factor', String(durationFactor || 1.0),
+      '--duration-factor', String(effectiveDurationFactor),
+      '--speed', String(effectiveSpeed.toFixed(3)),
       '--voice-id', effectiveVoice.id,
       '--ref-audio', refAudio,
       '--emo-audio', matched.emotionAudio || '',
@@ -483,6 +547,7 @@ export async function executeGenerateSpeech(args = {}) {
             subtitleText: finalSubs.map((s) => s.text).join(' '),
             subChunks: finalSubs.map((s) => s.text),
             emotion,
+            speechRate: Number(effectiveSpeed.toFixed(2)),
             voiceId: effectiveVoice.id,
             voiceName: effectiveVoice.name,
             voiceRefAudio: refAudio,
@@ -727,7 +792,11 @@ export function apply(ctx) {
         },
         durationFactor: {
           type: 'number',
-          description: 'Optional speech duration / speed factor (0.5 to 2.0, default 1.0).',
+          description: 'Optional speech duration multiplier for IndexTTS-2.5 (<1.0 faster, >1.0 slower).',
+        },
+        speed: {
+          type: 'number',
+          description: 'Optional speaking rate (0.7 to 1.4, default 1.0; >1.0 speaks faster). Automatically mapped per TTS engine.',
         },
         outputPath: {
           type: 'string',

@@ -675,17 +675,19 @@ window.__ModuleLoader__?.load({
             onClick: () => !disabled && setOpen((v) => !v),
             style: {
               width: '100%',
+              minWidth: 0,
+              overflow: 'hidden',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
-              gap: '8px',
-              padding: compact ? '7px 11px' : '10px 14px',
+              gap: compact ? '5px' : '8px',
+              padding: compact ? '7px 9px' : '10px 14px',
               borderRadius: '10px',
               background: T.bgInput,
               border: `1px solid ${open ? T.accentBlueBorder : T.borderStrong}`,
               boxShadow: open ? `0 0 0 3px ${T.accentBlueBg}` : 'none',
               color: activeOpt ? T.textPrimary : T.textMuted,
-              fontSize: compact ? '12.5px' : '13.5px',
+              fontSize: compact ? '12px' : '13.5px',
               fontWeight: 600,
               textAlign: 'left',
               cursor: disabled ? 'not-allowed' : 'pointer',
@@ -693,11 +695,11 @@ window.__ModuleLoader__?.load({
           },
           h(
             'span',
-            { style: { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: '7px' } },
+            { style: { minWidth: 0, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: '6px' } },
             activeOpt?.badgeColor ? h('span', { style: { width: '9px', height: '9px', borderRadius: '50%', background: activeOpt.badgeColor, flexShrink: 0 } }) : null,
             activeOpt ? activeOpt.label : placeholder,
           ),
-          h(Icon, { name: 'chevron-down', size: 15, color: open ? T.accentBlue : T.textMuted }),
+          h(Icon, { name: 'chevron-down', size: compact ? 13 : 15, color: open ? T.accentBlue : T.textMuted }),
         ),
         menuNode ? (createPortal && typeof document !== 'undefined' && document.body ? createPortal(menuNode, document.body) : menuNode) : null,
       )
@@ -1192,7 +1194,12 @@ window.__ModuleLoader__?.load({
       const [buildLog, setBuildLog] = useState(null)
       const [historyCount, setHistoryCount] = useState(0)
       const [voiceCatalog, setVoiceCatalog] = useState([])
-      const [availableEmotions, setAvailableEmotions] = useState(['平静', '昂扬', '温和', '严肃', '兴奋', '深沉'])
+      const [availableEmotions, setAvailableEmotions] = useState(['平静', '高兴', '激昂', '温和', '自信', '严肃', '期待', '深沉', '伤心'])
+      const [hardwareProfile, setHardwareProfile] = useState(null)
+      const [hardwarePreferences, setHardwarePreferences] = useState({ lowSpecMode: 'auto' })
+      const [hardwarePolicy, setHardwarePolicy] = useState(null)
+      const [showHardwareModal, setShowHardwareModal] = useState(false)
+      const [hardwareRefreshing, setHardwareRefreshing] = useState(false)
       const [ttsStatus, setTtsStatus] = useState({ reachable: false, ready: false, engine: 'indextts25', engineName: 'IndexTTS-2.5' })
       const [ttsConfig, setTtsConfig] = useState({
         activeEngineId: 'indextts25',
@@ -1608,10 +1615,13 @@ window.__ModuleLoader__?.load({
             }
             setProjects(data.projects || [])
             setVoiceCatalog(data.voiceCatalog || [])
-            if (Array.isArray(data.availableEmotions) && data.availableEmotions.length > 0) {
-              setAvailableEmotions(data.availableEmotions)
-            }
+            const baseEmotions = ['平静', '高兴', '激昂', '温和', '自信', '严肃', '期待', '深沉', '伤心']
+            const extraEmotions = Array.isArray(data.availableEmotions) ? data.availableEmotions : []
+            setAvailableEmotions(Array.from(new Set([...baseEmotions, ...extraEmotions])))
             setTtsStatus(data.ttsStatus || { reachable: false, ready: false })
+            if (data.hardwareProfile) setHardwareProfile(data.hardwareProfile)
+            if (data.hardwarePreferences) setHardwarePreferences(data.hardwarePreferences)
+            if (data.hardwarePolicy) setHardwarePolicy(data.hardwarePolicy)
             if (data.ttsConfig) syncTtsFormFromSummary(data.ttsConfig)
             if (data.llmConfig) syncLlmFormFromSummary(data.llmConfig)
             if (Array.isArray(data.avatarTemplates)) setAvatarTemplates(data.avatarTemplates)
@@ -2343,6 +2353,33 @@ window.__ModuleLoader__?.load({
         }
       }
 
+      const handleUpdateHardwareMode = async (nextMode, forceRefresh = false) => {
+        setHardwareRefreshing(true)
+        try {
+          const res = await connFetch('/api/video-workbench/hardware', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              lowSpecMode: nextMode || hardwarePreferences?.lowSpecMode || 'auto',
+              quality: directorForm.quality || '1080p',
+              fps: Number(directorForm.fps) || 30,
+              forceRefresh,
+            }),
+          })
+          const d = await res.json()
+          if (d.ok) {
+            if (d.hardwareProfile) setHardwareProfile(d.hardwareProfile)
+            if (d.hardwarePreferences) setHardwarePreferences(d.hardwarePreferences)
+            if (d.hardwarePolicy) setHardwarePolicy(d.hardwarePolicy)
+            notify(`算力模式已更新：${d.hardwarePolicy?.reason || nextMode}`, 'success')
+          }
+        } catch (err) {
+          notify(`算力检测更新失败: ${err.message}`, 'error')
+        } finally {
+          setHardwareRefreshing(false)
+        }
+      }
+
       // One-Click 4-Agent Collaborative Pipeline Launch
       const handleStartOneClickPipeline = async (overrideMode) => {
         if (!activeProjectDir) return
@@ -2392,6 +2429,7 @@ window.__ModuleLoader__?.load({
               trimSeconds: Number(trimClipSec) || 0,
               clipSpeed: Number(clipSpeedMult) || 1.0,
               aiAuthorCode: Boolean(aiAuthorCode),
+              lowSpecMode: hardwarePreferences?.lowSpecMode || 'auto',
             }),
           })
           const d = await res.json()
@@ -2621,6 +2659,7 @@ window.__ModuleLoader__?.load({
               sceneId: scene.id,
               text: scene.narration,
               emotion: scene.emotion || '平静',
+              speechRate: Number(scene.speechRate) || 1.0,
               voiceId: scene.voiceId || 'auto',
             }),
           })
@@ -4098,16 +4137,16 @@ window.__ModuleLoader__?.load({
                   if (tab.id === 'tasks' || tab.id === 'warroom') fetchTaskRuns()
                 },
                 style: {
-                  padding: '7px 18px',
+                  padding: '6px 13px',
                   borderRadius: '999px',
                   border: `1px solid ${on ? (isWar ? T.accentBlueBorder : T.accentGoldBorder) : 'transparent'}`,
                   background: on ? (isWar ? T.accentBlueBg : T.accentGoldBg) : 'transparent',
                   color: on ? (isWar ? T.accentBlue : T.accentGold) : T.textSecondary,
-                  fontSize: '13.5px',
+                  fontSize: '13px',
                   fontWeight: on ? 800 : 600,
                   display: 'inline-flex',
                   alignItems: 'center',
-                  gap: '7px',
+                  gap: '6px',
                   whiteSpace: 'nowrap',
                 },
               },
@@ -4119,16 +4158,36 @@ window.__ModuleLoader__?.load({
           }),
         ),
 
-        // Right: TTS Engine · Model Config · Skin · Theme Toggle
+        // Right: Hardware Guard · TTS Engine · Model Config · Skin · Theme Toggle
         h(
           'div',
-          { style: { display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 } },
+          { style: { display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 } },
           h(
             'button',
             {
               type: 'button',
               className: 'dsh-vw-btn',
-              title: '切换 IndexTTS-2.5 / GPT-SoVITS (低显存) / 添加或导入其他配音模型',
+              title: '查看本机 CPU/内存/显存体检与低配电脑保护模式设置',
+              onClick: () => setShowHardwareModal(true),
+              style: {
+                ...ghostBtnStyle,
+                padding: '7px 11px',
+                borderColor: hardwarePolicy?.lowSpecSafe ? T.accentGoldBorder : T.borderStrong,
+                color: hardwarePolicy?.lowSpecSafe ? T.accentGold : T.accentGreen,
+              },
+            },
+            hardwarePolicy?.lowSpecSafe
+              ? '🛡 低配保护'
+              : hardwareProfile?.tier === 'high'
+                ? '💻 高配畅享'
+                : '💻 配置均衡',
+          ),
+          h(
+            'button',
+            {
+              type: 'button',
+              className: 'dsh-vw-btn',
+              title: '切换 IndexTTS-2.5 / GPT-SoVITS (低显存) / Windows 原生纯CPU / 添加或导入其他配音模型',
               onClick: () => setShowTtsModal(true),
               style: {
                 ...ghostBtnStyle,
@@ -5277,6 +5336,17 @@ window.__ModuleLoader__?.load({
                       style: { ...ghostBtnStyle, width: '100%', padding: '4px 8px', fontSize: '11.5px', color: T.accentGold, borderColor: T.accentGoldBorder, justifyContent: 'center' },
                     },
                     '💡 已上传 BGM 且无实拍图，点此切为「纯音乐动画卡点 (免 TTS)」',
+                  )
+                : null,
+              hardwareProfile
+                ? h(
+                    'div',
+                    {
+                      onClick: () => setShowHardwareModal(true),
+                      style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11.5px', color: hardwarePolicy?.lowSpecSafe ? T.accentGold : T.textMuted, cursor: 'pointer', paddingTop: '4px', borderTop: `1px dashed ${T.borderSubtle}` },
+                    },
+                    h('span', null, `${hardwarePolicy?.lowSpecSafe ? '🛡 低配保护运行中' : '💻 本机算力可用'}: ${hardwareProfile.memory?.freeGB}/${hardwareProfile.memory?.totalGB}GB 内存 · ${hardwareProfile.gpu?.primaryName?.slice(0, 22)}`),
+                    h('span', { style: { color: T.accentBlue, fontWeight: 700, flexShrink: 0 } }, '详情/开关 →'),
                   )
                 : null,
             ),
@@ -6543,8 +6613,22 @@ window.__ModuleLoader__?.load({
                 ),
                 h(
                   'div',
-                  { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '9px' } },
-                  h(CinemaSelect, { compact: true, value: selectedScene.emotion || '平静', onChange: (em) => updateSelectedScene({ emotion: em }), T, options: availableEmotions.map((em) => ({ value: em, label: em })) }),
+                  { style: { display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr)', gap: '7px' } },
+                  h(CinemaSelect, { compact: true, value: selectedScene.emotion || '平静', onChange: (em) => updateSelectedScene({ emotion: em }), T, options: availableEmotions.map((em) => ({ value: em, label: `🎭 ${em}` })) }),
+                  h(CinemaSelect, {
+                    compact: true,
+                    value: String(Number(selectedScene.speechRate || 1.0).toFixed(2)),
+                    onChange: (sp) => updateSelectedScene({ speechRate: Number(sp) || 1.0 }),
+                    T,
+                    options: [
+                      { value: '0.85', label: '0.85x 舒缓' },
+                      { value: '0.95', label: '0.95x 稳重' },
+                      { value: '1.00', label: '1.00x 标准' },
+                      { value: '1.06', label: '1.06x 明快' },
+                      { value: '1.12', label: '1.12x 紧凑' },
+                      { value: '1.20', label: '1.20x 极速' },
+                    ],
+                  }),
                   h(CinemaSelect, { compact: true, value: selectedScene.kenBurns || 'zoom-in', onChange: (kb) => updateSelectedScene({ kenBurns: kb }), T, options: MOTION_OPTIONS.map((m) => ({ value: m.value, label: m.label })) }),
                 ),
                 h(
@@ -7473,6 +7557,125 @@ window.__ModuleLoader__?.load({
           )
         : null
 
+      const hardwareModal = showHardwareModal
+        ? h(
+            'div',
+            { style: modalBackdropStyle, onClick: () => setShowHardwareModal(false) },
+            h(
+              'div',
+              { onClick: (ev) => ev.stopPropagation(), style: { ...panelStyle, width: '780px', maxWidth: '96vw', maxHeight: '88vh', overflowY: 'auto', overflowX: 'hidden', boxSizing: 'border-box', padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px' } },
+              h(
+                'div',
+                { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px' } },
+                h(
+                  'div',
+                  null,
+                  h('h3', { style: { margin: 0, fontSize: '18px', fontWeight: 900 } }, '💻 本机配置体检 · 硬件要求与低配电脑保护机制'),
+                  h('div', { style: { fontSize: '12.5px', color: T.textMuted, marginTop: '3px' } }, '8GB 内存与核显电脑也可安全出片！如果客户端误报配置过低，可在此实测本机硬件并一键开启保护模式。'),
+                ),
+                h('button', { type: 'button', onClick: () => setShowHardwareModal(false), style: { background: 'transparent', border: 'none', color: T.textMuted, cursor: 'pointer' } }, h(Icon, { name: 'x', size: 18 })),
+              ),
+              hardwareProfile
+                ? h(
+                    'div',
+                    { style: { padding: '14px 16px', borderRadius: '12px', background: hardwareProfile.canRun ? (hardwarePolicy?.lowSpecSafe ? T.accentGoldBg : T.accentGreenBg) : T.accentRedBg, border: `1px solid ${hardwareProfile.canRun ? (hardwarePolicy?.lowSpecSafe ? T.accentGoldBorder : 'rgba(52,211,153,0.4)') : T.accentRed}` } },
+                    h('div', { style: { fontSize: '15px', fontWeight: 800, color: hardwareProfile.canRun ? (hardwarePolicy?.lowSpecSafe ? T.accentGold : T.accentGreen) : T.accentRed } }, hardwareProfile.verdictTitle),
+                    h('div', { style: { fontSize: '13px', color: T.textSecondary, marginTop: '5px', lineHeight: 1.55 } }, hardwareProfile.verdictSummary),
+                    h(
+                      'div',
+                      { style: { display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: '8px', marginTop: '12px' } },
+                      [
+                        { k: 'CPU 处理器', v: `${hardwareProfile.cpu?.threads || '?'} 线程`, sub: hardwareProfile.cpu?.model || '' },
+                        { k: '系统内存', v: `${hardwareProfile.memory?.freeGB || '?'} / ${hardwareProfile.memory?.totalGB || '?'} GB`, sub: hardwareProfile.checks?.ramOk ? '✓ 满足运行标准' : '⚠ 内存偏紧' },
+                        { k: '显卡与显存', v: hardwareProfile.gpu?.vramGB ? `${hardwareProfile.gpu.vramGB} GB VRAM` : '核显 / 通用', sub: hardwareProfile.gpu?.primaryName || '' },
+                        { k: '磁盘可用空间', v: hardwareProfile.disk?.freeGB != null ? `${hardwareProfile.disk.freeGB} GB` : '充足', sub: hardwareProfile.checks?.diskOk ? '✓ 空间充足' : '⚠ 建议清理空间' },
+                      ].map((item) =>
+                        h(
+                          'div',
+                          { key: item.k, style: { padding: '9px 10px', borderRadius: '10px', background: T.bgPanelSolid, border: `1px solid ${T.borderSubtle}` } },
+                          h('div', { style: { fontSize: '11px', color: T.textMuted, fontWeight: 700 } }, item.k),
+                          h('div', { style: { fontSize: '14px', fontWeight: 900, marginTop: '2px', color: T.textPrimary } }, item.v),
+                          h('div', { style: { fontSize: '11px', color: T.textMuted, marginTop: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, item.sub),
+                        ),
+                      ),
+                    ),
+                  )
+                : null,
+              h(
+                'div',
+                { style: { display: 'flex', flexDirection: 'column', gap: '8px' } },
+                h('div', { style: { fontSize: '13.5px', fontWeight: 800 } }, '🛡 选择低配电脑保护策略'),
+                h(
+                  'div',
+                  { style: { display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '9px' } },
+                  [
+                    { id: 'auto', title: '🛡 智能自适应（推荐）', desc: '空闲内存 < 3.6GB 或 8GB/核显机器自动降并发/轻缓存护航，高配机器满血运行' },
+                    { id: 'safe', title: '🪫 强制低配保护', desc: '单并发渲染 · 128MB 轻缓存 · 3D 粒子减载 · FFmpeg 限核防卡死 · 最高 1080p30' },
+                    { id: 'performance', title: '🚀 全速性能模式', desc: '解除保护限流，允许 2K/4K 60fps 与多并发极速出片（推荐 16GB+ 内存）' },
+                  ].map((m) => {
+                    const active = (hardwarePreferences?.lowSpecMode || 'auto') === m.id
+                    return h(
+                      'button',
+                      {
+                        key: m.id,
+                        type: 'button',
+                        className: 'dsh-vw-btn',
+                        disabled: hardwareRefreshing,
+                        onClick: () => handleUpdateHardwareMode(m.id, true),
+                        style: {
+                          ...ghostBtnStyle,
+                          whiteSpace: 'normal',
+                          width: '100%',
+                          minWidth: 0,
+                          height: '100%',
+                          boxSizing: 'border-box',
+                          flexDirection: 'column',
+                          alignItems: 'flex-start',
+                          justifyContent: 'flex-start',
+                          textAlign: 'left',
+                          padding: '11px 12px',
+                          background: active ? T.accentBlueBg : T.bgElevated,
+                          borderColor: active ? T.accentBlueBorder : T.borderSubtle,
+                          color: active ? T.accentBlue : T.textPrimary,
+                        },
+                      },
+                      h('div', { style: { fontSize: '13px', fontWeight: 800 } }, m.title),
+                      h('div', { style: { fontSize: '11.5px', color: T.textMuted, lineHeight: 1.45, fontWeight: 500, marginTop: '4px', wordBreak: 'break-word' } }, m.desc),
+                    )
+                  }),
+                ),
+                hardwarePolicy
+                  ? h('div', { style: { fontSize: '12px', color: T.accentBlue, padding: '8px 11px', borderRadius: '9px', background: T.accentBlueBg, border: `1px solid ${T.accentBlueBorder}` } }, `当前生效调度：${hardwarePolicy.reason} · Remotion ${hardwarePolicy.remotionConcurrency} 并发 · 缓存 ${Math.round((hardwarePolicy.offthreadVideoCacheSizeInBytes || 0) / 1048576)}MB · FFmpeg ${hardwarePolicy.ffmpegPreset}`)
+                  : null,
+              ),
+              hardwareProfile?.ttsAdvice
+                ? h(
+                    'div',
+                    { style: { padding: '10px 13px', borderRadius: '10px', background: T.bgElevated, border: `1px solid ${T.borderSubtle}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px', flexWrap: 'wrap' } },
+                    h('span', { style: { fontSize: '12.5px', color: T.textSecondary, flex: 1 } }, `🎙 配音引擎建议：${hardwareProfile.ttsAdvice}`),
+                    h('button', { type: 'button', className: 'dsh-vw-btn', onClick: () => { setShowHardwareModal(false); setShowTtsModal(true) }, style: { ...ghostBtnStyle, padding: '5px 11px', fontSize: '12px', color: T.accentBlue, borderColor: T.accentBlueBorder } }, '打开配音引擎中心 →'),
+                  )
+                : null,
+              h(
+                'div',
+                { style: { display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '10px' } },
+                [hardwareProfile?.requirements?.minimum, hardwareProfile?.requirements?.recommended, hardwareProfile?.requirements?.flagship].filter(Boolean).map((req) =>
+                  h(
+                    'div',
+                    { key: req.id, style: { padding: '11px 12px', borderRadius: '11px', background: T.bgElevated, border: `1px solid ${T.borderSubtle}`, fontSize: '12px', lineHeight: 1.55 } },
+                    h('div', { style: { fontWeight: 800, color: T.accentGold, marginBottom: '5px' } }, req.tierLabel),
+                    h('div', null, `• CPU：${req.cpu}`),
+                    h('div', null, `• 内存：${req.ram}`),
+                    h('div', null, `• 显卡：${req.gpu}`),
+                    h('div', null, `• 磁盘：${req.disk}`),
+                    h('div', { style: { color: T.textMuted, marginTop: '3px' } }, `推荐导出：${req.recommendedRender}`),
+                  ),
+                ),
+              ),
+            ),
+          )
+        : null
+
       const newProjectModal = showNewModal
         ? h(
             'div',
@@ -7618,6 +7821,7 @@ window.__ModuleLoader__?.load({
             )
           : null,
         projectDrawer,
+        hardwareModal,
         newProjectModal,
         llmModal,
         ttsConfigModal,

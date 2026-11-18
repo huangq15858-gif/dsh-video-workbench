@@ -1422,6 +1422,7 @@ export const VideoComposition: React.FC = () => {
   const { fps, durationInFrames, width, height } = useVideoConfig();
   const isPortrait = width < height;
   const sData: any = scriptData;
+  (globalThis as any).__DSH_LOW_SPEC_SAFE = Boolean(sData?.lowSpecSafe);
   const scenes: any[] = Array.isArray(sData.scenes) ? sData.scenes : [];
   const subtitles: any[] = Array.isArray(sData.subtitles) ? sData.subtitles : [];
   const beats: number[] = Array.isArray(sData.bgm?.beats) ? sData.bgm.beats : [];

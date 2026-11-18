@@ -5,8 +5,11 @@ import {
   createAbortError,
   loadEnv,
   probeAudioDuration,
+  probeHardwareProfile,
   readScriptJson,
+  REPO_ROOT,
   resolveBinaries,
+  resolveLowSpecPolicy,
   runCommandRedirected,
   sanitizeSpokenNarration,
   writeScriptJson,
@@ -157,13 +160,27 @@ async function executeMultiAgentRunner(run, helpers) {
   const engine = spec.engine === 'remotion' ? 'remotion' : 'html'
   const style = spec.style || 'tech'
   const aspectRatio = spec.aspectRatio || 'auto'
-  const quality = spec.quality || '1080p'
+  const hwProfile = probeHardwareProfile({ targetDir: absDir })
+  const hwPolicy = resolveLowSpecPolicy({
+    repoRoot: REPO_ROOT,
+    hardware: hwProfile,
+    modePref: spec.lowSpecMode || '',
+    requestedQuality: spec.quality || '1080p',
+    requestedFps: Number(spec.fps) || 30,
+    totalDurationSec: Number(spec.targetDurationSec) || 60,
+  })
+  const quality = hwPolicy.effectiveQuality || spec.quality || '1080p'
+  const effectiveFps = hwPolicy.effectiveFps || Number(spec.fps) || 30
   const targetPlatform = spec.targetPlatform || 'universal'
   const bgmMode = spec.bgmMode || 'uploaded'
   const voiceId = spec.voiceId || 'auto'
   const speechTempo = Number(spec.speechTempo) || 1.0
   const allowPlaceholder = Boolean(spec.allowPlaceholder)
   const llmSummary = getSafeLlmConfigSummary()
+  appendLog(
+    'director',
+    `本机算力体检: ${hwProfile.cpu.threads}核 · ${hwProfile.memory.freeGB}/${hwProfile.memory.totalGB}GB 内存 · ${hwProfile.gpu.primaryName} | ${hwPolicy.reason}${hwPolicy.clampedFields.length ? ` [保护限幅: ${hwPolicy.clampedFields.join(' / ')}]` : ''}`,
+  )
 
   // Optional initial source import
   if (spec.sources && (Array.isArray(spec.sources) ? spec.sources.length > 0 : true)) {
@@ -201,7 +218,7 @@ async function executeMultiAgentRunner(run, helpers) {
         aiBadgeText: spec.aiBadgeText || (typeof spec.aiBadge === 'string' ? spec.aiBadge : ''),
         pacingMode: spec.pacingMode || 'auto',
         visual3dMode: spec.visual3dMode || 'auto',
-        fps: Number(spec.fps) || 30,
+        fps: effectiveFps,
         voiceId,
         narrationMode: spec.narrationMode || '',
         goal: spec.userPrompt || '',
@@ -306,6 +323,8 @@ async function executeMultiAgentRunner(run, helpers) {
               visualBlueprint: shot.visualBlueprint || oldSc.visualBlueprint,
               motionNotes: shot.motionNotes || shot.visualBlueprint || oldSc.motionNotes,
               emotion: shot.emotion || oldSc.emotion || '平静',
+              role: shot.role || oldSc.role || 'narrator',
+              speechRate: Number(shot.speechRate || oldSc.speechRate || 1.0),
               layout:
                 shot.layout ||
                 oldSc.layout ||
@@ -366,7 +385,14 @@ async function executeMultiAgentRunner(run, helpers) {
     if (spec.aiBadgeText !== undefined) sAfterDir.aiBadgeText = String(spec.aiBadgeText)
     if (spec.pacingMode) sAfterDir.pacingMode = String(spec.pacingMode)
     if (spec.visual3dMode) sAfterDir.visual3dMode = String(spec.visual3dMode)
-    if (spec.fps) sAfterDir.fps = Number(spec.fps) || 30
+    sAfterDir.fps = effectiveFps
+    sAfterDir.lowSpecSafe = hwPolicy.lowSpecSafe
+    sAfterDir.hardwarePolicy = {
+      profileMode: hwPolicy.profileMode,
+      lowSpecSafe: hwPolicy.lowSpecSafe,
+      clampedFields: hwPolicy.clampedFields,
+      reason: hwPolicy.reason,
+    }
     if (spec.avatarLayout) sAfterDir.avatarLayout = spec.avatarLayout
     writeScriptJson(absDir, sAfterDir)
     updateTask('t-director', {
@@ -539,9 +565,11 @@ async function executeMultiAgentRunner(run, helpers) {
           message: `正在合成第 ${i + 1}/${scenesToTts.length} 幕配音 (${sc.title || sc.id})...`,
           log: false,
         })
+        const sceneSpeed = Number(((Number(sc.speechRate) || 1.0) * speechTempo).toFixed(2))
         await executeGenerateSpeech({
           text: sc.narration || sc.title || '欢迎来到 AI 视频创作工坊',
           emotion: sc.emotion || '平静',
+          speed: sceneSpeed,
           outputPath: `audio/${sc.id}.wav`,
           fps,
           voiceId: sc.voiceId || voiceId || 'auto',
@@ -557,13 +585,13 @@ async function executeMultiAgentRunner(run, helpers) {
       updateTask('t-audio', {
         status: 'running',
         progress: 58,
-        message: `正在执行 AI 修音去静音、响度标准化与语速调整 (${speechTempo.toFixed(2)}x)...`,
+        message: '正在执行 AI 修音去静音、响度标准化与人声母带均衡...',
       })
       try {
         await masterVoiceTracks({
           projectDir: absDir,
           useLlm: mode === 'ai-coded' && llmSummary.configured,
-          speechTempo,
+          speechTempo: 1.0,
           trimSilence: true,
           signal,
           onChild,
@@ -794,8 +822,8 @@ async function executeMultiAgentRunner(run, helpers) {
             absDir,
             lockedScript: curScript,
             llmConfig: spec.llmOverride || {},
-            batchSize: 4,
-            concurrency: 2,
+            batchSize: (curScript.scenes || []).length >= 16 ? 6 : 4,
+            concurrency: Math.max(2, hwPolicy.batchCoderConcurrency || 3),
             maxRepairRounds: Math.max(1, Math.min(3, Number(llmSummary.maxRepairRounds) || 2)),
             signal,
             onProgress: (_stage, pct, msg) => {
@@ -819,7 +847,7 @@ async function executeMultiAgentRunner(run, helpers) {
             system: promptPkg.system,
             messages: [{ role: 'user', content: promptPkg.user }],
             temperature: 0.3,
-            maxTokens: 12000,
+            maxTokens: 15000,
             signal,
           })
           const parsedFiles = extractJsonFromLlmText(aiReply.text)?.files

@@ -8,6 +8,7 @@
 secrets.json
 .dsh-video-tts-config.json
 .dsh-video-avatar-config.json
+.dsh-video-hardware-pref.json
 
 # Dependencies & Package Manager Caches
 node_modules/

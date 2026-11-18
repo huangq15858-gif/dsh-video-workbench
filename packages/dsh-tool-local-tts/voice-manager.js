@@ -758,8 +758,11 @@ export function matchVoiceForScene(scene = {}, projectMeta = {}, catalogVoices =
   const wantsElderly = /(老年|老者|老爷爷|老奶奶|长老|太后|师太|岁月|沧桑|古稀|elder)/.test(contextText)
   const wantsYouth = /(青年|少年|少女|up主|短视频|青春|学霸|师妹|师姐|侠客)/.test(contextText)
   const isTechOrBiz = /(科技|架构|系统|代码|数据|引擎|产品|工作台|商业|ai|remotion|gsap|dsh)/.test(contextText)
+  const isTutorialOrGuide = /(教程|教学|实战|操作|指南|工作台|插件|功能板块|交互|流程|配置|使用|演示)/.test(contextText)
   const isEpicOrDoc = /(历史|千年|戈壁|山河|传奇|史诗|文明|纪录|宣传片|风云|百慕大|悬疑|专题|党政)/.test(contextText)
   const isWarmOrStory = /(故事|温暖|心灵|情感|夜晚|微光|漫步|治愈|回忆|文学|有声书)/.test(contextText)
+  const primaryAnchorId = String(projectMeta?._primaryVoiceId || '').trim()
+  const isStandardHostScene = !sceneRole || ['narrator', 'host', 'instructor', 'default'].includes(sceneRole)
 
   const scored = voices.map((v) => {
     let score = 45
@@ -805,9 +808,16 @@ export function matchVoiceForScene(scene = {}, projectMeta = {}, catalogVoices =
       reasons.push('青年活力声线')
     }
 
-    // Penalize extreme villain/comic character archetypes on normal narration unless requested
+    // Penalize extreme villain/comic/domain-mismatch character archetypes on normal narration unless requested
     if (/(太监|流氓|恶毒|病娇|叫卖|老鸨|狐狸精)/.test(v.name) && !/(反派|太监|流氓|叫卖|剧情)/.test(contextText)) {
       score -= 25
+    }
+    if (/(党政|动物|野史|古代帝王)/.test(v.name) && !/(党政|政务|动物|古代帝王)/.test(contextText)) {
+      score -= 24
+    }
+    if (primaryAnchorId && v.id === primaryAnchorId && isStandardHostScene) {
+      score += 24
+      reasons.push('全片主讲连贯音色')
     }
 
     // Role & gender alignment
@@ -838,6 +848,10 @@ export function matchVoiceForScene(scene = {}, projectMeta = {}, catalogVoices =
       reasons.push(`标签命中(${matchedTags.slice(0, 3).join('/')})`)
     }
 
+    if (isTutorialOrGuide && (v.tags?.some((t) => ['解说', '主播', '旁白', '无底噪', '温柔', '清晰'].includes(t)) || /(专业解说|温柔青年|温柔女青年|解说青年|女主播)/.test(v.name))) {
+      score += 16
+      reasons.push('教程实战讲解语境')
+    }
     if (isTechOrBiz && v.tags?.some((t) => ['女主播', '科技', '无底噪', '商业', '专业感', '专业解说', '解说', '宣传片'].includes(t))) {
       score += 15
       reasons.push('科技/专业解说语境')
@@ -864,7 +878,7 @@ export function matchVoiceForScene(scene = {}, projectMeta = {}, catalogVoices =
 
   scored.sort((a, b) => b.score - a.score)
   const best = scored[0]
-  const emoAudio = emotionReferences[sceneEmotion] || emotionReferences['平静'] || ''
+  const emoAudio = emotionReferences[sceneEmotion] || ''
   const reasonSummary =
     best.reasons.length > 0 ? best.reasons.join(' + ') : '综合语境最优音色'
 
@@ -921,10 +935,29 @@ export function matchAllScenesInScript(projectOrFile, options = {}) {
     data.voiceMode = globalVoiceId === 'auto' ? 'auto' : 'manual'
   }
 
+  let primaryAnchorId = ''
+  if (data.voiceMode !== 'manual' && (!globalVoiceId || globalVoiceId === 'auto')) {
+    try {
+      const sampleText = (data.scenes || []).slice(0, 6).map((s) => `${s.title || ''} ${s.narration || ''}`).join(' ')
+      const anchorMatch = matchVoiceForScene(
+        { title: data.title || '', narration: sampleText, role: 'narrator', emotion: '平静' },
+        { ...data, _primaryVoiceId: '' },
+        voices,
+        '',
+      )
+      primaryAnchorId = anchorMatch?.voice?.id || ''
+    } catch {}
+  }
+
   const results = []
   data.scenes = (data.scenes || []).map((scene) => {
     const effectiveScene = forceAuto ? { ...scene, voiceId: 'auto', voiceLocked: false } : scene
-    const matched = matchVoiceForScene(effectiveScene, data, voices, globalVoiceId)
+    const matched = matchVoiceForScene(
+      effectiveScene,
+      { ...data, _primaryVoiceId: primaryAnchorId },
+      voices,
+      globalVoiceId,
+    )
     const updated = {
       ...scene,
       voiceId: matched.voice.id,

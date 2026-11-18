@@ -1145,3 +1145,4 @@ export function writeScriptJson(projectOrFile, scriptData) {
 }
 
 export * from './compliance.js'
+export * from './hardware-guard.js'

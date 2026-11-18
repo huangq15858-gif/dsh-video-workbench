@@ -290,6 +290,7 @@ def main():
     parser.add_argument("--emotion", default="平静")
     parser.add_argument("--lang", default="")
     parser.add_argument("--duration-factor", default="1.0")
+    parser.add_argument("--speed", default="")
     parser.add_argument("--voice-id", default="auto")
     parser.add_argument("--ref-audio", default="")
     parser.add_argument("--emo-audio", default="")
@@ -315,14 +316,17 @@ def main():
     staged_emo = stage_ascii_path(args.emo_audio, "emo") if args.emo_audio else ""
 
     try:
+        dur_factor = max(0.65, min(1.5, float(args.duration_factor or 1.0)))
+        spd_factor = max(0.65, min(1.5, float(args.speed))) if str(args.speed or "").strip() else round(1.0 / dur_factor, 3)
+
         # 1. Try HTTP endpoint first (non-blocking fast path if IndexTTS-2.5 / GPT-SoVITS server is running)
         if args.endpoint:
             payload = {
                 "text": args.text,
                 "text_lang": (args.lang or "zh").lower(),
                 "lang": args.lang or "",
-                "duration_factor": float(args.duration_factor or 1.0),
-                "speed_factor": float(args.duration_factor or 1.0),
+                "duration_factor": dur_factor,
+                "speed_factor": spd_factor,
                 "ref_audio_path": staged_ref or args.ref_audio,
                 "prompt_text": args.prompt_text,
                 "prompt_lang": (args.lang or "zh").lower(),

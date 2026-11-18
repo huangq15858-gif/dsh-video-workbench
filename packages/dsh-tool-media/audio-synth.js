@@ -353,7 +353,11 @@ export async function mixVideoAudio({ projectDir, script, assetsManifest, output
   filters.push(`${mixInputs.join('')}${formatAmixChain(mixInputs.length, 'first', ffmpeg)},alimiter=limit=0.74:level=disabled:attack=2:release=50[master]`)
   args.push('-filter_complex', filters.join(';'), '-map', '[master]', '-c:a', 'pcm_s16le', '-ar', String(SR), '-t', String(totalSec), outWav)
 
-  const res = await runCommandRedirected(ffmpeg, args, { timeoutMs: 120_000, signal, onChild })
+  const res = await runCommandRedirected(ffmpeg, args, {
+    timeoutMs: Math.max(180_000, Math.round(totalSec * 2500)),
+    signal,
+    onChild,
+  })
   if (res.code !== 0 || !existsSync(outWav)) {
     throw new Error(`Multi-track audio mix failed: ${res.stderr}`)
   }

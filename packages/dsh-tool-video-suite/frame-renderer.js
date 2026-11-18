@@ -31,6 +31,7 @@ import {
   readScriptJson,
   resolveBinaries,
   resolveBrowserExecutable,
+  resolveLowSpecPolicy,
   resolveRemotionRuntime,
   runCommandRedirected,
 } from '../shared/index.js'
@@ -307,6 +308,13 @@ export async function renderHtmlVideoToMp4({
 }) {
   if (signal?.aborted) throw createAbortError()
   const { ffmpeg } = resolveBinaries()
+  const htmlTotalSec = Math.max(4, totalFrames / Math.max(1, fps))
+  const htmlHwPolicy = resolveLowSpecPolicy({
+    repoRoot: REPO_ROOT,
+    requestedFps: fps,
+    totalDurationSec: htmlTotalSec,
+  })
+  const htmlFfThreadsArgs = htmlHwPolicy.ffmpegThreads > 0 ? ['-threads', String(htmlHwPolicy.ffmpegThreads)] : []
   const snapMap = new Map()
   snapshotFrames.forEach((f, idx) => {
     if (!snapMap.has(f)) snapMap.set(f, [])
@@ -406,12 +414,13 @@ export async function renderHtmlVideoToMp4({
               [
                 '-y', '-f', 'mjpeg', '-framerate', String(fps), '-i', mjpegPath,
                 '-vf', 'scale=in_range=full:out_color_matrix=bt709:out_range=tv,format=yuv420p',
-                '-c:v', 'libx264', '-preset', 'medium', '-crf', '19', '-pix_fmt', 'yuv420p',
+                '-c:v', 'libx264', '-preset', htmlHwPolicy.ffmpegPreset || 'medium', '-crf', '19', '-pix_fmt', 'yuv420p',
+                ...htmlFfThreadsArgs,
                 '-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709', '-color_range', 'tv',
                 '-g', String(Math.max(15, fps)), '-sc_threshold', '0', '-video_track_timescale', '90000', '-an', '-t', String(segSec),
                 outSilentMp4,
               ],
-              { timeoutMs: 180_000, signal },
+              { timeoutMs: Math.max(180_000, Math.round(segSec * 4500)), signal },
             )
             if (enc.code !== 0 || !existsSync(outSilentMp4)) {
               throw new Error(`Segment encode failed: ${enc.stderr}`)
@@ -499,9 +508,10 @@ export async function renderHtmlVideoToMp4({
   ffArgs.push(
     '-vf', 'scale=in_range=full:out_color_matrix=bt709:out_range=tv,format=yuv420p',
     '-c:v', 'libx264',
-    '-preset', 'medium',
+    '-preset', htmlHwPolicy.ffmpegPreset || 'medium',
     '-crf', '19',
     '-pix_fmt', 'yuv420p',
+    ...htmlFfThreadsArgs,
     '-colorspace', 'bt709',
     '-color_primaries', 'bt709',
     '-color_trc', 'bt709',
@@ -513,7 +523,10 @@ export async function renderHtmlVideoToMp4({
     outMp4Path,
   )
   try {
-    const enc = await runCommandRedirected(ffmpeg, ffArgs, { timeoutMs: 300_000 })
+    const enc = await runCommandRedirected(ffmpeg, ffArgs, {
+      timeoutMs: Math.max(300_000, Math.round(totalSec * 4500)),
+      signal,
+    })
     if (enc.code !== 0 || !existsSync(outMp4Path)) {
       throw new Error(`FFmpeg encode failed: ${enc.stderr}`)
     }
@@ -593,10 +606,13 @@ export async function renderRemotionProject({ projectDir, outMp4Path, snapshotFr
   }
 
   if (!onlySnapshots && outMp4Path) {
-    const cpuCount = cpus()?.length || 4
-    // Cap browser tab concurrency on Windows so multiple tabs don't race Remotion's OffthreadVideo Rust extractor
-    const defaultConcurrency = Math.max(1, Math.min(3, Math.floor(cpuCount / 4)))
-    const attemptRender = async (concurrency, videoThreads) => {
+    const totalSec = Math.max(4, (composition.durationInFrames || 300) / (composition.fps || 30))
+    const hwPolicy = resolveLowSpecPolicy({
+      repoRoot: REPO_ROOT,
+      requestedFps: composition.fps || 30,
+      totalDurationSec: totalSec,
+    })
+    const attemptRender = async (concurrency, videoThreads, cacheBytes, delayTimeoutMs) => {
       const { cancelSignal, cancel } = typeof rendererMod.makeCancelSignal === 'function'
         ? rendererMod.makeCancelSignal()
         : { cancelSignal: undefined, cancel: () => {} }
@@ -616,8 +632,11 @@ export async function renderRemotionProject({ projectDir, outMp4Path, snapshotFr
           browserExecutable,
           concurrency,
           offthreadVideoThreads: videoThreads,
-          offthreadVideoCacheSizeInBytes: 512 * 1024 * 1024,
-          delayRenderTimeoutInMilliseconds: 60000,
+          offthreadVideoCacheSizeInBytes: cacheBytes,
+          delayRenderTimeoutInMilliseconds: delayTimeoutMs,
+          chromiumOptions: {
+            gl: hwPolicy.chromiumGl || undefined,
+          },
           cancelSignal,
         })
       } finally {
@@ -626,12 +645,19 @@ export async function renderRemotionProject({ projectDir, outMp4Path, snapshotFr
     }
 
     try {
-      await attemptRender(defaultConcurrency, 2)
+      await attemptRender(
+        hwPolicy.remotionConcurrency,
+        hwPolicy.offthreadVideoThreads,
+        hwPolicy.offthreadVideoCacheSizeInBytes,
+        hwPolicy.delayRenderTimeoutMs,
+      )
     } catch (err) {
       const msg = String(err?.message || err || '')
-      const isTransientCompositor = !signal?.aborted && /No frame found at position|Compositor error/i.test(msg)
-      if (!isTransientCompositor) throw err
-      await attemptRender(1, 1)
+      const canFallbackLowSpec =
+        !signal?.aborted &&
+        (hwPolicy.remotionConcurrency > 1 || /No frame found at position|Compositor error|timeout|out of memory|Target closed/i.test(msg))
+      if (!canFallbackLowSpec) throw err
+      await attemptRender(1, 1, 128 * 1024 * 1024, Math.max(180_000, hwPolicy.delayRenderTimeoutMs))
     }
   }
 
