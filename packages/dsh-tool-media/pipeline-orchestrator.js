@@ -306,7 +306,14 @@ async function executeMultiAgentRunner(run, helpers) {
               visualBlueprint: shot.visualBlueprint || oldSc.visualBlueprint,
               motionNotes: shot.motionNotes || shot.visualBlueprint || oldSc.motionNotes,
               emotion: shot.emotion || oldSc.emotion || '平静',
-              layout: shot.layout || oldSc.layout || (visualPool.length === 0 ? 'narrative-diorama' : 'app-focus-shot'),
+              layout:
+                shot.layout ||
+                oldSc.layout ||
+                (visualPool.length === 0
+                  ? (/历史|霸王|项羽|秦|汉|楚|三国|唐|宋|明|古风|武侠|战役|将军|帝王|演义/i.test(`${spec.topic || ''} ${curScript.title || ''}`)
+                      ? 'narrative-diorama'
+                      : '3d-stage-opener')
+                  : 'app-focus-shot'),
               kenBurns: shot.kenBurns || oldSc.kenBurns || 'zoom-in',
               transition: shot.transition || oldSc.transition || (visualPool.length === 0 ? 'flash-cut' : 'iris-circle'),
               highlights: Array.isArray(shot.highlights) && shot.highlights.length > 0 ? shot.highlights : oldSc.highlights || [],

@@ -1718,6 +1718,455 @@ export const ThreeCyberStage: React.FC<ThreeCyberStageProps> = ({
 }
 
 /**
+ * Freeform Programmable Three.js 3D Stage (<FreeformThreeStage buildScene={(api) => { ... }} />)
+ * Allows the AI Coder to build ANY custom 3D geometry, 3D scene, 3D orbits, 3D bar/terrain charts,
+ * 3D molecules, 3D globes, 3D exploded views, and 3D-anchored HUD labels per frame with zero preset limits!
+ */
+export interface FreeformThreeMeshOpts {
+  position?: [number, number, number]
+  rotation?: [number, number, number]
+  scale?: number | [number, number, number]
+  isGold?: boolean
+  fillAlpha?: number
+  strokeAlpha?: number
+  lineWidth?: number
+  wireframeOnly?: boolean
+}
+
+export interface FreeformThreeLineOpts {
+  isGold?: boolean
+  alpha?: number
+  lineWidth?: number
+  closed?: boolean
+  dashed?: boolean
+}
+
+export interface FreeformThreeParticleOpts {
+  radius?: number
+  isGold?: boolean
+  alpha?: number
+  glow?: boolean
+}
+
+export interface FreeformThreeLabelOpts {
+  isGold?: boolean
+  fontSize?: number
+  subText?: string
+}
+
+export interface FreeformThreeApi {
+  THREE: typeof THREE
+  frame: number
+  fps: number
+  t: number
+  progress: number
+  beatPulse: number
+  width: number
+  height: number
+  primaryColor: string
+  secondaryColor: string
+  setCamera: (position: [number, number, number], lookAt?: [number, number, number], fov?: number) => void
+  addMesh: (geometry: THREE.BufferGeometry, opts?: FreeformThreeMeshOpts) => void
+  addLine3D: (points: Array<[number, number, number]>, opts?: FreeformThreeLineOpts) => void
+  addParticle3D: (position: [number, number, number], opts?: FreeformThreeParticleOpts) => void
+  addLabel3D: (text: string, position: [number, number, number], opts?: FreeformThreeLabelOpts) => void
+  orbitPoint: (radius: number, angleRad: number, y?: number, tiltXRad?: number) => [number, number, number]
+  arc3D: (start: [number, number, number], end: [number, number, number], arcHeight?: number, segments?: number) => Array<[number, number, number]>
+}
+
+export interface FreeformThreeStageProps {
+  buildScene?: (api: FreeformThreeApi) => void
+  fallbackPreset?: ThreeStagePreset | string
+  primaryColor?: string
+  secondaryColor?: string
+  bgColor?: string
+  opacity?: number
+  beatPulse?: number
+  durationInFrames?: number
+  seed?: number
+  style?: React.CSSProperties
+}
+
+export const FreeformThreeStage: React.FC<FreeformThreeStageProps> = ({
+  buildScene,
+  fallbackPreset = 'orbital-core',
+  primaryColor = '#38BDF8',
+  secondaryColor = '#F59E0B',
+  bgColor = 'transparent',
+  opacity = 0.88,
+  beatPulse = 0,
+  durationInFrames = 120,
+  seed = 1,
+  style = {},
+}) => {
+  const frame = useCurrentFrame()
+  const { fps, width, height } = useVideoConfig()
+  const canvasRef = useRef<HTMLCanvasElement | null>(null)
+
+  if (typeof buildScene !== 'function') {
+    return (
+      <ThreeCyberStage
+        preset={fallbackPreset}
+        primaryColor={primaryColor}
+        secondaryColor={secondaryColor}
+        bgColor={bgColor}
+        opacity={opacity}
+        beatPulse={beatPulse}
+        seed={seed}
+        style={style}
+      />
+    )
+  }
+
+  const renderFreeformFrame = () => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+
+    const w = width || 1920
+    const h = height || 1080
+    if (canvas.width !== w) canvas.width = w
+    if (canvas.height !== h) canvas.height = h
+
+    const t = frame / Math.max(1, fps || 30)
+    const progress = Math.max(0, Math.min(1, frame / Math.max(1, durationInFrames - 1)))
+    const bp = Math.max(0, Math.min(1.5, Number(beatPulse) || 0))
+    const colA = new THREE.Color(primaryColor || '#38BDF8')
+    const colB = new THREE.Color(secondaryColor || '#F59E0B')
+    const rgbA = \`\${Math.round(colA.r * 255)}, \${Math.round(colA.g * 255)}, \${Math.round(colA.b * 255)}\`
+    const rgbB = \`\${Math.round(colB.r * 255)}, \${Math.round(colB.g * 255)}, \${Math.round(colB.b * 255)}\`
+
+    ctx.clearRect(0, 0, w, h)
+    if (bgColor && bgColor !== 'transparent') {
+      ctx.fillStyle = bgColor
+      ctx.fillRect(0, 0, w, h)
+    }
+    const bgGrad = ctx.createRadialGradient(w * 0.5, h * 0.45, w * 0.04, w * 0.5, h * 0.5, w * 0.78)
+    bgGrad.addColorStop(0, \`rgba(\${rgbA}, \${(0.15 + bp * 0.07).toFixed(3)})\`)
+    bgGrad.addColorStop(0.52, \`rgba(\${rgbB}, 0.06)\`)
+    bgGrad.addColorStop(1, 'rgba(4, 7, 15, 0.0)')
+    ctx.fillStyle = bgGrad
+    ctx.fillRect(0, 0, w, h)
+
+    let camPos: [number, number, number] = [Math.sin(t * 0.35) * 1.4, 1.35 + Math.cos(t * 0.28) * 0.35, 8.2 - bp * 0.28]
+    let camLook: [number, number, number] = [0, 0, 0]
+    let camFov = 46
+
+    const geometriesToDispose: THREE.BufferGeometry[] = []
+    const meshEntries: Array<{ geo: THREE.BufferGeometry; matrix: THREE.Matrix4; opts: FreeformThreeMeshOpts }> = []
+    const lineEntries: Array<{ pts: Array<[number, number, number]>; opts: FreeformThreeLineOpts }> = []
+    const particleEntries: Array<{ pos: [number, number, number]; opts: FreeformThreeParticleOpts }> = []
+    const labelEntries: Array<{ text: string; pos: [number, number, number]; opts: FreeformThreeLabelOpts }> = []
+
+    const api: FreeformThreeApi = {
+      THREE,
+      frame,
+      fps: fps || 30,
+      t,
+      progress,
+      beatPulse: bp,
+      width: w,
+      height: h,
+      primaryColor,
+      secondaryColor,
+      setCamera: (pos, lookAt = [0, 0, 0], fov = 46) => {
+        if (Array.isArray(pos) && pos.length === 3) camPos = [Number(pos[0]) || 0, Number(pos[1]) || 0, Number(pos[2]) || 8]
+        if (Array.isArray(lookAt) && lookAt.length === 3) camLook = [Number(lookAt[0]) || 0, Number(lookAt[1]) || 0, Number(lookAt[2]) || 0]
+        if (Number.isFinite(Number(fov))) camFov = Math.max(20, Math.min(95, Number(fov)))
+      },
+      addMesh: (geometry, opts = {}) => {
+        if (!geometry || typeof geometry.getAttribute !== 'function') return
+        geometriesToDispose.push(geometry)
+        const mesh = new THREE.Mesh(geometry)
+        if (opts.position) mesh.position.set(Number(opts.position[0]) || 0, Number(opts.position[1]) || 0, Number(opts.position[2]) || 0)
+        if (opts.rotation) mesh.rotation.set(Number(opts.rotation[0]) || 0, Number(opts.rotation[1]) || 0, Number(opts.rotation[2]) || 0)
+        if (typeof opts.scale === 'number') {
+          mesh.scale.setScalar(opts.scale)
+        } else if (Array.isArray(opts.scale)) {
+          mesh.scale.set(Number(opts.scale[0]) || 1, Number(opts.scale[1]) || 1, Number(opts.scale[2]) || 1)
+        }
+        mesh.updateMatrixWorld(true)
+        meshEntries.push({ geo: geometry, matrix: mesh.matrixWorld.clone(), opts })
+      },
+      addLine3D: (points, opts = {}) => {
+        if (Array.isArray(points) && points.length >= 2) lineEntries.push({ pts: points, opts })
+      },
+      addParticle3D: (position, opts = {}) => {
+        if (Array.isArray(position) && position.length === 3) particleEntries.push({ pos: position, opts })
+      },
+      addLabel3D: (text, position, opts = {}) => {
+        if (text && Array.isArray(position) && position.length === 3) labelEntries.push({ text: String(text), pos: position, opts })
+      },
+      orbitPoint: (radius, angleRad, y = 0, tiltXRad = 0) => {
+        const x = Math.cos(angleRad) * radius
+        const z0 = Math.sin(angleRad) * radius
+        const y1 = y * Math.cos(tiltXRad) - z0 * Math.sin(tiltXRad)
+        const z1 = y * Math.sin(tiltXRad) + z0 * Math.cos(tiltXRad)
+        return [x, y1, z1]
+      },
+      arc3D: (start, end, arcHeight = 1.2, segments = 24) => {
+        const pts: Array<[number, number, number]> = []
+        const n = Math.max(4, Math.min(64, segments))
+        for (let i = 0; i <= n; i++) {
+          const u = i / n
+          const x = start[0] + (end[0] - start[0]) * u
+          const z = start[2] + (end[2] - start[2]) * u
+          const y = start[1] + (end[1] - start[1]) * u + Math.sin(u * Math.PI) * arcHeight
+          pts.push([x, y, z])
+        }
+        return pts
+      },
+    }
+
+    try {
+      buildScene(api)
+    } catch {}
+
+    const camera = new THREE.PerspectiveCamera(camFov, w / h, 0.1, 140)
+    camera.position.set(camPos[0], camPos[1], camPos[2])
+    camera.lookAt(camLook[0], camLook[1], camLook[2])
+    camera.updateMatrixWorld(true)
+    camera.updateProjectionMatrix()
+    const viewProj = new THREE.Matrix4().multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse)
+
+    const projectPt = (x: number, y: number, z: number) => {
+      const v = new THREE.Vector3(x, y, z).applyMatrix4(viewProj)
+      return {
+        x: (v.x * 0.5 + 0.5) * w,
+        y: (-v.y * 0.5 + 0.5) * h,
+        z: v.z,
+        visible: v.z > -1.0 && v.z < 1.0,
+      }
+    }
+
+    type FaceCmd = {
+      depth: number
+      pts: Array<{ x: number; y: number }>
+      fill: string
+      stroke: string
+      lineWidth: number
+    }
+    const drawQueue: FaceCmd[] = []
+    const lightDir = new THREE.Vector3(0.48, 0.78, 0.52).normalize()
+
+    for (const item of meshEntries) {
+      const { geo, matrix, opts } = item
+      const posAttr = geo.getAttribute('position')
+      if (!posAttr) continue
+      const idxAttr = geo.getIndex()
+      const va = new THREE.Vector3()
+      const vb = new THREE.Vector3()
+      const vc = new THREE.Vector3()
+      const na = new THREE.Vector3()
+      const nb = new THREE.Vector3()
+      const rgb = opts.isGold ? rgbB : rgbA
+      const fAlpha = opts.wireframeOnly ? 0 : (opts.fillAlpha ?? 0.22)
+      const sAlpha = opts.strokeAlpha ?? 0.78
+      const lw = opts.lineWidth ?? 1.35
+
+      const pushTri = (ia: number, ib: number, ic: number) => {
+        va.fromBufferAttribute(posAttr, ia).applyMatrix4(matrix)
+        vb.fromBufferAttribute(posAttr, ib).applyMatrix4(matrix)
+        vc.fromBufferAttribute(posAttr, ic).applyMatrix4(matrix)
+        const pa = projectPt(va.x, va.y, va.z)
+        const pb = projectPt(vb.x, vb.y, vb.z)
+        const pc = projectPt(vc.x, vc.y, vc.z)
+        if (!pa.visible || !pb.visible || !pc.visible) return
+        na.subVectors(vb, va)
+        nb.subVectors(vc, va)
+        const norm = new THREE.Vector3().crossVectors(na, nb).normalize()
+        const lambert = Math.max(0.18, Math.abs(norm.dot(lightDir)))
+        const depth = (pa.z + pb.z + pc.z) / 3
+        drawQueue.push({
+          depth,
+          pts: [{ x: pa.x, y: pa.y }, { x: pb.x, y: pb.y }, { x: pc.x, y: pc.y }],
+          fill: fAlpha > 0.005 ? \`rgba(\${rgb}, \${(fAlpha * lambert).toFixed(3)})\` : 'transparent',
+          stroke: sAlpha > 0.005 ? \`rgba(\${rgb}, \${(sAlpha * (0.45 + 0.55 * lambert)).toFixed(3)})\` : 'transparent',
+          lineWidth: lw,
+        })
+      }
+
+      if (idxAttr) {
+        for (let i = 0; i < idxAttr.count; i += 3) {
+          pushTri(idxAttr.getX(i), idxAttr.getX(i + 1), idxAttr.getX(i + 2))
+        }
+      } else {
+        for (let i = 0; i < posAttr.count; i += 3) {
+          pushTri(i, i + 1, i + 2)
+        }
+      }
+    }
+
+    drawQueue.sort((a, b) => b.depth - a.depth)
+    for (const face of drawQueue) {
+      ctx.beginPath()
+      ctx.moveTo(face.pts[0].x, face.pts[0].y)
+      ctx.lineTo(face.pts[1].x, face.pts[1].y)
+      ctx.lineTo(face.pts[2].x, face.pts[2].y)
+      ctx.closePath()
+      if (face.fill !== 'transparent') {
+        ctx.fillStyle = face.fill
+        ctx.fill()
+      }
+      if (face.stroke !== 'transparent') {
+        ctx.strokeStyle = face.stroke
+        ctx.lineWidth = face.lineWidth
+        ctx.stroke()
+      }
+    }
+
+    // Render 3D Lines / Orbits / Arcs
+    for (const ln of lineEntries) {
+      const rgb = ln.opts.isGold ? rgbB : rgbA
+      ctx.save()
+      ctx.strokeStyle = \`rgba(\${rgb}, \${(ln.opts.alpha ?? 0.78).toFixed(3)})\`
+      ctx.lineWidth = ln.opts.lineWidth ?? 2.2
+      if (ln.opts.dashed) ctx.setLineDash([6, 6])
+      ctx.beginPath()
+      let started = false
+      for (let i = 0; i < ln.pts.length; i++) {
+        const p = projectPt(ln.pts[i][0], ln.pts[i][1], ln.pts[i][2])
+        if (!p.visible) continue
+        if (!started) {
+          ctx.moveTo(p.x, p.y)
+          started = true
+        } else {
+          ctx.lineTo(p.x, p.y)
+        }
+      }
+      if (started && ln.opts.closed) ctx.closePath()
+      if (started) ctx.stroke()
+      ctx.restore()
+    }
+
+    // Render 3D Particles
+    for (const pt of particleEntries) {
+      const p = projectPt(pt.pos[0], pt.pos[1], pt.pos[2])
+      if (!p.visible) continue
+      const rgb = pt.opts.isGold ? rgbB : rgbA
+      const r = Math.max(1.2, (pt.opts.radius ?? 3.5) * Math.max(0.45, (1 - p.z) * 1.25))
+      if (pt.opts.glow !== false) {
+        const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, r * 3.2)
+        g.addColorStop(0, \`rgba(\${rgb}, \${(pt.opts.alpha ?? 0.9).toFixed(3)})\`)
+        g.addColorStop(1, \`rgba(\${rgb}, 0)\`)
+        ctx.fillStyle = g
+        ctx.beginPath()
+        ctx.arc(p.x, p.y, r * 3.2, 0, Math.PI * 2)
+        ctx.fill()
+      }
+      ctx.fillStyle = \`rgba(\${rgb}, \${(pt.opts.alpha ?? 0.95).toFixed(3)})\`
+      ctx.beginPath()
+      ctx.arc(p.x, p.y, r, 0, Math.PI * 2)
+      ctx.fill()
+    }
+
+    // Render 3D-Anchored HUD Callout Labels
+    for (const lbl of labelEntries) {
+      const p = projectPt(lbl.pos[0], lbl.pos[1], lbl.pos[2])
+      if (!p.visible || p.x < 40 || p.x > w - 40 || p.y < 40 || p.y > h - 80) continue
+      const rgb = lbl.opts.isGold ? rgbB : rgbA
+      const fs = lbl.opts.fontSize ?? 14
+      ctx.save()
+      ctx.font = \`800 \${fs}px 'JetBrains Mono', 'Noto Sans SC', monospace\`
+      const tw = ctx.measureText(lbl.text).width
+      const pw = tw + 22
+      const ph = lbl.opts.subText ? fs + 26 : fs + 14
+      const bx = p.x + 12
+      const by = p.y - ph * 0.5
+      ctx.fillStyle = \`rgba(\${rgb}, 0.95)\`
+      ctx.beginPath()
+      ctx.arc(p.x, p.y, 4, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.strokeStyle = \`rgba(\${rgb}, 0.65)\`
+      ctx.lineWidth = 1.5
+      ctx.beginPath()
+      ctx.moveTo(p.x, p.y)
+      ctx.lineTo(bx, p.y)
+      ctx.stroke()
+      ctx.fillStyle = 'rgba(7, 12, 24, 0.88)'
+      ctx.strokeStyle = \`rgba(\${rgb}, 0.72)\`
+      ctx.lineWidth = 1.5
+      const r = 7
+      ctx.beginPath()
+      ctx.moveTo(bx + r, by)
+      ctx.lineTo(bx + pw - r, by)
+      ctx.quadraticCurveTo(bx + pw, by, bx + pw, by + r)
+      ctx.lineTo(bx + pw, by + ph - r)
+      ctx.quadraticCurveTo(bx + pw, by + ph, bx + pw - r, by + ph)
+      ctx.lineTo(bx + r, by + ph)
+      ctx.quadraticCurveTo(bx, by + ph, bx, by + ph - r)
+      ctx.lineTo(bx, by + r)
+      ctx.quadraticCurveTo(bx, by, bx + r, by)
+      ctx.closePath()
+      ctx.fill()
+      ctx.stroke()
+      ctx.fillStyle = '#F8FAFC'
+      ctx.fillText(lbl.text, bx + 11, by + fs + 3)
+      if (lbl.opts.subText) {
+        ctx.font = \`600 \${Math.max(10, fs - 3)}px 'JetBrains Mono', monospace\`
+        ctx.fillStyle = \`rgba(\${rgb}, 0.92)\`
+        ctx.fillText(lbl.opts.subText, bx + 11, by + fs + 18)
+      }
+      ctx.restore()
+    }
+
+    for (const g of geometriesToDispose) {
+      try { g.dispose() } catch {}
+    }
+  }
+
+  useLayoutEffect(() => {
+    renderFreeformFrame()
+  }, [frame, fps, width, height, primaryColor, secondaryColor, bgColor, beatPulse, durationInFrames, seed])
+
+  useEffect(() => {
+    renderFreeformFrame()
+  }, [frame])
+
+  return (
+    <AbsoluteFill style={{ pointerEvents: 'none', opacity, ...style }}>
+      <canvas
+        ref={canvasRef}
+        width={width || 1920}
+        height={height || 1080}
+        style={{ width: '100%', height: '100%', display: 'block' }}
+      />
+    </AbsoluteFill>
+  )
+}
+
+/**
+ * Freeform SVG Path & Arc Math Helpers (for custom AI-coded charts, waves, radars, trajectories, and vector illustrations)
+ */
+export function buildSmoothSvgPath(points: Array<{ x: number; y: number }>, closed = false): string {
+  if (!Array.isArray(points) || points.length === 0) return ''
+  if (points.length === 1) return \`M \${points[0].x.toFixed(1)} \${points[0].y.toFixed(1)}\`
+  let d = \`M \${points[0].x.toFixed(1)} \${points[0].y.toFixed(1)}\`
+  for (let i = 0; i < points.length - 1; i++) {
+    const p0 = points[i]
+    const p1 = points[i + 1]
+    const mx = ((p0.x + p1.x) * 0.5).toFixed(1)
+    d += \` C \${mx} \${p0.y.toFixed(1)}, \${mx} \${p1.y.toFixed(1)}, \${p1.x.toFixed(1)} \${p1.y.toFixed(1)}\`
+  }
+  if (closed) d += ' Z'
+  return d
+}
+
+export function describeSvgArc(cx: number, cy: number, r: number, startAngleDeg: number, endAngleDeg: number): string {
+  const sweep = endAngleDeg - startAngleDeg
+  if (Math.abs(sweep) < 0.1) return ''
+  const clampedEnd = sweep >= 359.9 ? startAngleDeg + 359.9 : sweep <= -359.9 ? startAngleDeg - 359.9 : endAngleDeg
+  const a0 = Math.min(startAngleDeg, clampedEnd)
+  const a1 = Math.max(startAngleDeg, clampedEnd)
+  const rad = (deg: number) => ((deg - 90) * Math.PI) / 180.0
+  const start = { x: cx + r * Math.cos(rad(a1)), y: cy + r * Math.sin(rad(a1)) }
+  const end = { x: cx + r * Math.cos(rad(a0)), y: cy + r * Math.sin(rad(a0)) }
+  const largeArcFlag = a1 - a0 <= 180 ? '0' : '1'
+  return \`M \${start.x.toFixed(2)} \${start.y.toFixed(2)} A \${r.toFixed(2)} \${r.toFixed(2)} 0 \${largeArcFlag} 0 \${end.x.toFixed(2)} \${end.y.toFixed(2)}\`
+}
+
+/**
  * Pillar 4: Beat-Synced Spring Physics Calculator (spring + interpolate + harmonic beat recoil)
  */
 export function computeBeatSpring(
@@ -2583,9 +3032,10 @@ export function buildDirectorPromptPackage({
   const beatInfoText = bgmMeta?.analyzed
     ? `实测音乐节奏：BPM=${bgmMeta.bpm}，首拍偏移 phaseSec=${bgmMeta.phaseSec}s，单拍=${bgmMeta.beatSec}s，音乐总长=${bgmMeta.durationSec}s，高潮突降点 drops=${JSON.stringify((bgmMeta.drops || []).slice(0, 10))}。请让分镜数与每镜 beatCount（1/2/4/8 拍）贴合音乐起承转合！`
     : ''
+  const isHistoricalTheme = /历史|霸王|项羽|秦|汉|楚|三国|唐|宋|明|古风|武侠|战役|将军|帝王|演义/i.test(`${topic || ''} ${userPrompt || ''}`)
   const system = zeroVisualAssets
-    ? `你是顶级全题材动态视觉导演兼音画卡点总监 (AI Dynamic Visual & Beat-Sync Director)，精通人物传记/历史史诗、软件原理/架构科普、产品商业发布、数据科学图解、抽象律动短片。
-当前没有任何现成图片/视频素材 (zeroVisualAssets=true)，全部画面由 AI Remotion TSX 代码生成与内置 SVG 矢量舞台联合绘制，禁止编造任何 \`assets/xxx.png\` 文件名或软件窗口占位图！
+    ? `你是顶级全题材动态视觉导演兼音画卡点总监 (AI Dynamic Visual & Beat-Sync Director)，精通人物传记/历史史诗、软件原理/架构科普、产品商业发布、数据科学图解、财经商业分析、生物医疗科普与抽象律动短片。
+当前没有任何现成图片/视频素材 (zeroVisualAssets=true)，全部画面将由下游 AI 主程根据你为每一幕撰写的 \`visualBlueprint\`，通过 **\`<FreeformThreeStage>\` (原生 Three.js 3D 自由造景) + 原生动态 \`<svg>\` + 弹簧物理** 从零编写专属代码，不受任何固定预设限制！（禁止编造任何 \`assets/xxx.png\` 文件名或软件窗口占位图！）
 ${beatInfoText}
 
 必须遵循以下规范：
@@ -2593,13 +3043,12 @@ ${beatInfoText}
 2. **依题材适配节奏（${zeroPacingSpec.label}）**：根据主题语境与音乐起承转合拆分为 **${zeroPacingSpec.shotRange} 个镜头**！${zeroPacingSpec.durRule}；narrationMode=${narrationMode}：
    - 若用户指定第二人称（如"你"）或科普/叙事人称，全篇严格统一；单句字幕 <= 18 字，充满具体时间节点、实体细节、金句或客观指标，杜绝空洞废话！accentWords 标出 1~2 个亮点金色词汇；
    - narration 与 subChunks 逐字一致，严禁空洞套话！
-3. 每镜必须携带完整 \`visualBlueprint\`（下游逐镜 TSX 程序员直读：具体描述 3D Three.js 空间镜头 + SVG 角色/器械/图表/地图/符号结构与镜内中段动作变化）、\`threePreset\`（Three.js 3D 空间舞台预设："orbital-core" | "cyber-terrain" | "particle-vortex" | "floating-monoliths" | "chrono-helix" | "matrix-cubes"）、\`layout: "narrative-diorama"\` 与精雕 \`stageSpec\`：
-   - mood: "dawn-amber" | "crimson-war" | "indigo-night" | "ash-twilight" | "bronze-hall" | "jade-river" | "void-gold"
-   - setting: "palace-stairs" | "mountain-camp" | "city-siege" | "river-gorge" | "vast-plain"
-   - archetype: "hero-numeral" | "hero-stand" | "oath-break" | "cavalry-rush" | "slash-climax" | "duel-confront" | "farewell-tent" | "strategic-map" | "scroll-calligraphy" | "plaque-summary" | "channel-end"
-   - threePreset: "orbital-core" | "cyber-terrain" | "particle-vortex" | "floating-monoliths" | "chrono-helix" | "matrix-cubes"
-   - transition 仅允许: "cut" | "flash-cut" | "slash-wipe" | "iris-circle" | "block-wipe" | "glitch-cut" | "zoom-punch" | "light-wipe"（禁止填入配方名）
-   - 可选精致参数：heroNum/heroUnit（开篇核心数值）、bannerChar（旗帜/核心字）、calligraphy（1~3列竖排古典引文）+ sealText（朱红篆章）、strategic-map 专属 zones/routes/stamps（印章字如"破"/"胜"/"围"/"霸"）、plaque-summary 专属 plaques（4~7枚总结匾额词）。
+3. 每镜必须携带完整 \`visualBlueprint\`（下游逐镜 TSX/HTML 程序员直读：**请根据每句台词自由构思最贴合的专属 3D 场景与 2D 动态 SVG 画面**——例如：3D 旋转地球与跨洋飞线、3D 柱状矩阵、3D 芯片爆炸拆解、3D 分子球棍、K线折线雷达图、动态思维导图、物理公式推导、代码执行流或东方历史人物剪影，严禁所有镜头千篇一律！）：
+   - \`highlights\`: 1~3 个核心关键词；
+   - \`threePreset\`: "orbital-core" | "cyber-terrain" | "particle-vortex" | "floating-monoliths" | "chrono-helix" | "matrix-cubes"（仅作兜底备选）
+   - \`layout\`: 仅作离线兜底布局——${isHistoricalTheme ? '历史古风题材可用 "narrative-diorama" 配合 stageSpec' : '非历史题材请轮换选用 "3d-stage-opener" | "svg-architecture-flow" | "hud-telemetry-dashboard" | "vibecoding-spring-stage" | "metric-dashboard" | "workflow-steps" | "radial-climax"，切忌写死为 narrative-diorama！'}
+   - \`transition\` 仅允许: "cut" | "flash-cut" | "slash-wipe" | "iris-circle" | "block-wipe" | "glitch-cut" | "zoom-punch" | "light-wipe"（禁止填入配方名）
+   ${isHistoricalTheme ? '- 历史题材可选 stageSpec（mood/setting/archetype/heroNum/calligraphy/plaques）。' : ''}
 4. 每个分镜搭配精确落拍的 sfxCues，可在 0.00s 放置 "hit"/"sub_drop"/"slash"/"stamp"/"whoosh" 等音效。`
     : `你是顶级电影动态视觉导演兼音画编曲总监 (AI Director & Sound Designer)。
 你的职责不是套模板，而是针对用户提供的主题与真实素材，构思极具大厂发布会/电影预告片质感的视频蓝图与定制合成音乐音效方案。
@@ -2741,9 +3190,10 @@ export function buildRemotionCoderSkillsPrompt({
 3. 禁止使用 Math.random()，如需随机数必须从 'remotion' 导入 random(seed)。
 4. 禁止使用 Node 内置模块 (fs/path/child_process)、eval、new Function、外部网络字体/CDN 脚本链接或本地盘符路径。
 5. 商业版权字体安全铁律：禁止声明或使用微软雅黑 (Microsoft YaHei)、宋体 (SimSun)、黑体 (SimHei) 等受限商业字体！必须使用系统随包分发的 SIL OFL 开源商用字体栈：\`FONT_SANS\` ('Noto Sans SC', sans-serif) 与 \`FONT_MONO\` ('JetBrains Mono', monospace)。
-6. 可从 '../lib/shotcraft'（在 src/scenes/Scenes.tsx 中）或 './lib/shotcraft'（在 src/VideoComposition.tsx 中）导入已提供的 Remotion + Three.js 3D Vibecoding 组件：
-   - ThreeCyberStage, THREE, ThreeCanvas, THREE_STAGE_PRESETS, SvgArchitectureDiagram, HudDataDashboard, HudTelemetryOverlay, BeatSpringPhysicsRig, computeBeatSpring, PageCam, ClipCard, DigitRoll, FlashCut, ShotCaption, AIBadge, EndNotice, AvatarOverlay, AppWindow, HotspotMark, FocusShot, WorkflowBar, BeforeAfterWipe, MetricPanel, FONT_SANS, FONT_MONO, FONT_SERIF
-   - 推荐在每个分镜底层挂载 \`<ThreeCyberStage preset={scene.threePreset || 'orbital-core'} primaryColor={...} secondaryColor={...} beatPulse={...} seed={idx + 1} />\`，并结合 \`<SvgArchitectureDiagram nodes={scene.highlights} title={scene.title} />\`（动态 SVG 架构拓扑图）、\`<HudDataDashboard title={scene.title} highlights={scene.highlights} />\`（全息 HUD 数据与代码终端面板）、\`<HudTelemetryOverlay />\` 与 \`<BeatSpringPhysicsRig beats={beats}>\`（节拍同步弹簧物理），完整呈现 Opus 5.5 级 Vibecoding 四大核心视觉！
+6. 可从 '../lib/shotcraft'（在 src/scenes/Scenes.tsx 中）或 './lib/shotcraft'（在 src/VideoComposition.tsx 中）导入已提供的 Remotion + Three.js 3D Vibecoding 原语与自由编程画布：
+   - FreeformThreeStage, FreeformThreeApi, ThreeCyberStage, THREE, ThreeCanvas, THREE_STAGE_PRESETS, buildSmoothSvgPath, describeSvgArc, SvgArchitectureDiagram, HudDataDashboard, HudTelemetryOverlay, BeatSpringPhysicsRig, computeBeatSpring, PageCam, ClipCard, DigitRoll, FlashCut, ShotCaption, AIBadge, EndNotice, AvatarOverlay, AppWindow, HotspotMark, FocusShot, WorkflowBar, BeforeAfterWipe, MetricPanel, FONT_SANS, FONT_MONO, FONT_SERIF
+   - **【核心铁律：零预设束缚 · 100% 自由编写每镜专属 3D 与 SVG 视觉】**：
+     不要受限于固定预设！请针对每个分镜的题旨与 \`motionNotes\` / \`visualBlueprint\`，使用 \`<FreeformThreeStage buildScene={(api) => { ... }} />\` 自由构建贴合主题的定制 3D 场景（利用 \`api.THREE\` 创建球体/地球/行星、柱状矩阵、芯片拆解层、圆环轨道、多面体、圆锥/圆柱机械结构，配合 \`api.addMesh\`、\`api.addLine3D\`、\`api.addParticle3D\`、\`api.addLabel3D\`、\`api.orbitPoint\`、\`api.arc3D\`、\`api.setCamera\`），并在前景手写多层次动态 \`<svg>\`（可配合 \`buildSmoothSvgPath\`、\`describeSvgArc\`、\`computeBeatSpring\` 绘制任意定制图表、K线、公式推导、思维导图、拓扑或矢量插画）！内置预设仅作辅助或兜底。
    还可从 './lib/narrative-diorama'（或 '../lib/narrative-diorama'）导入无素材纯叙事 SVG 动画舞台组件：
    - NarrativeDioramaStage, HeroWarriorFigure, StrategicMapStage, SlashBurstOverlay, CalligraphyColumnPanel, MOOD_PRESETS, computeBeatSignal（当场景没有截图素材 publicAssetFiles 为空或 layout === 'narrative-diorama' 时，优先用自定义内联 &lt;svg&gt; 动画与舞台原语联动演绎，严禁臆造假 staticFile('assets/...') 路径！同时严禁把 Sequence 的 durationInFrames 硬钳到 >=30，必须使用 Math.max(8, Number(s.durationInFrames)) 支持急速踩拍切镜！）。
 7. 合规与数字人叠层铁律：src/VideoComposition.tsx 必须在合成器最外层强制挂载 <AIBadge visible={true} /> 与末尾 <EndNotice />；当 script.json 中存在 avatarClip.path 且 avatarLayout !== 'off' 时，必须渲染 <AvatarOverlay clipPath={scriptData.avatarClip.path} layout={scriptData.avatarLayout || 'pip-br'} />（使用 transparent 透明通道合成）；字幕 <ShotCaption bottomPx={...} /> 必须遵循目标平台安全区留白（竖屏底部至少留白 22%）。
@@ -2776,8 +3226,10 @@ export function buildRemotionCoderSkillsPrompt({
         shotType: plan.scenes?.[i]?.shotType || 'hero-title',
         headline: plan.scenes?.[i]?.headline || s.title,
         kicker: plan.scenes?.[i]?.kicker || `SCENE 0${i + 1}`,
+        highlights: plan.scenes?.[i]?.highlights || s.highlights || [],
         metrics: plan.scenes?.[i]?.metrics || [],
-        motionNotes: plan.scenes?.[i]?.motionNotes || s.visualPrompt || '',
+        visualBlueprint: plan.scenes?.[i]?.visualBlueprint || s.visualBlueprint || plan.scenes?.[i]?.motionNotes || s.visualPrompt || '',
+        motionNotes: plan.scenes?.[i]?.motionNotes || plan.scenes?.[i]?.visualBlueprint || s.visualPrompt || '',
         publicAssetFiles: s.publicAssetFiles || [],
         subtitles: s.subtitles || [],
       })),
@@ -2813,27 +3265,30 @@ export function buildBatchedRemotionScenesPrompt({
   const filePath = `src/scenes/Batch${pad}.tsx`
   const exportName = `BATCH_${pad}_SCENES`
 
-  const system = `你是全球顶尖的 Opus 5.5 Vibecoding 视频动效创意主程（精通 Remotion v4 + Three.js 3D 空间渲染 + 动态矢量 SVG 架构与高密度节拍视觉）。
-你的核心使命：不是套用枯燥的静态模板卡片，而是为本批次的每一个分镜，用 **Three.js 3D 空间舞台 (\`<ThreeCyberStage />\`) + 纯 React + 多层内联动态 <svg> + 逐帧弹簧/插值数学计算**，编写**各具特色、帧帧流畅变化、具有强烈 3D 空间纵深感、直击题材灵魂**的定制动画组件！
+  const system = `你是全球顶尖的 Opus 5.5 Vibecoding 视频动效创意主程（精通 Remotion v4 + 原生 Three.js 3D 自由编程 + 动态矢量 SVG 创作 + 弹簧物理动画）。
+你的核心使命：**彻底打破固定模板与预设的束缚！** 面对本批次的每一个分镜，你拥有一张 **100% 自由的 Three.js 3D + SVG + React 编程画布**。请根据用户的创作主题 (\`${topic}\`) 与每一幕的 \`visualBlueprint\`（视觉蓝图）和旁白台词，**从零自由编写独一无二、千片千面、直击主题灵魂的 3D 空间与 2D 动态矢量代码**！内置预设仅在你不写自定义逻辑时兜底，绝不可偷懒把所有镜头写成千篇一律的预设套壳！
 
-=== 适用全题材 Opus 5.5 Vibecoding 动态视觉指南（按每个分镜自身场景自适应 · 当前画布 ${width}x${height} ${isPortrait ? '竖屏短视频构图' : '横屏影院构图'}） ===
-1. **Three.js 3D 空间纵深层 (强烈推荐每个分镜挂载)**：
-   - 可直接调用 \`<ThreeCyberStage preset={scene.threePreset || 'orbital-core'} primaryColor={...} secondaryColor={...} beatPulse={pulse} opacity={0.72} seed={idx + 1} />\` 作为 3D 透视空间层！
-   - 6 种内置 Three.js 3D 预设按分镜语义自由选用：
-     * \`'orbital-core'\`: 3D 量子二十面体核心 + 三轴陀螺仪星环 + 轨道卫星（适合 AI 核心、系统枢杻、开篇高能亮相）
-     * \`'cyber-terrain'\`: 3D 赛博等高线山谷网格 + 远方日冕门户飞越（适合宏大征途、技术底座、全景推进）
-     * \`'particle-vortex'\`: 3D 双旋臂星云漩涡 + 神经网络突触拓扑连线（适合大模型推理、数据洪流、思维碰撞）
-     * \`'floating-monoliths'\`: 3D 空间悬浮晶碑矩阵环绕（适合多模块架构、诸侯并起、多维特性展示）
-     * \`'chrono-helix'\`: 3D 时空双螺旋隧道穿梭（适合历史纪年演进、决战冲锋、工作流管道）
-     * \`'matrix-cubes'\`: 3D 算力矩阵立方体波浪起伏（适合性能跑分、并发吞吐、规模化对比）
-2. **有截图/实拍素材时 (publicAssetFiles 非空)**：请优先在 \`<ThreeCyberStage opacity={0.55} ... />\` 之上，通过 \`<AppWindow title={scene.title} kicker="DSH WORKBENCH" style={{ width: '100%', height: ${isPortrait ? 720 : 680} }}><FocusShot src={scene.publicAssetFiles?.[0] || scene.assetPaths?.[0] || scene.media?.[0]?.path} cams={scene.cams} marks={scene.marks} /></AppWindow>\`（或者 \`<BeforeAfterWipe>\`、3D 悬浮卡片、多窗口并排等配合外框动态标题与指标）高清呈现真实画面，禁止把文字盖住截图主体，更禁止自己在组件里画占位假框替代截图！严禁虚构不存在的 staticFile 路径！
-3. **纯代码/无外部素材时 (publicAssetFiles 为空 —— 涵盖历史人物/建筑史诗、软件原理/架构拓扑图解、数据图表、产品发布会概念视觉、文字动能 MV)**：
-   - **禁止**把所有分镜写成一模一样的单个背景模板调用！你必须在每个分镜中结合 \`<ThreeCyberStage />\` 3D 空间层 + 手写富有个性的**多层次内联 <svg viewBox="0 0 ${width} ${height}"> 动态前景/中景场景**（严格匹配画布 ${width}x${height}；${isPortrait ? '竖屏采用上下分栏强冲击构图，主视觉与大数字放在居中上部，留出右下侧互动与底部字幕空间' : '横屏采用景深错落全景构图'}！可搭配 \`ParallaxHorizon\` / \`CameraRig\` / \`AnimatedRoutePath\` / \`MetricPanel\` / \`DigitRoll\` / \`ClipCard\` 等组件拼装，在前景绘制独属于本镜具体剧情/技术架构的动态 SVG 节点、关节挥动、数据脉冲连线、柱状增长图、实时波纹、大字号动能标题与粒子！）
-   - **反静止僵硬法则**：每一个分镜从 progress=0 到 progress=1 必须具备肉眼可见的连续演进：
-     * 相机动势：\`CameraRig\` 或外层 \`transform\` 持续缓推/平移 + 在节奏点 \`pulse\` 触发微微冲击缩放与震动；
-     * 中段形态变化：例如前半拍立势/起笔/构架展开 -> 节拍命中时脉冲连线贯通/框选高亮/数值跃迁；
-     * 前景粒子/波纹/飘带/光线随 \`localFrame\` 持续流动画出。
-   - **安全留白与尾帧明度法则**：屏幕底部 \`${isPortrait ? 420 : 165}px\` 区域（Y > ${isPortrait ? Math.round(height - 460) : Math.round(height - 170)}）由外部主合成器绘制字幕与进度条，${isPortrait ? '顶部 Y < 220px 为平台状态栏与可配置 AI 标识安全区（严禁把标题或 Kicker 卡片放到 Y < 225px 造成角落遮挡），右侧 X > 910（Y > 680 时）保留平台点赞栏安全区，' : ''}画中主文字/重要视觉主体务必布局在 \`Y = ${isPortrait ? '225 ~ 1410' : '80 ~ 860'}\` 安全区以内！禁止自行额外重复渲染底部大字幕条、AiBadge 或 Audio！最后一个分镜严禁渐变黑屏收尾，务必保持亮色文字/光效清晰直至片尾最后一帧！
+=== 适用全题材的 Opus 5.5 自由造景编程指南（当前画布 ${width}x${height} ${isPortrait ? '竖屏短视频构图' : '横屏影院构图'}） ===
+1. **【第一画笔：100% 自由编程的 Three.js 3D 空间画布 (\`<FreeformThreeStage buildScene={(api) => { ... }} />\`)】**：
+   - 你不受任何固定 3D 预设种类的限制！只需挂载 \`<FreeformThreeStage primaryColor={...} secondaryColor={...} beatPulse={pulse} durationInFrames={scene.durationInFrames || 120} buildScene={(api) => { ... }} />\`，即可在 \`buildScene\` 中用 \`api\` 逐帧自由构建**任意题材的 3D 场景**：
+     * \`api.THREE\`: 完整的 Three.js 几何与数学库（如 \`new api.THREE.SphereGeometry(r, 18, 14)\` 球体/地球/行星/原子、\`new api.THREE.BoxGeometry(w, h, d)\` 3D 柱状图/芯片层/建筑块、\`new api.THREE.CylinderGeometry(rTop, rBot, h, 16)\` 圆柱/活塞/光柱、\`new api.THREE.ConeGeometry(r, h, 12)\` 棱锥/箭头/火箭、\`new api.THREE.TorusGeometry(r, tube, 12, 36)\` 星环/磁场/齿轮、\`new api.THREE.IcosahedronGeometry(r, 1)\` 晶核、\`new api.THREE.RingGeometry(rIn, rOut, 28)\` 刻度环）；
+     * \`api.setCamera([x, y, z], [lookX, lookY, lookZ], fov)\`: 自由控制 3D 透视相机推进、环绕、俯仰运镜；
+     * \`api.addMesh(geo, { position: [x, y, z], rotation: [rx, ry, rz], scale: 1, isGold: false, fillAlpha: 0.24, strokeAlpha: 0.85, lineWidth: 1.4 })\`: 放置任意 3D 网格物体（系统自动执行深度排序与发光线框渲染并自动释放内存）；
+     * \`api.addLine3D(points, { isGold: true, alpha: 0.85, lineWidth: 2.2, closed: false, dashed: false })\`: 绘制任意 3D 空间曲线、行星轨道、跨洋航线、神经网络连线、3D 坐标轴；
+     * \`api.orbitPoint(radius, angleRad, y, tiltXRad)\` 与 \`api.arc3D(startPt, endPt, arcHeight, segments)\`: 一行代码生成 3D 环绕轨道点或 3D 抛物飞线点阵；
+     * \`api.addParticle3D([x, y, z], { radius: 4, isGold: true, glow: true })\`: 绘制 3D 空间发光粒子/光子；
+     * \`api.addLabel3D('标签文字', [x, y, z], { isGold: true, subText: '指标/说明' })\`: 在 3D 物体坐标上直接锚定跟随移动的 2D 全息 HUD 引线标牌！
+   - 若某个分镜确实只需通用背景，也可传 \`<ThreeCyberStage preset={scene.threePreset || 'orbital-core'} />\` 作为辅助，但鼓励优先用 \`<FreeformThreeStage buildScene={...} />\` 画出贴合台词的专属 3D 主体！
+2. **【第二画笔：100% 自由编写的多层动态 \`<svg>\` + 数学曲线与弹簧物理】**：
+   - 在 3D 空间层之上，手写 \`<svg viewBox="0 0 ${width} ${height}">\` 自由绘制契合本镜台词的专属 2D 动态视觉：
+     * 无论是**金融 K 线/折线趋势图、多维对比柱状图、六维雷达图、动态生长思维导图、公式/算法推导黑板、实时代码树、科学原理剖析图、流程图解、还是东方历史水墨人物/器械/地图**，全部直接用 \`<path>\`、\`<circle>\`、\`<rect>\`、\`<line>\`、\`<g>\`、\`<text>\` 配合 \`buildSmoothSvgPath(points)\` 与 \`describeSvgArc(cx, cy, r, a0, a1)\` 自由绘制！
+     * 结合 \`const phys = computeBeatSpring(frame, fps, beats, { delayFrames: 0 })\` 或 \`spring({ frame, fps, config: { damping: 13, stiffness: 170 } })\` + \`interpolate()\`，让每个图形元素都具备鲜活的弹簧生长、路径描边 (\`strokeDasharray\` / \`strokeDashoffset\`) 与音乐重拍回弹！
+   - 内置组件（如 \`<SvgArchitectureDiagram />\`、\`<HudDataDashboard />\`、\`<HudTelemetryOverlay />\`、\`<BeatSpringPhysicsRig />\`、\`<DigitRoll />\`、\`<ClipCard />\`）可作为积木局部混搭，但切勿让固定预设限制你的构图创意！
+3. **【有用户上传的真实截图/视频素材时 (publicAssetFiles 非空)】**：
+   - 请在 \`<FreeformThreeStage opacity={0.5} ... />\` 之上，使用 \`<AppWindow title={scene.title} kicker="DSH WORKBENCH" style={{ width: '100%', height: ${isPortrait ? 720 : 680} }}><FocusShot src={scene.publicAssetFiles?.[0] || scene.assetPaths?.[0] || scene.media?.[0]?.path} cams={scene.cams} marks={scene.marks} /></AppWindow>\`（或 \`<BeforeAfterWipe>\`）高清呈现用户真实素材，严禁虚构不存在的 \`staticFile\` 路径！
+4. **反静止僵硬法则与安全留白法则**：
+   - 每个分镜从 \`progress=0\` 到 \`progress=1\` 必须有连续的 3D 相机运镜、3D 物体旋转/拆解/生长、以及 2D SVG 动态演进；
+   - 屏幕底部 \`${isPortrait ? 420 : 165}px\` 区域（Y > ${isPortrait ? Math.round(height - 460) : Math.round(height - 170)}）由主合成器绘制字幕与进度条，${isPortrait ? '顶部 Y < 220px 为状态栏与角标区，右侧 X > 910（Y > 680）为互动栏安全区，' : ''}画中主文字与核心主体务必布局在 \`Y = ${isPortrait ? '225 ~ 1410' : '80 ~ 860'}\` 安全区以内！禁止自行额外重复渲染底部大字幕条、AiBadge 或 Audio！
 
 === 绝对不允许触犯的工程红线（触发即被沙箱打回！） ===
 1. 输出严格 JSON 对象（禁止外层包裹解释文字）：
@@ -2850,11 +3305,11 @@ export function buildBatchedRemotionScenesPrompt({
 4. 严禁使用 Node 内置模块、\`eval\`、\`new Function\`、外网 URL、本地盘符、受限商业字体（微软雅黑/宋体/黑体等）。必须仅使用 \`FONT_SANS\` / \`FONT_SERIF\` / \`FONT_MONO\`。
 5. **每个 <defs> 里的渐变/滤镜/ClipPath ID 必须附带 \`\${idx}\` 或场景唯一后缀**（如 \`id={\`bg-\${idx}\`}\`），防止多场景同时挂载时 SVG ID 冲突。
 6. **TypeScript strict 零错误要求**：
-   - 必须为 \`.map\` / 回调参数与对象字典标注明确类型（如 \`(pt: number, i: number)\`、\`const pal: any = MOOD_PRESETS[...]\`）；
+   - 必须为 \`.map\` / 回调参数与对象字典标注明确类型（如 \`(pt: any, i: number)\`、\`(api: FreeformThreeApi)\`）；
    - 若需要使用 \`staticFile\`，只可传入 \`publicAssetFiles\` 里明确存在的文件；不要 import 用不到的变量。
    - 可用的稳定导入路径与符号（不要臆造其它不存在的导出！）：
      * \`from 'remotion'\`: \`AbsoluteFill, Easing, Img, interpolate, random, spring, staticFile, useCurrentFrame, useVideoConfig\`
-     * \`from '../lib/shotcraft'\`: \`ThreeCyberStage, THREE, ThreeCanvas, THREE_STAGE_PRESETS, SvgArchitectureDiagram, HudDataDashboard, HudTelemetryOverlay, BeatSpringPhysicsRig, computeBeatSpring, CameraRig, AnimatedRoutePath, ParallaxHorizon, AppWindow, FocusShot, BeforeAfterWipe, MetricPanel, DigitRoll, ClipCard, PageCam, computeBeatPulse, FONT_SANS, FONT_MONO, FONT_SERIF\`
+     * \`from '../lib/shotcraft'\`: \`FreeformThreeStage, FreeformThreeApi, ThreeCyberStage, THREE, ThreeCanvas, THREE_STAGE_PRESETS, buildSmoothSvgPath, describeSvgArc, SvgArchitectureDiagram, HudDataDashboard, HudTelemetryOverlay, BeatSpringPhysicsRig, computeBeatSpring, CameraRig, AnimatedRoutePath, ParallaxHorizon, AppWindow, FocusShot, BeforeAfterWipe, MetricPanel, DigitRoll, ClipCard, PageCam, computeBeatPulse, FONT_SANS, FONT_MONO, FONT_SERIF\`
      * \`from '../lib/narrative-diorama'\`: \`NarrativeDioramaStage, HeroWarriorFigure, StrategicMapStage, SlashBurstOverlay, CalligraphyColumnPanel, MOOD_PRESETS, computeBeatSignal\``
 
   const user = JSON.stringify(
@@ -2907,25 +3362,34 @@ export function buildHtmlCoderSkillsPrompt({
   height,
   aspectRatio,
 }) {
-  const system = `你是精通 HyperFrames HTML5/Canvas + GSAP 帧级视频渲染的创意编程专家。
-你需要生成一个完全自包含、纯离线零外链、支持 Chromium CDP 逐帧精确 seek 的单个 HTML 文件！
+  const isPortrait = width < height
+  const system = `你是精通 HyperFrames HTML5/Canvas 3D 透视矩阵与动态 SVG 创意编程专家（Opus 5.5 Vibecoding 水准）。
+你需要生成一个完全自包含、纯离线零外链、支持 Chromium CDP 逐帧精确 seek 的单个 HTML 文件，**不受任何固定预设限制，针对每个分镜的题旨与 visualBlueprint 自由编写专属 3D Canvas 投影场景 + 动态 SVG 图表/矢量图解 + 节拍同步弹簧物理**！
 
-=== HYPERFRAMES 确定性逐帧铁律 (违背会被拒绝重修!) ===
+=== HYPERFRAMES 自由造景与确定性逐帧铁律 (违背会被拒绝重修!) ===
 1. 输出严格 JSON：{ "files": { "index.html": "<!doctype html>..." } }。
 2. 画布固定为 ${width}x${height} (${aspectRatio})，body/stage margin:0 overflow:hidden；商业字体合规铁律：必须通过 @font-face 加载 'fonts/NotoSansSC-VF.woff2'，使用 'Noto Sans SC', sans-serif 与 'JetBrains Mono', monospace，严禁声明 Microsoft YaHei / SimSun / SimHei 等受限商业字体！
-3. 严禁引用任何外部 http/https CDN (GSAP、字体、图片、SVG 外部链接全部禁止！)，若需使用素材，使用相对路径（如 assets/...）。
+3. 严禁引用任何外部 http/https CDN (GSAP、字体、图片、SVG 外部链接全部禁止！)，若需使用真实素材，使用相对路径（如 assets/...）。
 4. 严禁出现无限自主驱动动画（不可用 CSS @keyframes、不可在 requestAnimationFrame 内自行推进主时间轴，不可使用 Math.random() 造成前后帧不一致，请使用确定性伪随机函数）。
-5. 必须内嵌 <script id="dsh-script-data" type="application/json">PLACEHOLDER</script>（注意请保留该 script 标签占位符或完整嵌入数据，系统会自动写回最新脚本）。
-6. 必须保留合成器级强制合规叠层：右上/左上 #ai-badge（「AI 辅助创作」）及片尾最后 2 秒展示 #end-notice，且字幕条 bottom 必须避让目标平台安全区（竖屏 ≥ 22% 高度，横屏 ≥ 13% 高度）；若 script.json 包含 avatarClip.path，需保留 <video id="avatar-overlay-video" muted playsinline> 透明通道画中画/全屏叠层并在 window.__seekToFrame 内按 frame / fps 精确同步 currentTime。
-7. 必须向全局暴露确定性 seek 接口：
+5. 自由 3D 与动态 SVG 创作指南：
+   - 在 Canvas2D 中自己实现轻量级 3D 透视投影函数 \`proj3D(x, y, z, camX, camY, camZ)\` + 欧拉旋转，依据每镜 \`visualBlueprint\` 自由绘制契合题材的 3D 地球飞线、3D 柱状矩阵、3D 芯片爆炸拆解、3D 轨道粒子或 3D 地形网格；
+   - 在每个分镜 DOM 内手写定制 \`<svg viewBox="0 0 ${width} ${height}">\`，通过 \`stroke-dashoffset\`、三次贝塞尔曲线、柱/雷达/折线/思维导图/流程图/代码终端与欠阻尼弹簧函数 \`springVal = 1 - Math.exp(-7 * x) * Math.cos(8.5 * x)\` 随 \`frameIndex\` 与 \`bgmBeats\` 实时运动；
+   - 右下/底部保留简洁字幕安全区（${isPortrait ? '竖屏底部 ≥ 22% 高度' : '横屏底部 ≥ 13% 高度'}）。
+6. 必须内嵌 <script id="dsh-script-data" type="application/json">PLACEHOLDER</script>（保留该 script 标签占位符或完整嵌入数据，系统会自动写回最新脚本）。
+7. 必须保留合成器级强制合规叠层：右上/左上 #ai-badge（「AI 辅助创作」）及片尾最后 2 秒展示 #end-notice，且字幕条 bottom 必须避让目标平台安全区；若 script.json 包含 avatarClip.path，需保留 <video id="avatar-overlay-video" muted playsinline> 透明通道画中画/全屏叠层并在 window.__seekToFrame 内按 frame / fps 精确同步 currentTime。
+8. 必须向全局暴露确定性 seek 接口：
    window.__totalFrames = <totalDurationInFrames>;
    window.__seekToFrame = function(frameIndex) { ... };
-   调用 window.__seekToFrame(f) 时必须立刻、同步地将整个 DOM + Canvas（含多镜头粒子/光晕/3D透视变换/数字滚动/转场闪白/双语或中文字幕/音频节拍律动条）渲染至精确的第 f 帧状态！
-8. 必须为每个分镜保留对应的 <template id="scene-01">...</template> 或 <section data-scene-id="scene-01"> 元素以配合系统场景覆盖率检测，同时确保多镜头视觉极具大片质感（背景景深光斑、暗角、胶片微噪点、网格/曲线、弹性缩放、清晰字幕条）。`
+   调用 window.__seekToFrame(f) 时必须立刻、同步地将整个 DOM + Canvas（含 3D 透视几何/动态 SVG 路径/HUD 遥测时间码/粒子/数字滚动/转场闪白/中文字幕/重拍频谱条）渲染至精确的第 f 帧状态！
+9. 必须为每个分镜保留对应的 <template id="scene-01">...</template> 或 <section data-scene-id="scene-01"> 元素以配合系统场景覆盖率检测。`
 
   const user = JSON.stringify(
     {
-      task: '生成 HyperFrames 逐帧可控完整 index.html (严格 JSON { "files": { "index.html": "..." } })',
+      task: '请突破预设限制，为全部镜头自由手写专属 HyperFrames 3D + SVG + Spring 动画 index.html (严格 JSON { "files": { "index.html": "..." } })',
+      topic: plan?.topic || plan?.title || timingContract?.topic || '',
+      style: plan?.style || timingContract?.style || 'tech',
+      narrationMode: timingContract?.narrationMode || 'tts',
+      bgmBeats: (timingContract?.bgmBeats || timingContract?.bgm?.beats || []).slice(0, 64),
       canvas: { width, height, aspectRatio, fps: timingContract.fps, totalDurationInFrames: timingContract.totalDurationInFrames },
       aiBadge: Boolean(timingContract.aiBadge),
       theme: plan.theme,
@@ -2933,14 +3397,18 @@ export function buildHtmlCoderSkillsPrompt({
         id: s.id,
         index: s.index,
         title: s.title,
+        layout: plan.scenes?.[i]?.layout || s.layout || '',
+        threePreset: plan.scenes?.[i]?.threePreset || s.threePreset || '',
         startFrame: s.startFrame,
         durationInFrames: s.durationInFrames,
         durationSec: s.durationSec,
         shotType: plan.scenes?.[i]?.shotType || 'hero-title',
         headline: plan.scenes?.[i]?.headline || s.title,
         kicker: plan.scenes?.[i]?.kicker || `SCENE 0${i + 1}`,
+        highlights: plan.scenes?.[i]?.highlights || s.highlights || [],
         metrics: plan.scenes?.[i]?.metrics || [],
-        motionNotes: plan.scenes?.[i]?.motionNotes || s.visualPrompt || '',
+        visualBlueprint: plan.scenes?.[i]?.visualBlueprint || s.visualBlueprint || plan.scenes?.[i]?.motionNotes || s.visualPrompt || '',
+        motionNotes: plan.scenes?.[i]?.motionNotes || plan.scenes?.[i]?.visualBlueprint || s.visualPrompt || '',
         assetPaths: s.assetPaths || [],
         subtitles: s.subtitles || [],
       })),

@@ -92,7 +92,10 @@ export function syncProjectCodeFromScript(projectDir, scriptData, { forceOverwri
   const absDir = resolve(projectDir)
   const enriched = ensureBeatGridOnScript(scriptData)
   if (enriched.authoringMode === 'ai-coded' && !forceOverwrite) {
-    // Preserve custom LLM-authored scene code; only refresh public assets & shared shotcraft primitives
+    // Preserve custom LLM-authored scene code; still refresh Remotion shotcraft libs & HTML5 skeleton when engine is remotion
+    if (enriched.engine !== 'html') {
+      writeFileSync(join(absDir, 'index.html'), buildRichHtmlVideo(enriched), 'utf8')
+    }
     writeRemotionProjectFiles(absDir, enriched, { rebuildTemplate: false })
     return
   }

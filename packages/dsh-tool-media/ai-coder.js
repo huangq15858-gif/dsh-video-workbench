@@ -1128,6 +1128,9 @@ export async function runAiStudioPipeline(options = {}) {
       index: s.index,
       title: s.title,
       layout: s.layout,
+      threePreset: s.threePreset || s?.stageSpec?.threePreset || undefined,
+      highlights: Array.isArray(s.highlights) ? s.highlights : [],
+      visualBlueprint: s.visualBlueprint || s.motionNotes || s.visualPrompt || s.title,
       stageSpec: s.stageSpec || undefined,
       accentWords: s.accentWords || undefined,
       startFrame: s.startFrame,
@@ -1309,6 +1312,10 @@ export async function refineAiScene({
 
   emit('backup', 10, '正在保存当前版本快照以支持一键撤回...')
   snapshotProjectVersion(absDir, 'pre-refine')
+  if (engine === 'remotion') {
+    writeShotcraftRemotionLib(absDir)
+    writeNarrativeDioramaRemotionLib(absDir)
+  }
 
   // Gather current workspace source files
   const currentFiles = {}
@@ -1330,8 +1337,8 @@ export async function refineAiScene({
   }
 
   emit('coder', 35, `大模型正在按您的要求精修 (${sceneId || '全局'})...`)
-  const system = `你是资深 ${engine === 'remotion' ? 'Remotion TSX' : 'HyperFrames HTML'} 视频创意工程师。
-用户正在微调一个已有视频工程。请仅修改与用户需求相关的部分，输出严格 JSON：
+  const system = `你是资深 ${engine === 'remotion' ? 'Remotion TSX + 原生 Three.js 3D + 动态 SVG' : 'HyperFrames HTML'} 视频创意工程师。
+用户正在微调一个已有视频工程。请完全根据用户的自然语言需求自由编写/修改对应的 3D 场景与 2D 动态 SVG 视觉（不受任何固定预设限制！在 Remotion 中可从 './lib/shotcraft' 或 '../lib/shotcraft' 导入 FreeformThreeStage, FreeformThreeApi, buildSmoothSvgPath, describeSvgArc, ThreeCyberStage, SvgArchitectureDiagram, HudDataDashboard, computeBeatSpring, BeatSpringPhysicsRig 等自由造景原语），输出严格 JSON：
 {
   "files": { "相对路径": "完整更新后的源码" },
   "narrationUpdate": { "sceneId": "若需改口播词可填，否则省略" }
@@ -1409,6 +1416,14 @@ export async function refineAiScene({
   }
 
   updatedScript.authoringMode = 'ai-coded'
+  updatedScript.scenes = (updatedScript.scenes || []).map((sc) => {
+    if (!sceneId || sceneId === 'ALL' || sc.id === sceneId) {
+      const next = { ...sc }
+      delete next.useBuiltinLayout
+      return next
+    }
+    return sc
+  })
   updatedScript.aiMeta = {
     ...(updatedScript.aiMeta || {}),
     lastRefineInstruction: instruction,

@@ -1,6 +1,6 @@
 {
   "title": "DeepSeek Harness 双引擎视频工作台演示 (HTML5 动效)",
-  "engine": "remotion",
+  "engine": "html",
   "style": "tech",
   "fps": 30,
   "width": 1920,
@@ -240,7 +240,5 @@
   "quality": "1080p",
   "totalDurationSec": 14,
   "totalDurationInFrames": 420,
-  "updatedAt": "2026-11-18T07:49:35.456Z",
-  "requestedAspectRatio": "auto",
-  "dimensionReason": "AI 综合主题与素材横纵比，选用 16:9 影院横屏"
+  "updatedAt": "2026-11-18T09:39:21.095Z"
 }

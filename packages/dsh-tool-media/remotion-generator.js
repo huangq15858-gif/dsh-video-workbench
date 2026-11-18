@@ -171,7 +171,7 @@ import {
   useVideoConfig,
 } from 'remotion';
 import scriptData from '../script.json';
-import { AIBadge, AppWindow, AvatarOverlay, BeatSpringPhysicsRig, BeforeAfterWipe, computeBeatSpring, EndNotice, FocusShot, HudDataDashboard, HudTelemetryOverlay, MetricPanel, SceneTransitionOverlay, SvgArchitectureDiagram, ThreeCyberStage, THREE_STAGE_PRESETS, WorkflowBar, FONT_SANS, FONT_MONO, FONT_SERIF } from './lib/shotcraft';
+import { AIBadge, AppWindow, AvatarOverlay, BeatSpringPhysicsRig, BeforeAfterWipe, buildSmoothSvgPath, computeBeatSpring, describeSvgArc, EndNotice, FocusShot, FreeformThreeStage, HudDataDashboard, HudTelemetryOverlay, MetricPanel, SceneTransitionOverlay, SvgArchitectureDiagram, ThreeCyberStage, THREE_STAGE_PRESETS, WorkflowBar, FONT_SANS, FONT_MONO, FONT_SERIF } from './lib/shotcraft';
 import { NarrativeDioramaStage } from './lib/narrative-diorama';
 ${hasCustomRegistry ? "import { CUSTOM_SCENE_MAP } from './scenes';" : 'const CUSTOM_SCENE_MAP: Record<string, React.ComponentType<any>> = {};'}
 
@@ -476,7 +476,7 @@ const SceneStage: React.FC<{
   const txKind = scene.transition || 'iris-circle';
   const layout = scene.layout || (idx === 0 ? '3d-stage-opener' : idx === total - 1 ? 'radial-climax' : 'media-split-motion');
 
-  const CustomSceneComp = CUSTOM_SCENE_MAP && scene?.id ? CUSTOM_SCENE_MAP[scene.id] : undefined;
+  const CustomSceneComp = CUSTOM_SCENE_MAP && scene?.id && !scene?.useBuiltinLayout ? CUSTOM_SCENE_MAP[scene.id] : undefined;
   const visual3dMode = String((scriptData as any)?.visual3dMode || 'auto').toLowerCase();
   const enable3dStage = visual3dMode !== 'off';
   const sceneThreePreset =
@@ -499,14 +499,14 @@ const SceneStage: React.FC<{
     return (
       <AbsoluteFill style={{ overflow: 'hidden', backgroundColor: PALETTE.background }}>
         <CustomSceneComp scene={hydratedScene} idx={idx} total={total} beats={beats} />
-        {enable3dStage ? (
-          <ThreeCyberStage
-            preset={sceneThreePreset}
-            primaryColor={PALETTE.accent}
-            secondaryColor={PALETTE.gold || PALETTE.accent2}
+        {visual3dMode === 'on' ? (
+          <HudTelemetryOverlay
+            accentColor={PALETTE.accent}
+            goldColor={PALETTE.gold || PALETTE.accent2}
             beatPulse={bp}
-            opacity={0.36}
-            seed={idx + 1}
+            sceneIndex={idx}
+            totalScenes={total}
+            opacity={0.46}
           />
         ) : null}
         <SceneTransitionOverlay

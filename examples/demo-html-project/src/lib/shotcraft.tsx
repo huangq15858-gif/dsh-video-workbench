@@ -1705,6 +1705,455 @@ export const ThreeCyberStage: React.FC<ThreeCyberStageProps> = ({
 }
 
 /**
+ * Freeform Programmable Three.js 3D Stage (<FreeformThreeStage buildScene={(api) => { ... }} />)
+ * Allows the AI Coder to build ANY custom 3D geometry, 3D scene, 3D orbits, 3D bar/terrain charts,
+ * 3D molecules, 3D globes, 3D exploded views, and 3D-anchored HUD labels per frame with zero preset limits!
+ */
+export interface FreeformThreeMeshOpts {
+  position?: [number, number, number]
+  rotation?: [number, number, number]
+  scale?: number | [number, number, number]
+  isGold?: boolean
+  fillAlpha?: number
+  strokeAlpha?: number
+  lineWidth?: number
+  wireframeOnly?: boolean
+}
+
+export interface FreeformThreeLineOpts {
+  isGold?: boolean
+  alpha?: number
+  lineWidth?: number
+  closed?: boolean
+  dashed?: boolean
+}
+
+export interface FreeformThreeParticleOpts {
+  radius?: number
+  isGold?: boolean
+  alpha?: number
+  glow?: boolean
+}
+
+export interface FreeformThreeLabelOpts {
+  isGold?: boolean
+  fontSize?: number
+  subText?: string
+}
+
+export interface FreeformThreeApi {
+  THREE: typeof THREE
+  frame: number
+  fps: number
+  t: number
+  progress: number
+  beatPulse: number
+  width: number
+  height: number
+  primaryColor: string
+  secondaryColor: string
+  setCamera: (position: [number, number, number], lookAt?: [number, number, number], fov?: number) => void
+  addMesh: (geometry: THREE.BufferGeometry, opts?: FreeformThreeMeshOpts) => void
+  addLine3D: (points: Array<[number, number, number]>, opts?: FreeformThreeLineOpts) => void
+  addParticle3D: (position: [number, number, number], opts?: FreeformThreeParticleOpts) => void
+  addLabel3D: (text: string, position: [number, number, number], opts?: FreeformThreeLabelOpts) => void
+  orbitPoint: (radius: number, angleRad: number, y?: number, tiltXRad?: number) => [number, number, number]
+  arc3D: (start: [number, number, number], end: [number, number, number], arcHeight?: number, segments?: number) => Array<[number, number, number]>
+}
+
+export interface FreeformThreeStageProps {
+  buildScene?: (api: FreeformThreeApi) => void
+  fallbackPreset?: ThreeStagePreset | string
+  primaryColor?: string
+  secondaryColor?: string
+  bgColor?: string
+  opacity?: number
+  beatPulse?: number
+  durationInFrames?: number
+  seed?: number
+  style?: React.CSSProperties
+}
+
+export const FreeformThreeStage: React.FC<FreeformThreeStageProps> = ({
+  buildScene,
+  fallbackPreset = 'orbital-core',
+  primaryColor = '#38BDF8',
+  secondaryColor = '#F59E0B',
+  bgColor = 'transparent',
+  opacity = 0.88,
+  beatPulse = 0,
+  durationInFrames = 120,
+  seed = 1,
+  style = {},
+}) => {
+  const frame = useCurrentFrame()
+  const { fps, width, height } = useVideoConfig()
+  const canvasRef = useRef<HTMLCanvasElement | null>(null)
+
+  if (typeof buildScene !== 'function') {
+    return (
+      <ThreeCyberStage
+        preset={fallbackPreset}
+        primaryColor={primaryColor}
+        secondaryColor={secondaryColor}
+        bgColor={bgColor}
+        opacity={opacity}
+        beatPulse={beatPulse}
+        seed={seed}
+        style={style}
+      />
+    )
+  }
+
+  const renderFreeformFrame = () => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+
+    const w = width || 1920
+    const h = height || 1080
+    if (canvas.width !== w) canvas.width = w
+    if (canvas.height !== h) canvas.height = h
+
+    const t = frame / Math.max(1, fps || 30)
+    const progress = Math.max(0, Math.min(1, frame / Math.max(1, durationInFrames - 1)))
+    const bp = Math.max(0, Math.min(1.5, Number(beatPulse) || 0))
+    const colA = new THREE.Color(primaryColor || '#38BDF8')
+    const colB = new THREE.Color(secondaryColor || '#F59E0B')
+    const rgbA = `${Math.round(colA.r * 255)}, ${Math.round(colA.g * 255)}, ${Math.round(colA.b * 255)}`
+    const rgbB = `${Math.round(colB.r * 255)}, ${Math.round(colB.g * 255)}, ${Math.round(colB.b * 255)}`
+
+    ctx.clearRect(0, 0, w, h)
+    if (bgColor && bgColor !== 'transparent') {
+      ctx.fillStyle = bgColor
+      ctx.fillRect(0, 0, w, h)
+    }
+    const bgGrad = ctx.createRadialGradient(w * 0.5, h * 0.45, w * 0.04, w * 0.5, h * 0.5, w * 0.78)
+    bgGrad.addColorStop(0, `rgba(${rgbA}, ${(0.15 + bp * 0.07).toFixed(3)})`)
+    bgGrad.addColorStop(0.52, `rgba(${rgbB}, 0.06)`)
+    bgGrad.addColorStop(1, 'rgba(4, 7, 15, 0.0)')
+    ctx.fillStyle = bgGrad
+    ctx.fillRect(0, 0, w, h)
+
+    let camPos: [number, number, number] = [Math.sin(t * 0.35) * 1.4, 1.35 + Math.cos(t * 0.28) * 0.35, 8.2 - bp * 0.28]
+    let camLook: [number, number, number] = [0, 0, 0]
+    let camFov = 46
+
+    const geometriesToDispose: THREE.BufferGeometry[] = []
+    const meshEntries: Array<{ geo: THREE.BufferGeometry; matrix: THREE.Matrix4; opts: FreeformThreeMeshOpts }> = []
+    const lineEntries: Array<{ pts: Array<[number, number, number]>; opts: FreeformThreeLineOpts }> = []
+    const particleEntries: Array<{ pos: [number, number, number]; opts: FreeformThreeParticleOpts }> = []
+    const labelEntries: Array<{ text: string; pos: [number, number, number]; opts: FreeformThreeLabelOpts }> = []
+
+    const api: FreeformThreeApi = {
+      THREE,
+      frame,
+      fps: fps || 30,
+      t,
+      progress,
+      beatPulse: bp,
+      width: w,
+      height: h,
+      primaryColor,
+      secondaryColor,
+      setCamera: (pos, lookAt = [0, 0, 0], fov = 46) => {
+        if (Array.isArray(pos) && pos.length === 3) camPos = [Number(pos[0]) || 0, Number(pos[1]) || 0, Number(pos[2]) || 8]
+        if (Array.isArray(lookAt) && lookAt.length === 3) camLook = [Number(lookAt[0]) || 0, Number(lookAt[1]) || 0, Number(lookAt[2]) || 0]
+        if (Number.isFinite(Number(fov))) camFov = Math.max(20, Math.min(95, Number(fov)))
+      },
+      addMesh: (geometry, opts = {}) => {
+        if (!geometry || typeof geometry.getAttribute !== 'function') return
+        geometriesToDispose.push(geometry)
+        const mesh = new THREE.Mesh(geometry)
+        if (opts.position) mesh.position.set(Number(opts.position[0]) || 0, Number(opts.position[1]) || 0, Number(opts.position[2]) || 0)
+        if (opts.rotation) mesh.rotation.set(Number(opts.rotation[0]) || 0, Number(opts.rotation[1]) || 0, Number(opts.rotation[2]) || 0)
+        if (typeof opts.scale === 'number') {
+          mesh.scale.setScalar(opts.scale)
+        } else if (Array.isArray(opts.scale)) {
+          mesh.scale.set(Number(opts.scale[0]) || 1, Number(opts.scale[1]) || 1, Number(opts.scale[2]) || 1)
+        }
+        mesh.updateMatrixWorld(true)
+        meshEntries.push({ geo: geometry, matrix: mesh.matrixWorld.clone(), opts })
+      },
+      addLine3D: (points, opts = {}) => {
+        if (Array.isArray(points) && points.length >= 2) lineEntries.push({ pts: points, opts })
+      },
+      addParticle3D: (position, opts = {}) => {
+        if (Array.isArray(position) && position.length === 3) particleEntries.push({ pos: position, opts })
+      },
+      addLabel3D: (text, position, opts = {}) => {
+        if (text && Array.isArray(position) && position.length === 3) labelEntries.push({ text: String(text), pos: position, opts })
+      },
+      orbitPoint: (radius, angleRad, y = 0, tiltXRad = 0) => {
+        const x = Math.cos(angleRad) * radius
+        const z0 = Math.sin(angleRad) * radius
+        const y1 = y * Math.cos(tiltXRad) - z0 * Math.sin(tiltXRad)
+        const z1 = y * Math.sin(tiltXRad) + z0 * Math.cos(tiltXRad)
+        return [x, y1, z1]
+      },
+      arc3D: (start, end, arcHeight = 1.2, segments = 24) => {
+        const pts: Array<[number, number, number]> = []
+        const n = Math.max(4, Math.min(64, segments))
+        for (let i = 0; i <= n; i++) {
+          const u = i / n
+          const x = start[0] + (end[0] - start[0]) * u
+          const z = start[2] + (end[2] - start[2]) * u
+          const y = start[1] + (end[1] - start[1]) * u + Math.sin(u * Math.PI) * arcHeight
+          pts.push([x, y, z])
+        }
+        return pts
+      },
+    }
+
+    try {
+      buildScene(api)
+    } catch {}
+
+    const camera = new THREE.PerspectiveCamera(camFov, w / h, 0.1, 140)
+    camera.position.set(camPos[0], camPos[1], camPos[2])
+    camera.lookAt(camLook[0], camLook[1], camLook[2])
+    camera.updateMatrixWorld(true)
+    camera.updateProjectionMatrix()
+    const viewProj = new THREE.Matrix4().multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse)
+
+    const projectPt = (x: number, y: number, z: number) => {
+      const v = new THREE.Vector3(x, y, z).applyMatrix4(viewProj)
+      return {
+        x: (v.x * 0.5 + 0.5) * w,
+        y: (-v.y * 0.5 + 0.5) * h,
+        z: v.z,
+        visible: v.z > -1.0 && v.z < 1.0,
+      }
+    }
+
+    type FaceCmd = {
+      depth: number
+      pts: Array<{ x: number; y: number }>
+      fill: string
+      stroke: string
+      lineWidth: number
+    }
+    const drawQueue: FaceCmd[] = []
+    const lightDir = new THREE.Vector3(0.48, 0.78, 0.52).normalize()
+
+    for (const item of meshEntries) {
+      const { geo, matrix, opts } = item
+      const posAttr = geo.getAttribute('position')
+      if (!posAttr) continue
+      const idxAttr = geo.getIndex()
+      const va = new THREE.Vector3()
+      const vb = new THREE.Vector3()
+      const vc = new THREE.Vector3()
+      const na = new THREE.Vector3()
+      const nb = new THREE.Vector3()
+      const rgb = opts.isGold ? rgbB : rgbA
+      const fAlpha = opts.wireframeOnly ? 0 : (opts.fillAlpha ?? 0.22)
+      const sAlpha = opts.strokeAlpha ?? 0.78
+      const lw = opts.lineWidth ?? 1.35
+
+      const pushTri = (ia: number, ib: number, ic: number) => {
+        va.fromBufferAttribute(posAttr, ia).applyMatrix4(matrix)
+        vb.fromBufferAttribute(posAttr, ib).applyMatrix4(matrix)
+        vc.fromBufferAttribute(posAttr, ic).applyMatrix4(matrix)
+        const pa = projectPt(va.x, va.y, va.z)
+        const pb = projectPt(vb.x, vb.y, vb.z)
+        const pc = projectPt(vc.x, vc.y, vc.z)
+        if (!pa.visible || !pb.visible || !pc.visible) return
+        na.subVectors(vb, va)
+        nb.subVectors(vc, va)
+        const norm = new THREE.Vector3().crossVectors(na, nb).normalize()
+        const lambert = Math.max(0.18, Math.abs(norm.dot(lightDir)))
+        const depth = (pa.z + pb.z + pc.z) / 3
+        drawQueue.push({
+          depth,
+          pts: [{ x: pa.x, y: pa.y }, { x: pb.x, y: pb.y }, { x: pc.x, y: pc.y }],
+          fill: fAlpha > 0.005 ? `rgba(${rgb}, ${(fAlpha * lambert).toFixed(3)})` : 'transparent',
+          stroke: sAlpha > 0.005 ? `rgba(${rgb}, ${(sAlpha * (0.45 + 0.55 * lambert)).toFixed(3)})` : 'transparent',
+          lineWidth: lw,
+        })
+      }
+
+      if (idxAttr) {
+        for (let i = 0; i < idxAttr.count; i += 3) {
+          pushTri(idxAttr.getX(i), idxAttr.getX(i + 1), idxAttr.getX(i + 2))
+        }
+      } else {
+        for (let i = 0; i < posAttr.count; i += 3) {
+          pushTri(i, i + 1, i + 2)
+        }
+      }
+    }
+
+    drawQueue.sort((a, b) => b.depth - a.depth)
+    for (const face of drawQueue) {
+      ctx.beginPath()
+      ctx.moveTo(face.pts[0].x, face.pts[0].y)
+      ctx.lineTo(face.pts[1].x, face.pts[1].y)
+      ctx.lineTo(face.pts[2].x, face.pts[2].y)
+      ctx.closePath()
+      if (face.fill !== 'transparent') {
+        ctx.fillStyle = face.fill
+        ctx.fill()
+      }
+      if (face.stroke !== 'transparent') {
+        ctx.strokeStyle = face.stroke
+        ctx.lineWidth = face.lineWidth
+        ctx.stroke()
+      }
+    }
+
+    // Render 3D Lines / Orbits / Arcs
+    for (const ln of lineEntries) {
+      const rgb = ln.opts.isGold ? rgbB : rgbA
+      ctx.save()
+      ctx.strokeStyle = `rgba(${rgb}, ${(ln.opts.alpha ?? 0.78).toFixed(3)})`
+      ctx.lineWidth = ln.opts.lineWidth ?? 2.2
+      if (ln.opts.dashed) ctx.setLineDash([6, 6])
+      ctx.beginPath()
+      let started = false
+      for (let i = 0; i < ln.pts.length; i++) {
+        const p = projectPt(ln.pts[i][0], ln.pts[i][1], ln.pts[i][2])
+        if (!p.visible) continue
+        if (!started) {
+          ctx.moveTo(p.x, p.y)
+          started = true
+        } else {
+          ctx.lineTo(p.x, p.y)
+        }
+      }
+      if (started && ln.opts.closed) ctx.closePath()
+      if (started) ctx.stroke()
+      ctx.restore()
+    }
+
+    // Render 3D Particles
+    for (const pt of particleEntries) {
+      const p = projectPt(pt.pos[0], pt.pos[1], pt.pos[2])
+      if (!p.visible) continue
+      const rgb = pt.opts.isGold ? rgbB : rgbA
+      const r = Math.max(1.2, (pt.opts.radius ?? 3.5) * Math.max(0.45, (1 - p.z) * 1.25))
+      if (pt.opts.glow !== false) {
+        const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, r * 3.2)
+        g.addColorStop(0, `rgba(${rgb}, ${(pt.opts.alpha ?? 0.9).toFixed(3)})`)
+        g.addColorStop(1, `rgba(${rgb}, 0)`)
+        ctx.fillStyle = g
+        ctx.beginPath()
+        ctx.arc(p.x, p.y, r * 3.2, 0, Math.PI * 2)
+        ctx.fill()
+      }
+      ctx.fillStyle = `rgba(${rgb}, ${(pt.opts.alpha ?? 0.95).toFixed(3)})`
+      ctx.beginPath()
+      ctx.arc(p.x, p.y, r, 0, Math.PI * 2)
+      ctx.fill()
+    }
+
+    // Render 3D-Anchored HUD Callout Labels
+    for (const lbl of labelEntries) {
+      const p = projectPt(lbl.pos[0], lbl.pos[1], lbl.pos[2])
+      if (!p.visible || p.x < 40 || p.x > w - 40 || p.y < 40 || p.y > h - 80) continue
+      const rgb = lbl.opts.isGold ? rgbB : rgbA
+      const fs = lbl.opts.fontSize ?? 14
+      ctx.save()
+      ctx.font = `800 ${fs}px 'JetBrains Mono', 'Noto Sans SC', monospace`
+      const tw = ctx.measureText(lbl.text).width
+      const pw = tw + 22
+      const ph = lbl.opts.subText ? fs + 26 : fs + 14
+      const bx = p.x + 12
+      const by = p.y - ph * 0.5
+      ctx.fillStyle = `rgba(${rgb}, 0.95)`
+      ctx.beginPath()
+      ctx.arc(p.x, p.y, 4, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.strokeStyle = `rgba(${rgb}, 0.65)`
+      ctx.lineWidth = 1.5
+      ctx.beginPath()
+      ctx.moveTo(p.x, p.y)
+      ctx.lineTo(bx, p.y)
+      ctx.stroke()
+      ctx.fillStyle = 'rgba(7, 12, 24, 0.88)'
+      ctx.strokeStyle = `rgba(${rgb}, 0.72)`
+      ctx.lineWidth = 1.5
+      const r = 7
+      ctx.beginPath()
+      ctx.moveTo(bx + r, by)
+      ctx.lineTo(bx + pw - r, by)
+      ctx.quadraticCurveTo(bx + pw, by, bx + pw, by + r)
+      ctx.lineTo(bx + pw, by + ph - r)
+      ctx.quadraticCurveTo(bx + pw, by + ph, bx + pw - r, by + ph)
+      ctx.lineTo(bx + r, by + ph)
+      ctx.quadraticCurveTo(bx, by + ph, bx, by + ph - r)
+      ctx.lineTo(bx, by + r)
+      ctx.quadraticCurveTo(bx, by, bx + r, by)
+      ctx.closePath()
+      ctx.fill()
+      ctx.stroke()
+      ctx.fillStyle = '#F8FAFC'
+      ctx.fillText(lbl.text, bx + 11, by + fs + 3)
+      if (lbl.opts.subText) {
+        ctx.font = `600 ${Math.max(10, fs - 3)}px 'JetBrains Mono', monospace`
+        ctx.fillStyle = `rgba(${rgb}, 0.92)`
+        ctx.fillText(lbl.opts.subText, bx + 11, by + fs + 18)
+      }
+      ctx.restore()
+    }
+
+    for (const g of geometriesToDispose) {
+      try { g.dispose() } catch {}
+    }
+  }
+
+  useLayoutEffect(() => {
+    renderFreeformFrame()
+  }, [frame, fps, width, height, primaryColor, secondaryColor, bgColor, beatPulse, durationInFrames, seed])
+
+  useEffect(() => {
+    renderFreeformFrame()
+  }, [frame])
+
+  return (
+    <AbsoluteFill style={{ pointerEvents: 'none', opacity, ...style }}>
+      <canvas
+        ref={canvasRef}
+        width={width || 1920}
+        height={height || 1080}
+        style={{ width: '100%', height: '100%', display: 'block' }}
+      />
+    </AbsoluteFill>
+  )
+}
+
+/**
+ * Freeform SVG Path & Arc Math Helpers (for custom AI-coded charts, waves, radars, trajectories, and vector illustrations)
+ */
+export function buildSmoothSvgPath(points: Array<{ x: number; y: number }>, closed = false): string {
+  if (!Array.isArray(points) || points.length === 0) return ''
+  if (points.length === 1) return `M ${points[0].x.toFixed(1)} ${points[0].y.toFixed(1)}`
+  let d = `M ${points[0].x.toFixed(1)} ${points[0].y.toFixed(1)}`
+  for (let i = 0; i < points.length - 1; i++) {
+    const p0 = points[i]
+    const p1 = points[i + 1]
+    const mx = ((p0.x + p1.x) * 0.5).toFixed(1)
+    d += ` C ${mx} ${p0.y.toFixed(1)}, ${mx} ${p1.y.toFixed(1)}, ${p1.x.toFixed(1)} ${p1.y.toFixed(1)}`
+  }
+  if (closed) d += ' Z'
+  return d
+}
+
+export function describeSvgArc(cx: number, cy: number, r: number, startAngleDeg: number, endAngleDeg: number): string {
+  const sweep = endAngleDeg - startAngleDeg
+  if (Math.abs(sweep) < 0.1) return ''
+  const clampedEnd = sweep >= 359.9 ? startAngleDeg + 359.9 : sweep <= -359.9 ? startAngleDeg - 359.9 : endAngleDeg
+  const a0 = Math.min(startAngleDeg, clampedEnd)
+  const a1 = Math.max(startAngleDeg, clampedEnd)
+  const rad = (deg: number) => ((deg - 90) * Math.PI) / 180.0
+  const start = { x: cx + r * Math.cos(rad(a1)), y: cy + r * Math.sin(rad(a1)) }
+  const end = { x: cx + r * Math.cos(rad(a0)), y: cy + r * Math.sin(rad(a0)) }
+  const largeArcFlag = a1 - a0 <= 180 ? '0' : '1'
+  return `M ${start.x.toFixed(2)} ${start.y.toFixed(2)} A ${r.toFixed(2)} ${r.toFixed(2)} 0 ${largeArcFlag} 0 ${end.x.toFixed(2)} ${end.y.toFixed(2)}`
+}
+
+/**
  * Pillar 4: Beat-Synced Spring Physics Calculator (spring + interpolate + harmonic beat recoil)
  */
 export function computeBeatSpring(

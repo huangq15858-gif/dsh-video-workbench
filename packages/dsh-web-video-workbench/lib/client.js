@@ -262,6 +262,7 @@ window.__ModuleLoader__?.load({
     ]
 
     const QUICK_FIX_PILLS = [
+      { label: '🪐 AI 自由手写本幕 3D+SVG', prompt: '根据本幕台词与主题，使用 FreeformThreeStage 与内联动态 SVG 从零自由编写独一无二的 3D 场景与 2D 矢量图表动画，突破固定预设' },
       { label: '🕸️ 切换为动态 SVG 架构图', prompt: '将当前镜头改为动态 SVG 系统架构拓扑图与光子数据流展示' },
       { label: '📊 切换为 HUD 遥测代码面板', prompt: '将当前镜头改为全息 HUD 遥测环形仪表与实时 TSX 代码流展示' },
       { label: '⚡ 节奏加快一倍', prompt: '把全片切换节奏加快，转场更有冲击力，单幕更干脆利落' },
@@ -6522,7 +6523,7 @@ window.__ModuleLoader__?.load({
                     h(CinemaSelect, {
                       compact: true,
                       value: selectedScene.layout || '3d-stage-opener',
-                      onChange: (ly) => updateSelectedScene({ layout: ly }),
+                      onChange: (ly) => updateSelectedScene({ layout: ly, useBuiltinLayout: true }),
                       T,
                       options: SCENE_LAYOUT_OPTIONS,
                     }),
