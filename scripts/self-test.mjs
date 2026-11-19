@@ -2415,11 +2415,19 @@ export const BATCH_01_SCENES: Record<string, React.FC<CustomSceneProps>> = {
   })
   const expandedEstSec = estimatePlanDurationSec(expandedPlanRes?.plan?.shots || [], { narrationMode: 'tts' })
   rmSync(tmpV038Proj, { recursive: true, force: true })
-  if (mockTierCalls < 2 || (expandedPlanRes?.plan?.shots?.length || 0) < 18 || expandedEstSec < 110) {
-    throw new Error(`v0.3.8 anti-shrink expansion failed: calls=${mockTierCalls} shots=${expandedPlanRes?.plan?.shots?.length} estSec=${expandedEstSec}`)
+  const serverIndexSrc = readFileSync(join(REPO_ROOT, 'packages', 'dsh-web-video-workbench', 'lib', 'index.js'), 'utf8')
+  const llmClientSrc = readFileSync(join(REPO_ROOT, 'packages', 'dsh-tool-media', 'llm-client.js'), 'utf8')
+  if (
+    mockTierCalls < 2 ||
+    (expandedPlanRes?.plan?.shots?.length || 0) < 18 ||
+    expandedEstSec < 110 ||
+    !serverIndexSrc.includes('timeoutMs: 600_000') ||
+    !llmClientSrc.includes('postJsonLongTimeout')
+  ) {
+    throw new Error(`v0.3.8/0.3.9 anti-shrink or 10-min polish check failed: calls=${mockTierCalls} shots=${expandedPlanRes?.plan?.shots?.length} estSec=${expandedEstSec}`)
   }
   console.log(
-    `[20/20] v0.3.8 Uploaded BGM/Note Auto-Bind + Audible Mix (${meanDb.toFixed(1)} dB) + Custom Duration & Anti-Shrink Expansion (${expandedEstSec}s, ${expandedPlanRes.plan.shots.length} shots) Verified!`,
+    `[20/20] v0.3.9 Uploaded BGM/Note Auto-Bind + Audible Mix (${meanDb.toFixed(1)} dB) + Custom Duration & Anti-Shrink (${expandedEstSec}s, ${expandedPlanRes.plan.shots.length} shots) + 10-Min Async AI Polish Verified!`,
   )
   console.log('======================================================================')
 }

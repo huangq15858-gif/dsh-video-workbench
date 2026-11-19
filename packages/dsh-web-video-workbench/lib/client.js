@@ -1917,15 +1917,17 @@ window.__ModuleLoader__?.load({
 
       // Async Job Poller
       const pollBackgroundJob = useCallback(
-        async (jobId) => {
+        async (jobId, { silentBusy = false } = {}) => {
           while (true) {
             await new Promise((r) => setTimeout(r, 750))
             const res = await connFetch(`/api/video-workbench/jobs?id=${encodeURIComponent(jobId)}`)
             const payload = await res.json()
             if (!payload.ok || !payload.job) throw new Error(payload.error || '任务查询失败')
             const job = payload.job
-            if (job.message) setBusyLabel(job.message)
-            if (Number.isFinite(Number(job.progress))) setBusyProgress(Number(job.progress))
+            if (!silentBusy) {
+              if (job.message) setBusyLabel(job.message)
+              if (Number.isFinite(Number(job.progress))) setBusyProgress(Number(job.progress))
+            }
             if (job.status === 'done') return job.result || {}
             if (job.status === 'error') throw new Error(job.error || '后台任务执行失败')
           }
@@ -2390,6 +2392,7 @@ window.__ModuleLoader__?.load({
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
+              async: true,
               projectDir: activeProjectDir,
               rawPrompt,
               style: directorForm.style,
@@ -2402,7 +2405,12 @@ window.__ModuleLoader__?.load({
               narrationMode: directorForm.narrationMode,
             }),
           })
-          const d = await res.json()
+          const initD = await res.json()
+          if (!initD.ok) {
+            notify(`AI 润色失败: ${initD.error || '请求未成功'}`, 'error')
+            return
+          }
+          const d = initD.jobId ? await pollBackgroundJob(initD.jobId, { silentBusy: true }) : initD
           if (!d.ok || !d.polishedTopic) {
             notify(`AI 润色失败: ${d.error || '未返回有效指令'}`, 'error')
             return

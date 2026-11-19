@@ -329,8 +329,8 @@ ${durationRuleLine}${bgmRuleLine}`
     system: systemPrompt,
     messages: [{ role: 'user', content: userMsg }],
     temperature: 0.45,
-    maxTokens: 2200,
-    timeoutMs: 90_000,
+    maxTokens: 4096,
+    timeoutMs: 600_000,
   })
   const rawText = String(reply?.text || '')
     .replace(/^```[\w]*\r?\n?/, '')
@@ -1950,9 +1950,15 @@ export async function handleWorkbenchApiRequest(req) {
       }
     }
 
-    // 6h-3. POST /api/video-workbench/polish-topic (AI polish user short prompt into rich director brief)
+    // 6h-3. POST /api/video-workbench/polish-topic (AI polish user short prompt into rich director brief; supports 10-min async job)
     if (pathname === '/api/video-workbench/polish-topic' && req.method === 'POST') {
       const body = await parseRequestJson(req)
+      if (body.async) {
+        const job = createBackgroundJob('✨ AI 大模型正在深度分析素材与需求并润色专业导演指令（支持最长 10 分钟）...', async () => {
+          return await polishTopicPrompt(body)
+        })
+        return jsonResponse({ ok: true, async: true, jobId: job.id, job })
+      }
       try {
         const res = await polishTopicPrompt(body)
         return jsonResponse(res)

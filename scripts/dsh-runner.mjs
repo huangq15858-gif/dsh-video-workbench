@@ -315,6 +315,8 @@ async function main() {
 </body>
 </html>`)
   })
+  server.requestTimeout = 660_000
+  server.headersTimeout = 660_000
 
   for (let offset = 0; offset <= 15; offset++) {
     const candidatePort = basePort + offset

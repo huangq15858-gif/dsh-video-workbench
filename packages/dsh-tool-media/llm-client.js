@@ -1,7 +1,74 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import http from 'node:http'
+import https from 'node:https'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { loadEnv, resolveEnvPath } from '../shared/index.js'
+
+/**
+ * Node built-in http/https POST helper used when `timeoutMs > 240_000` so long-running
+ * reasoning LLM calls (up to 10 minutes) bypass Node undici's default 300s `headersTimeout`.
+ */
+function postJsonLongTimeout(endpoint, headers, bodyStr, timeoutMs, signal) {
+  return new Promise((resolvePromise, rejectPromise) => {
+    const parsedUrl = new URL(endpoint)
+    const mod = parsedUrl.protocol === 'http:' ? http : https
+    const bodyBuf = Buffer.from(bodyStr, 'utf8')
+    let settled = false
+    const done = (fn, val) => {
+      if (settled) return
+      settled = true
+      try { signal?.removeEventListener('abort', onAbort) } catch {}
+      fn(val)
+    }
+    const req = mod.request(
+      {
+        protocol: parsedUrl.protocol,
+        hostname: parsedUrl.hostname,
+        port: parsedUrl.port || (parsedUrl.protocol === 'http:' ? 80 : 443),
+        path: `${parsedUrl.pathname}${parsedUrl.search}`,
+        method: 'POST',
+        headers: {
+          ...headers,
+          'Content-Length': String(bodyBuf.byteLength),
+        },
+        timeout: timeoutMs,
+      },
+      (res) => {
+        const chunks = []
+        res.on('data', (c) => chunks.push(c))
+        res.on('end', () => {
+          const text = Buffer.concat(chunks).toString('utf8')
+          const status = res.statusCode || 0
+          done(resolvePromise, {
+            ok: status >= 200 && status < 300,
+            status,
+            text: async () => text,
+          })
+        })
+        res.on('error', (err) => done(rejectPromise, err))
+      },
+    )
+    const onAbort = () => {
+      try { req.destroy(signal?.reason || Object.assign(new Error('Request aborted'), { name: 'AbortError' })) } catch {}
+      done(rejectPromise, signal?.reason || Object.assign(new Error('Request aborted'), { name: 'AbortError' }))
+    }
+    if (signal) {
+      if (signal.aborted) {
+        onAbort()
+        return
+      }
+      signal.addEventListener('abort', onAbort, { once: true })
+    }
+    req.setTimeout(timeoutMs, () => {
+      const err = new Error(`LLM 请求超时 (${Math.round(timeoutMs / 1000)}s)`)
+      try { req.destroy(err) } catch {}
+      done(rejectPromise, err)
+    })
+    req.on('error', (err) => done(rejectPromise, err))
+    req.end(bodyBuf)
+  })
+}
 
 export const WIRE_PROTOCOLS = [
   {
@@ -1124,12 +1191,16 @@ export async function callLlmChat({
     let resStatus = 0
 
     try {
-      const res = await fetchImpl(endpoint, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(payload),
-        signal: controller.signal,
-      })
+      const bodyStr = JSON.stringify(payload)
+      const res =
+        fetchImpl === globalThis.fetch && timeoutMs > 240_000
+          ? await postJsonLongTimeout(endpoint, headers, bodyStr, timeoutMs, controller.signal)
+          : await fetchImpl(endpoint, {
+              method: 'POST',
+              headers,
+              body: bodyStr,
+              signal: controller.signal,
+            })
       resStatus = res.status || 0
       const rawText = await readResponseTextSafe(res)
       const parsed = parseRawLlmResponse(rawText, protocol)
