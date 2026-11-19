@@ -129,8 +129,85 @@ export const GENRE_PROFILES = [
   },
 ]
 
+const OPEN_GENRE_PROFILE = GENRE_PROFILES[GENRE_PROFILES.length - 1]
+
 export function getGenreProfile(id) {
-  return GENRE_PROFILES.find((g) => g.id === id) || GENRE_PROFILES[GENRE_PROFILES.length - 1]
+  const key = String(id || '').trim()
+  return GENRE_PROFILES.find((g) => g.id === key || g.label === key) || OPEN_GENRE_PROFILE
+}
+
+/**
+ * Resolve normalized genre id + custom human-readable label (`genreLabel`) across any creative category.
+ * Known profiles act only as starter routing hints; custom/unlisted genres always map cleanly to `'other'`
+ * while preserving the exact AI-invented or user-specified `label` end-to-end.
+ */
+export function resolveGenreSelection({ genre = '', genreLabel = '', text = '', hasScreenshots = false } = {}) {
+  const rawGenre = String(genre || '').trim()
+  const rawLabel = String(genreLabel || '').trim()
+  const isGenericOtherLabel = !rawLabel || rawLabel === OPEN_GENRE_PROFILE.label
+
+  const matchBuiltin = (q) =>
+    q && q.toLowerCase() !== 'auto' ? GENRE_PROFILES.find((g) => g.id === q || g.label === q) || null : null
+
+  const byGenre = matchBuiltin(rawGenre)
+  if (byGenre && byGenre.id !== 'other') {
+    return {
+      id: byGenre.id,
+      label: isGenericOtherLabel ? byGenre.label : rawLabel,
+      isCustom: false,
+      profile: byGenre,
+    }
+  }
+
+  if (rawGenre && rawGenre.toLowerCase() !== 'auto') {
+    const byLabelFromGenre = rawGenre === 'other' ? matchBuiltin(rawLabel) : null
+    if (byLabelFromGenre && byLabelFromGenre.id !== 'other') {
+      return {
+        id: byLabelFromGenre.id,
+        label: rawLabel,
+        isCustom: false,
+        profile: byLabelFromGenre,
+      }
+    }
+    const preservedLabel = !isGenericOtherLabel
+      ? rawLabel
+      : rawGenre !== 'other'
+        ? rawGenre
+        : OPEN_GENRE_PROFILE.label
+    return {
+      id: 'other',
+      label: preservedLabel,
+      isCustom: true,
+      profile: OPEN_GENRE_PROFILE,
+    }
+  }
+
+  if (rawLabel) {
+    const byLabel = matchBuiltin(rawLabel)
+    if (byLabel && byLabel.id !== 'other') {
+      return {
+        id: byLabel.id,
+        label: rawLabel,
+        isCustom: false,
+        profile: byLabel,
+      }
+    }
+    return {
+      id: 'other',
+      label: rawLabel,
+      isCustom: true,
+      profile: OPEN_GENRE_PROFILE,
+    }
+  }
+
+  const detectedId = detectGenre(text, hasScreenshots)
+  const detectedProfile = getGenreProfile(detectedId)
+  return {
+    id: detectedId,
+    label: detectedProfile.label,
+    isCustom: detectedId === 'other',
+    profile: detectedProfile,
+  }
 }
 
 /** Detect the most likely genre id from free text or options object; returns 'other' when nothing matches. */
@@ -159,21 +236,25 @@ export function detectGenre(textOrOpts = '', hasScreenshots = false) {
   return best.id
 }
 
-/** Compact catalogue for prompts (so the LLM routes by itself and may invent its own genre). */
+/** Compact catalogue for prompts (starter reference only — the LLM is always free to invent any genre). */
 export function listGenresForPrompt() {
   return GENRE_PROFILES.filter((g) => g.id !== 'other')
     .map((g) => `- ${g.id}（${g.label}）：${g.visualLanguage}｜配音：${g.voice}`)
     .join('\n')
 }
 
-/** Genre-specific direction block for director / coder prompts. */
-export function buildGenreGuidance(id) {
-  const g = getGenreProfile(id)
+/** Genre-specific direction block for director / coder prompts (preserves arbitrary custom `genreLabel`). */
+export function buildGenreGuidance(idOrOpts, customLabel = '') {
+  const opts =
+    idOrOpts && typeof idOrOpts === 'object'
+      ? { genre: idOrOpts.genre || idOrOpts.id || '', genreLabel: idOrOpts.genreLabel || customLabel || '' }
+      : { genre: String(idOrOpts || ''), genreLabel: String(customLabel || '') }
+  const { label, isCustom, profile: g } = resolveGenreSelection(opts)
   return [
-    `【体裁路由：${g.label}】`,
-    `视觉语言：${g.visualLanguage}`,
-    `可自由组合的写码技法：${g.techniques.join('、')}（只是起点——可以并且鼓励发明更贴切的画面，不得套用固定版式/固定卡片模板）`,
-    `节奏：${g.pacing}`,
+    `【体裁定位：${label}${isCustom ? '（自定义开放体裁 · 100% 自由创作）' : '（常见题材参考起点 · 不设任何上限）'}】`,
+    `视觉语言建议：${g.visualLanguage}`,
+    `可自由组合或全新发明的写码技法：${g.techniques.join('、')}（仅作启发起点 —— 请严格围绕「${label}」自行发明专属视觉语法与 React / Three.js 3D / SVG / Canvas 舞台，严禁生搬硬套其它题材的固定版式或卡片模板）`,
+    `节奏参考：${g.pacing}`,
     `配音取向：${g.voice}`,
   ].join('\n')
 }

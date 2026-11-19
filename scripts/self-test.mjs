@@ -1947,7 +1947,145 @@ export const BATCH_01_SCENES: Record<string, React.FC<CustomSceneProps>> = {
   })()
 
   console.log(
-    `[16/16] v7+v8 Verified (Topic Polish, Strict Cordis Proxy + Top Switcher [${registeredSlots.length}], Multi-Engine TTS GPT-SoVITS + Custom OpenAI Synth [${mockAudioRes.durationSec}s], NarrationMode UI & Scene Thumbs)!`,
+    `[16/17] v7+v8 Verified (Topic Polish, Strict Cordis Proxy + Top Switcher [${registeredSlots.length}], Multi-Engine TTS GPT-SoVITS + Custom OpenAI Synth [${mockAudioRes.durationSec}s], NarrationMode UI & Scene Thumbs)!`,
+  )
+
+  // 17. v0.3.5 Unrestricted Open Genre Pass-Through (genreLabel) & Freeform Stage Liberation
+  const { splitDirectorBrief } = await import('../packages/shared/meta-guard.js')
+  const { buildGenreGuidance, resolveGenreSelection } = await import('../packages/dsh-tool-media/genre-router.js')
+  const { buildBatchedRemotionScenesPrompt, buildHtmlCoderSkillsPrompt } = await import('../packages/dsh-tool-media/shotcraft-lib.js')
+  const { repairPromoPlanRules: repairFreeformPlan, runSchemaDirectorWithDegradation: runDirFreeform } = await import('../packages/dsh-tool-media/plan-schema.js')
+  const { syncProjectCodeFromScript: syncFreeformCode } = await import('../packages/dsh-tool-media/ai-director.js')
+
+  const customPolishedRes = await polishTopicPrompt(
+    {
+      rawPrompt: '制作一部深海热液生物纪录动画，风格像透明玻璃解剖图鉴',
+      style: 'cinematic',
+      llmOverride: {
+        provider: 'openai',
+        format: 'openai-completions',
+        baseUrl: 'https://mock-free-genre.invalid/v1',
+        apiKey: 'mock-key',
+        model: 'mock-director-open',
+      },
+    },
+    {
+      fetchImpl: async () =>
+        new Response(
+          JSON.stringify({
+            choices: [
+              {
+                message: {
+                  content: JSON.stringify({
+                    genre: 'deepsea-glass-atlas',
+                    genreLabel: '深海透明解剖图鉴动画',
+                    displayTitle: '幽渊之灯',
+                    logline: '以透明玻璃剖面呈现深海热液生命奇迹',
+                    contentOutline: ['400℃ 黑烟囱涌泉', '盲虾集群趋光迁徙'],
+                    directorNotes: '采用玻璃半透剖面、青金光散射粒子与慢推镜。',
+                    voiceStyle: '沉静带敬畏感的自然纪录片旁白',
+                    suggestedStyle: 'cinematic',
+                  }),
+                },
+              },
+            ],
+          }),
+          { status: 200 },
+        ),
+    },
+  )
+  const splitCustom = splitDirectorBrief({ topic: customPolishedRes.polishedTopic })
+  const customGenreSel = resolveGenreSelection({ genre: customPolishedRes.genre, genreLabel: customPolishedRes.genreLabel })
+  const customGuidance = buildGenreGuidance(customGenreSel.id, customGenreSel.label)
+  if (
+    customPolishedRes.genre !== 'other' ||
+    customPolishedRes.genreLabel !== '深海透明解剖图鉴动画' ||
+    splitCustom.genreLabel !== '深海透明解剖图鉴动画' ||
+    customGenreSel.id !== 'other' ||
+    customGenreSel.label !== '深海透明解剖图鉴动画' ||
+    !customGuidance.includes('深海透明解剖图鉴动画')
+  ) {
+    throw new Error(`Custom genre pass-through assertion failed: ${JSON.stringify({ customPolishedRes, splitCustom, customGenreSel, customGuidance })}`)
+  }
+
+  const repairedFreeform = repairFreeformPlan(
+    {
+      title: '幽渊之灯',
+      shots: [
+        { id: 'scene-01', title: '热液喷口', narration: '在4000米深海热液喷口旁，微光悄然涌动。', layout: 'freeform-stage', visualBlueprint: '3D 玻璃海沟纵切 + 发光热液粒子流' },
+        { id: 'scene-02', title: '生命阵列', narration: '盲虾依附在400℃黑烟囱周围建立绿洲。', visualBlueprint: '透明外骨骼向量解剖视图' },
+      ],
+    },
+    { topic: '幽渊之灯', genre: 'other', genreLabel: '深海透明解剖图鉴动画', authoringMode: 'ai-coded' },
+  )
+  const tier2Modern = await runDirFreeform({
+    topic: '深海热液解剖图鉴',
+    genre: 'other',
+    genreLabel: '深海透明解剖图鉴动画',
+    authoringMode: 'ai-coded',
+    forceTierForTest: 2,
+    callLlmChatFn: async () => ({
+      text: '热液初涌 | 玻璃剖面 | 4000米海底喷出炽热矿泉。 | 半透明粒子与热羽流上升\n盲虾共生 | 神经发光网 | 化能合成细菌滋养深海群落。 | 发光微粒沿轨迹流动',
+    }),
+  })
+  const freeRemotionPrompt = buildBatchedRemotionScenesPrompt({
+    batchIndex: 0,
+    totalBatches: 1,
+    batchScenes: [{ id: 'scene-01', index: 1, title: '热液喷口', narration: '微光涌动', durationSec: 4, durationInFrames: 120, startSec: 0 }],
+    totalScenes: 1,
+    width: 1920,
+    height: 1080,
+    topic: '幽渊之灯',
+    genre: 'other',
+    genreLabel: '深海透明解剖图鉴动画',
+  })
+  const freeHtmlPrompt = buildHtmlCoderSkillsPrompt({
+    plan: { topic: '幽渊之灯', genre: 'other', genreLabel: '深海透明解剖图鉴动画', theme: {}, scenes: [] },
+    timingContract: { topic: '幽渊之灯', genre: 'other', genreLabel: '深海透明解剖图鉴动画', fps: 30, totalDurationInFrames: 120, scenes: [] },
+    width: 1920,
+    height: 1080,
+    aspectRatio: '16:9',
+  })
+  if (
+    repairedFreeform.genreLabel !== '深海透明解剖图鉴动画' ||
+    repairedFreeform.shots[0].layout !== 'freeform-stage' ||
+    repairedFreeform.shots[1].layout !== 'freeform-stage' ||
+    tier2Modern.plan?.genreLabel !== '深海透明解剖图鉴动画' ||
+    tier2Modern.plan?.shots?.[0]?.layout !== 'freeform-stage' ||
+    !freeRemotionPrompt.system.includes('深海透明解剖图鉴动画') ||
+    !freeRemotionPrompt.user.includes('深海透明解剖图鉴动画') ||
+    !freeHtmlPrompt.system.includes('深海透明解剖图鉴动画') ||
+    !freeHtmlPrompt.user.includes('深海透明解剖图鉴动画')
+  ) {
+    throw new Error(`Freeform-stage liberation assertion failed: repaired=${JSON.stringify(repairedFreeform.shots.map((s) => s.layout))}, t2=${tier2Modern.plan?.shots?.[0]?.layout}`)
+  }
+
+  // Fallback Stage safety for `layout: 'freeform-stage'` without CustomSceneComp override
+  const tmpFreeformFallbackProj = join(REPO_ROOT, '.tmp', 'v035-freeform-fallback')
+  rmSync(tmpFreeformFallbackProj, { recursive: true, force: true })
+  scaffoldVideoProject(tmpFreeformFallbackProj, { title: '幽渊之灯', genre: 'other', genreLabel: '深海透明解剖图鉴动画', engine: 'remotion', style: 'cinematic' })
+  const ffScript = JSON.parse(readFileSync(join(tmpFreeformFallbackProj, 'script.json'), 'utf8'))
+  ffScript.scenes = (ffScript.scenes || []).slice(0, 2).map((sc, idx) => ({
+    ...sc,
+    layout: 'freeform-stage',
+    title: idx === 0 ? '热液初涌' : '盲虾共生',
+    narration: idx === 0 ? '在4000米深海之下。' : '生命悄然绽放。',
+  }))
+  writeFileSync(join(tmpFreeformFallbackProj, 'script.json'), JSON.stringify(ffScript, null, 2) + '\n', 'utf8')
+  syncFreeformCode(tmpFreeformFallbackProj, ffScript, { forceOverwrite: true })
+  const ffCompTsx = readFileSync(join(tmpFreeformFallbackProj, 'src', 'VideoComposition.tsx'), 'utf8')
+  const ffLint = await executeVideoLint({ projectDir: tmpFreeformFallbackProj, engine: 'remotion' })
+  const ffTsc = await runTypecheckOnProject(tmpFreeformFallbackProj)
+  rmSync(tmpFreeformFallbackProj, { recursive: true, force: true })
+  if (
+    !ffCompTsx.includes("!['3d-stage-opener'") ||
+    !ffLint.ok ||
+    !ffTsc.ok
+  ) {
+    throw new Error(`Freeform fallback SceneStage safety failed: lint=${JSON.stringify(ffLint.errors)}, tsc=${JSON.stringify(ffTsc.errors)}`)
+  }
+  console.log(
+    `[17/17] v0.3.5 Open Genre Pass-Through (genreLabel='${customGenreSel.label}') & Freeform-Stage Zero-Cage Verified (Tier1+Tier2 + TSX Fallback tsc/lint PASS)!`,
   )
   console.log('======================================================================')
 }

@@ -1,6 +1,6 @@
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
-import { buildGenreGuidance, detectGenre } from './genre-router.js'
+import { buildGenreGuidance, detectGenre, resolveGenreSelection } from './genre-router.js'
 
 /**
  * Distilled Shotcraft Primitives & LLM Skills Prompt Builder
@@ -3253,6 +3253,7 @@ export function buildDirectorPromptPackage({
   directorNotes = '',
   contentOutline = [],
   genre = '',
+  genreLabel = '',
   aspectRatio,
   quality,
   width,
@@ -3265,8 +3266,15 @@ export function buildDirectorPromptPackage({
   pacingMode = 'auto',
 }) {
   const zeroVisualAssets = !Array.isArray(assets) || assets.length === 0
-  const resolvedGenre = genre || detectGenre(`${topic || ''} ${userPrompt || ''} ${directorNotes || ''}`, !zeroVisualAssets)
-  const genreGuide = buildGenreGuidance(resolvedGenre)
+  const genreInfo = resolveGenreSelection({
+    genre,
+    genreLabel,
+    text: `${topic || ''} ${userPrompt || ''} ${directorNotes || ''}`,
+    hasScreenshots: !zeroVisualAssets,
+  })
+  const resolvedGenre = genreInfo.id
+  const resolvedGenreLabel = genreInfo.label
+  const genreGuide = buildGenreGuidance(resolvedGenre, resolvedGenreLabel)
   const normPacing = ['calm', 'balanced', 'dynamic'].includes(String(pacingMode || '').toLowerCase())
     ? String(pacingMode).toLowerCase()
     : narrationMode === 'subtitle-mv' || resolvedGenre === 'history-theater' || /历史|霸王|史诗|演义|战役|卡点|快闪|混剪|高燃|\bMV\b/i.test(`${topic || ''} ${userPrompt || ''}`)
@@ -3494,6 +3502,7 @@ export function buildBatchedRemotionScenesPrompt({
   topic = '',
   style = 'cinematic',
   genre = '',
+  genreLabel = '',
   directorNotes = '',
   contentOutline = [],
   bgmMeta = null,
@@ -3503,8 +3512,15 @@ export function buildBatchedRemotionScenesPrompt({
   const filePath = `src/scenes/Batch${pad}.tsx`
   const exportName = `BATCH_${pad}_SCENES`
   const hasAnyAssets = (batchScenes || []).some((s) => (s.media?.length || s.assetPaths?.length || 0) > 0)
-  const resolvedGenre = genre || detectGenre(`${topic} ${directorNotes}`, hasAnyAssets)
-  const genreGuide = buildGenreGuidance(resolvedGenre)
+  const genreInfo = resolveGenreSelection({
+    genre,
+    genreLabel,
+    text: `${topic} ${directorNotes}`,
+    hasScreenshots: hasAnyAssets,
+  })
+  const resolvedGenre = genreInfo.id
+  const resolvedGenreLabel = genreInfo.label
+  const genreGuide = buildGenreGuidance(resolvedGenre, resolvedGenreLabel)
   const isUiTutorial = resolvedGenre === 'ui-tutorial'
 
   const system = `你是全球顶尖的 Opus 5.5 Vibecoding 视频动效创意主程（精通 Remotion v4 + 原生 Three.js 3D 自由编程 + 动态矢量 SVG 创作 + React 交互动效 + 弹簧物理动画）。
@@ -3554,6 +3570,7 @@ ${isUiTutorial ? `- **【软件实操教程专属视觉规范 —— 严禁暗�
       task: `请编写模块 ${filePath}（第 ${batchIndex + 1}/${totalBatches} 批，共 ${batchScenes.length} 镜 / 全片 ${totalScenes} 镜）`,
       topic,
       genre: resolvedGenre,
+      genreLabel: resolvedGenreLabel,
       contentOutline: Array.isArray(contentOutline) && contentOutline.length ? contentOutline : undefined,
       style,
       canvas: { width, height, fps, aspectRatio },
@@ -3602,8 +3619,15 @@ export function buildHtmlCoderSkillsPrompt({
 }) {
   const isPortrait = width < height
   const topicText = plan?.displayTitle || plan?.topic || plan?.title || timingContract?.topic || ''
-  const resolvedGenre = plan?.genre || timingContract?.genre || detectGenre(`${topicText} ${plan?.directorNotes || ''}`, (timingContract?.scenes || []).some((s) => (s.assetPaths?.length || 0) > 0))
-  const genreGuide = buildGenreGuidance(resolvedGenre)
+  const genreInfo = resolveGenreSelection({
+    genre: plan?.genre || timingContract?.genre || '',
+    genreLabel: plan?.genreLabel || timingContract?.genreLabel || '',
+    text: `${topicText} ${plan?.directorNotes || ''}`,
+    hasScreenshots: (timingContract?.scenes || []).some((s) => (s.assetPaths?.length || 0) > 0),
+  })
+  const resolvedGenre = genreInfo.id
+  const resolvedGenreLabel = genreInfo.label
+  const genreGuide = buildGenreGuidance(resolvedGenre, resolvedGenreLabel)
   const directorNotes = plan?.directorNotes || timingContract?.directorNotes || ''
   const system = `你是精通 HyperFrames HTML5/Canvas 2D+3D 透视矩阵与动态 SVG 创意编程专家（Opus 5.5 Vibecoding 水准）。
 你需要生成一个完全自包含、纯离线零外链、支持 Chromium CDP 逐帧精确 seek 的单个 HTML 文件，**彻底解除模板束缚，按题材自由手写 Canvas + SVG + 3D 透视画面**！
@@ -3630,8 +3654,10 @@ ${directorNotes ? `\n【导演备注（仅供视觉写码参考，严禁把指�
 
   const user = JSON.stringify(
     {
-      task: '请突破预设限制，为全部镜头自由手写专属 HyperFrames 3D + SVG + Spring 动画 index.html (严格 JSON { "files": { "index.html": "..." } })',
+      task: '请突破预设限制，为全部镜头自由手写专属 HyperFrames 3D + SVG + Canvas 骨骼/水墨/交互动画 index.html (严格 JSON { "files": { "index.html": "..." } })',
       topic: plan?.topic || plan?.title || timingContract?.topic || '',
+      genre: resolvedGenre,
+      genreLabel: resolvedGenreLabel,
       style: plan?.style || timingContract?.style || 'tech',
       narrationMode: timingContract?.narrationMode || 'tts',
       bgmBeats: (timingContract?.bgmBeats || timingContract?.bgm?.beats || []).slice(0, 64),

@@ -261,13 +261,13 @@ export async function polishTopicPrompt(body = {}, { fetchImpl } = {}) {
   const guessedGenre = detectGenre(`${rawPrompt} ${noteSnippets.join(' ')}`, visualList.length > 0)
 
   const systemPrompt = `你是全品类视频创作总导演，擅长把一句大白话想法扩写成 AI 制作团队可直接执行的结构化创作方案。
-先判断体裁（可从下列路由中选择，也可以自创最贴切的体裁——不要被列表限制）：
+先判断体裁：**没有任何题材限制**！下列只是 11 种常见写法参考，如果用户需求属于美食探店、机甲机械拆解、修仙/都市漫剧、游戏攻略、建筑空间漫游、影视解说、财经宏观、实验视觉艺术等任何未列出的题材，直接设 \`"genre": "other"\`（或简短英文 slug）并在 \`genreLabel\` 填写准确的新体裁名称：
 ${listGenresForPrompt()}
 
 严格只输出一个 JSON 对象（不要 Markdown、不要代码围栏、不要寒暄），字段如下：
 {
-  "genre": "体裁 id（上面列表中的 id；都不合适就写 other 并在 genreLabel 写自创体裁名）",
-  "genreLabel": "体裁中文名",
+  "genre": "常见体裁 id，或自创题材填 other",
+  "genreLabel": "精准的体裁中文名（支持无限自创新体裁，例如：科幻机甲拆解、美食教程、财经宏观分析等）",
   "displayTitle": "观众可见的作品标题，≤16 个字，只写作品名本身，不含任何制作要求",
   "logline": "一句话说明这部片子讲什么（给导演看）",
   "contentOutline": ["观众将看到/听到的内容要点 1", "要点 2", "..."],
@@ -278,7 +278,7 @@ ${listGenresForPrompt()}
 硬性规则：
 1. directorNotes 里的任何文字都不会出现在视频中；displayTitle 与 contentOutline 才是观众可接触的信息。
 2. contentOutline 写事实/情节/步骤的要点（名词短语或短句），不要写成"本视频要求…""请制作…"之类指令。
-3. 结合 uploadedVisualAssets / uploadedNotes：有素材就写明如何使用；没有素材就由代码动画自由绘制（Three.js / SVG / Canvas）。
+3. 结合 uploadedVisualAssets / uploadedNotes：有素材就写明如何使用；没有素材就由代码动画自由绘制（Three.js / SVG / Canvas，不受固定模板限制）。
 4. 严禁虚构不存在的数据；用户给出的产品名、网址须原样保留在 contentOutline 中。
 5. 数字用阿拉伯数字书写（206 年、3000 人）。`
 
@@ -338,8 +338,12 @@ ${listGenresForPrompt()}
     }
   }
 
-  const genreId = GENRE_PROFILES.some((g) => g.id === str(parsed.genre)) ? str(parsed.genre) : str(parsed.genre) ? 'other' : guessedGenre
-  const genreLabel = str(parsed.genreLabel) || getGenreProfile(genreId).label
+  const rawParsedGenre = str(parsed.genre)
+  const matchedProfile = rawParsedGenre ? GENRE_PROFILES.find((g) => g.id === rawParsedGenre || g.label === rawParsedGenre) : null
+  const genreId = matchedProfile ? matchedProfile.id : rawParsedGenre ? 'other' : guessedGenre
+  const genreLabel =
+    str(parsed.genreLabel) ||
+    (genreId === 'other' && rawParsedGenre && rawParsedGenre !== 'other' ? rawParsedGenre : getGenreProfile(genreId).label)
   const outline = (Array.isArray(parsed.contentOutline) ? parsed.contentOutline : str(parsed.contentOutline).split(/\n+/))
     .map((x) => str(x).replace(/^[-\d.、\s]+/, ''))
     .filter((x) => x && !isMetaInstructionText(x))

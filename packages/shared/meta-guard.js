@@ -107,9 +107,11 @@ function parseBriefSections(raw) {
     const m = String(raw || '').match(re)
     return m ? m[1].trim() : ''
   }
+  const parsedGenreLabel = grab('体裁').split(/\n/)[0].trim()
   return {
     title: grab('作品标题').split(/\n/)[0].trim(),
-    genre: grab('体裁').split(/\n/)[0].trim(),
+    genre: parsedGenreLabel,
+    genreLabel: parsedGenreLabel,
     outline: grab('内容要点'),
     notes: grab('导演备注'),
     hasMarkers: /【\s*(?:作品标题|体裁|内容要点|导演备注)/.test(String(raw || '')),
@@ -130,6 +132,7 @@ export function splitDirectorBrief(spec = {}) {
       directorNotes,
       contentOutline: String(spec.contentOutline || '').trim() || sections.outline,
       genre: String(spec.genre || '').trim() || sections.genre,
+      genreLabel: String(spec.genreLabel || '').trim() || sections.genreLabel,
       isBrief: true,
     }
   }
@@ -159,6 +162,7 @@ export function splitDirectorBrief(spec = {}) {
     directorNotes,
     contentOutline: String(spec.contentOutline || '').trim(),
     genre: String(spec.genre || '').trim(),
+    genreLabel: String(spec.genreLabel || '').trim(),
     isBrief: looksLikeBrief,
   }
 }

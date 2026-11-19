@@ -10,7 +10,7 @@ import {
   stripMetaInstructions,
   VIDEO_STYLES,
 } from '../shared/index.js'
-import { buildGenreGuidance, detectGenre, getGenreProfile } from './genre-router.js'
+import { buildGenreGuidance, detectGenre, getGenreProfile, resolveGenreSelection } from './genre-router.js'
 
 export const PROMO_PLAN_VERSION = 'promo-plan/1'
 
@@ -134,6 +134,7 @@ const VALID_SHOWCASE_LAYOUTS = new Set([
   'svg-architecture-flow',
   'hud-telemetry-dashboard',
   'vibecoding-spring-stage',
+  'freeform-stage',
 ])
 
 const VALID_STAGE_ARCHETYPES = [
@@ -325,19 +326,26 @@ export function validatePromoPlan(plan) {
  */
 export function repairPromoPlanRules(
   rawPlan = {},
-  { topic = '', style = 'tech', genre = '', directorNotes = '', contentOutline = [], assetsManifest = null, existingScript = null, bgmMeta = null, narrationMode = '', pacingMode = '' } = {},
+  { topic = '', style = 'tech', genre = '', genreLabel = '', authoringMode = '', directorNotes = '', contentOutline = [], assetsManifest = null, existingScript = null, bgmMeta = null, narrationMode = '', pacingMode = '' } = {},
 ) {
   const existingScenes = Array.isArray(existingScript?.scenes) ? existingScript.scenes : []
   const mediaItems = (assetsManifest?.items || []).filter((it) => it.role !== 'music' && it.role !== 'sfx' && it.role !== 'note' && it.type !== 'audio')
   const cleanTopic = normalizeNumeralsForDisplay(stripMetaInstructions(topic || rawPlan?.title || existingScript?.title || '')) || '主题短片'
-  const resolvedGenre =
-    String(rawPlan?.genre || genre || existingScript?.genre || '').trim() ||
-    detectGenre({
+  const isFreeformCoding =
+    String(authoringMode || rawPlan?.authoringMode || existingScript?.authoringMode || 'ai-coded').trim().toLowerCase() !== 'schema-plan'
+  const genreInfo = resolveGenreSelection({
+    genre: rawPlan?.genre || genre || existingScript?.genre || '',
+    genreLabel: rawPlan?.genreLabel || genreLabel || existingScript?.genreLabel || '',
+    text: {
       topic: cleanTopic,
       goal: directorNotes || existingScript?.goal || '',
       style: style || rawPlan?.style || existingScript?.style || 'tech',
       hasMedia: mediaItems.length > 0,
-    })
+    },
+    hasScreenshots: mediaItems.length > 0,
+  })
+  const resolvedGenre = genreInfo.id
+  const resolvedGenreLabel = genreInfo.label
   const explicitPacing = String(pacingMode || rawPlan?.pacingMode || existingScript?.pacingMode || '').trim().toLowerCase()
   const resolvedPacing = resolvePacingProfile({
     topic: cleanTopic,
@@ -450,19 +458,23 @@ export function repairPromoPlanRules(
 
     const rawLayout = String(s?.layout || '').trim()
     const chosenLayout =
-      VALID_SHOWCASE_LAYOUTS.has(rawLayout) && (rawLayout !== 'narrative-diorama' || isHistoricalTopic)
-        ? rawLayout
-        : mediaItems.length === 0
-          ? isHistoricalTopic
-            ? 'narrative-diorama'
-            : idx === 0
-              ? '3d-stage-opener'
-              : idx === rawShots.length - 1
-                ? 'radial-climax'
-                : vibecodingZeroAssetLayouts[idx % vibecodingZeroAssetLayouts.length]
-          : VALID_SHOWCASE_LAYOUTS.has(existingScenes[idx]?.layout)
-            ? existingScenes[idx].layout
-            : spec.layout
+      rawLayout === 'freeform-stage'
+        ? 'freeform-stage'
+        : VALID_SHOWCASE_LAYOUTS.has(rawLayout) && (rawLayout !== 'narrative-diorama' || isHistoricalTopic)
+          ? rawLayout
+          : isFreeformCoding && mediaItems.length === 0 && !isHistoricalTopic
+            ? 'freeform-stage'
+            : mediaItems.length === 0
+              ? isHistoricalTopic
+                ? 'narrative-diorama'
+                : idx === 0
+                  ? '3d-stage-opener'
+                  : idx === rawShots.length - 1
+                    ? 'radial-climax'
+                    : vibecodingZeroAssetLayouts[idx % vibecodingZeroAssetLayouts.length]
+              : VALID_SHOWCASE_LAYOUTS.has(existingScenes[idx]?.layout)
+                ? existingScenes[idx].layout
+                : spec.layout
 
     const cleanShotTitle =
       normalizeNumeralsForDisplay(
@@ -606,6 +618,7 @@ export function repairPromoPlanRules(
     version: PROMO_PLAN_VERSION,
     mode: isNarrativeMv ? 'narrative-mv' : 'promo-ui',
     genre: resolvedGenre,
+    genreLabel: resolvedGenreLabel,
     pacingMode: resolvedPacing.id,
     beatSync: Boolean(bgmMeta?.analyzed || isNarrativeMv),
     title: rawTitle,
@@ -654,7 +667,7 @@ export function resolvePlanSchedule(plan, baseScript = {}) {
       voiceEmotion: shot.voiceEmotion || shot.emotion || baseScene.voiceEmotion || baseScene.emotion || '自信明快',
       role: shot.role || baseScene.role || 'narrator',
       speechRate: Number(shot.speechRate || baseScene.speechRate || 1.04),
-      layout: shot.layout || 'media-split-motion',
+      layout: shot.layout || 'freeform-stage',
       kenBurns: shot.kenBurns || 'zoom-in',
       transition: normalizeTransitionKind(shot.transition || 'iris-circle', idx, plan?.mode === 'narrative-mv' || Boolean(plan?.beatSync)),
       highlights: shot.highlights?.length ? shot.highlights : baseScene.highlights || [PROMO_SHOT_RECIPES[shot.recipe]?.label || shot.recipe],
@@ -701,6 +714,8 @@ export function resolvePlanSchedule(plan, baseScript = {}) {
 
   return {
     version: PROMO_PLAN_VERSION,
+    genre: plan?.genre || baseScript?.genre || '',
+    genreLabel: plan?.genreLabel || baseScript?.genreLabel || '',
     fps,
     width,
     height,
@@ -756,6 +771,8 @@ export async function runSchemaDirectorWithDegradation({
   topic = '',
   style = 'tech',
   genre = '',
+  genreLabel = '',
+  authoringMode = 'ai-coded',
   directorNotes = '',
   contentOutline = [],
   targetPlatform = 'universal',
@@ -775,16 +792,22 @@ export async function runSchemaDirectorWithDegradation({
   )
   const cleanTopic = normalizeNumeralsForDisplay(stripMetaInstructions(topic || scriptData?.title || '')) || '主题短片'
   const effectiveDirectorNotes = String(directorNotes || scriptData?.directorNotes || '').trim()
-  const resolvedGenre =
-    String(genre || scriptData?.genre || '').trim() ||
-    detectGenre({
+  const effectiveAuthoringMode = String(authoringMode || scriptData?.authoringMode || 'ai-coded').trim() || 'ai-coded'
+  const isFreeformCoding = effectiveAuthoringMode.toLowerCase() !== 'schema-plan'
+  const genreInfo = resolveGenreSelection({
+    genre: genre || scriptData?.genre || '',
+    genreLabel: genreLabel || scriptData?.genreLabel || '',
+    text: {
       topic: cleanTopic,
       goal: `${effectiveDirectorNotes} ${scriptData?.goal || ''}`,
       style,
       hasMedia: mediaCheck.length > 0,
-    })
-  const genreProfile = getGenreProfile(resolvedGenre)
-  const genreGuidance = buildGenreGuidance(resolvedGenre)
+    },
+    hasScreenshots: mediaCheck.length > 0,
+  })
+  const resolvedGenre = genreInfo.id
+  const resolvedGenreLabel = genreInfo.label
+  const genreGuidance = buildGenreGuidance(resolvedGenre, resolvedGenreLabel)
   const effectivePacingMode = pacingMode || scriptData?.pacingMode || 'auto'
   const pacingProfile = resolvePacingProfile({
     topic: cleanTopic,
@@ -816,7 +839,8 @@ export async function runSchemaDirectorWithDegradation({
           task: `生成 ${PROMO_PLAN_VERSION} 分镜配方 JSON`,
           topic: cleanTopic,
           genre: resolvedGenre,
-          genreLabel: genreProfile.label,
+          genreLabel: resolvedGenreLabel,
+          authoringMode: effectiveAuthoringMode,
           contentOutline: Array.isArray(contentOutline) && contentOutline.length > 0 ? contentOutline : undefined,
           directorNotesOnlyInternalDoNotReadAloud: effectiveDirectorNotes || undefined,
           productBrief: noteSummaries || undefined,
@@ -834,7 +858,9 @@ export async function runSchemaDirectorWithDegradation({
               }
             : undefined,
           allowedRecipes: VALID_SHOT_KINDS,
-          allowedLayouts: Array.from(VALID_SHOWCASE_LAYOUTS),
+          ...(isFreeformCoding
+            ? { freeformLayoutPreferred: 'freeform-stage', optionalFallbackLayouts: Array.from(VALID_SHOWCASE_LAYOUTS) }
+            : { allowedLayouts: Array.from(VALID_SHOWCASE_LAYOUTS) }),
           ...(zeroVisualAssets && resolvedGenre === 'history-theater' ? { allowedStageArchetypes: VALID_STAGE_ARCHETYPES, allowedStageMoods: ['dawn-amber', 'crimson-war', 'indigo-night', 'ash-twilight', 'bronze-hall', 'jade-river', 'void-gold'], allowedStageSettings: ['palace-stairs', 'mountain-camp', 'city-siege', 'river-gorge', 'vast-plain'] } : {}),
           relativeAssets: mediaNames,
           scenesHint: scriptData?.authoringMode === 'local-draft'
@@ -870,7 +896,7 @@ export async function runSchemaDirectorWithDegradation({
         const strictContentRules = `
 【红线铁律 1 · 零指令词污染】：\`directorNotesOnlyInternalDoNotReadAloud\`、风格需求与润色指令仅供你规划视觉和写作 \`visualBlueprint\`，**严禁将任何“本视频要求…/分镜指令…/画面风格…/节奏设定…/受众定位…/制作规格…”写进 \`title\`、\`narration\`、\`subChunks\` 或 \`highlights\`**！输出给观众看听的必须是 100% 纯正片正文！
 【红线铁律 2 · 字幕自然阿拉伯数字与去标点断句】：\`narration\` 与 \`subChunks\` 中的年份、数量、规格全部保持**自然阿拉伯数字**（如 \`206年\`、\`3000人\`、\`119年\`、\`8 GB\`），严禁写成“二零六年”“三千人”；**\`subChunks\` 中严禁出现任何双引号 \`“”""\`、单引号、书名号 \`《》\` 及首尾逗号/句号**，确保每条短句词意完整、标点不孤立出现在行首或行尾！
-【红线铁律 3 · 体裁路由与自由创作】：当前识别体裁为 **${genreProfile.label} (\`${resolvedGenre}\`)**。${genreGuidance}`
+【红线铁律 3 · 全题材开放路由与无预设自由创作】：当前创作定位为 **${resolvedGenreLabel} (\`${resolvedGenre}\`)**。${genreGuidance}`
         const uiInteractiveRules =
           resolvedGenre === 'ui-tutorial' || (!zeroVisualAssets && /工作台|教程|客户端|软件|UI|界面|实操/.test(rawGoalText))
             ? `\n【红线铁律 4 · 高清亮色交互式软件教程镜头规范】：
@@ -878,23 +904,30 @@ export async function runSchemaDirectorWithDegradation({
 - 如需镜头推近（1.8x~2.4x）及光标点击动作，仅填写简洁的 \`focusFx\` (0.15~0.85)、\`focusFy\` (0.15~0.85) 与 \`clickLabel\`（如 \`"新建工程"\`），系统会自动生成平滑 2.1x 放大镜头、光标移动轨迹、波纹特效及 \`click/whoosh\` 音效，无需手写冗长数组！`
             : ''
         const pacingLabelHint = `当前选用节奏方案【${pacingProfile.label}】：${pacingProfile.ruleHint}${unlimitedDurationHint}\n${strictContentRules}${uiInteractiveRules}`
+        const zeroLayoutExample = isFreeformCoding
+          ? isHistoricalPrompt
+            ? 'narrative-diorama|freeform-stage'
+            : 'freeform-stage'
+          : isHistoricalPrompt
+            ? 'narrative-diorama'
+            : '3d-stage-opener|svg-architecture-flow|hud-telemetry-dashboard|vibecoding-spring-stage|metric-dashboard|workflow-steps|kinetic-impact|radial-climax'
         const systemPrompt = zeroVisualAssets
-          ? `你是顶级音画动态导演 (AI Visual & Motion Director)，擅长 Remotion + 原生 Three.js 3D + 动态 SVG / Canvas 无限制自由编程创作。
-当前没有任何图片/视频素材 (zeroVisualAssets=true)，全部画面将由下游 AI 主程根据你为每一幕撰写的 \`visualBlueprint\`，使用 \`<FreeformThreeStage>\` + 动态 \`<svg>\` / \`<canvas>\` **100% 从零自由编写专属代码**（严禁千篇一律的科技黑卡片套模板！\`layout\` 仅作保底参考）！
+          ? `你是顶级音画动态导演 (AI Visual & Motion Director)，擅长 Remotion + 原生 Three.js 3D + 动态 SVG / Canvas 全题材无限制自由编程创作。
+当前没有任何图片/视频素材 (zeroVisualAssets=true)，全部画面将由下游 AI 主程根据你为每一幕撰写的 \`visualBlueprint\`，使用 \`<FreeformThreeStage>\` + 动态 \`<svg>\` / \`<canvas>\` **100% 从零自由编写专属代码**（${isFreeformCoding ? '直接填写 `"layout": "freeform-stage"`，严禁千篇一律套用宣传片黑卡片！' : '`layout` 为内置安全预设'}）！
 ${pacingLabelHint}
-输出严格紧凑 JSON：{ "version": "promo-plan/1", "genre": "${resolvedGenre}", "mode": "${pacingProfile.id === 'dynamic' ? 'narrative-mv' : 'promo-ui'}", "beatSync": ${pacingProfile.id === 'dynamic' || narrationMode === 'subtitle-mv' || narrationMode === 'tts-beat-sync'}, "title": "纯粹正片作品标题", "style": "cinematic|tech|emerald|energetic|documentary", "bpm": ${effectiveBgm?.bpm || (pacingProfile.id === 'calm' ? 88 : 110)}, "shots": [{ "id": "scene-01", "title": "...", "narration": "纯粹正片台词(保持自然阿拉伯数字)", "emotion": "欢快热情|激昂有力|温和亲切|重点强调|悬念低沉|深沉史诗", "speechRate": 1.04, "role": "narrator|host", "accentWords": ["核心关键词"], "layout": "${isHistoricalPrompt ? 'narrative-diorama' : '3d-stage-opener|svg-architecture-flow|hud-telemetry-dashboard|vibecoding-spring-stage|metric-dashboard|workflow-steps|kinetic-impact|radial-climax'}", "threePreset": "orbital-core|cyber-terrain|particle-vortex|floating-monoliths|chrono-helix|matrix-cubes", "beatCount": ${pacingProfile.id === 'dynamic' ? 2 : 4}, "durationSec": ${pacingProfile.id === 'calm' ? 5.0 : pacingProfile.id === 'balanced' ? 4.5 : 2.0}, "transition": "${pacingProfile.id === 'calm' ? 'light-wipe' : 'slash-wipe'}", "visualBlueprint": "具体描述本镜专属视觉构图（紧扣 ${genreProfile.label} 风格，例如：历史题材写水墨疆域推演/烽烟粒子；火柴人写骨骼动作关键帧；科技题材写 Three.js 几何空间/拓扑图）与镜头物理节奏", "highlights": ["要点1","要点2"]${isHistoricalPrompt ? ', "stageSpec": { "mood": "dawn-amber|crimson-war|indigo-night|ash-twilight|bronze-hall|jade-river|void-gold", "setting": "palace-stairs|mountain-camp|city-siege|river-gorge|vast-plain", "archetype": "hero-numeral|hero-stand|oath-break|cavalry-rush|slash-climax|duel-confront|farewell-tent|strategic-map|scroll-calligraphy|plaque-summary|channel-end", "heroNum": "119", "heroUnit": "年", "bannerChar": "汉", "plaques": ["要点1","要点2"], "headline": "结尾主标题", "subheadline": "副标题" }' : ''} }] }。
+输出严格紧凑 JSON：{ "version": "promo-plan/1", "genre": "${resolvedGenre}", "genreLabel": "${resolvedGenreLabel}", "mode": "${pacingProfile.id === 'dynamic' ? 'narrative-mv' : 'promo-ui'}", "beatSync": ${pacingProfile.id === 'dynamic' || narrationMode === 'subtitle-mv' || narrationMode === 'tts-beat-sync'}, "title": "纯粹正片作品标题", "style": "cinematic|tech|emerald|energetic|documentary", "bpm": ${effectiveBgm?.bpm || (pacingProfile.id === 'calm' ? 88 : 110)}, "shots": [{ "id": "scene-01", "title": "...", "narration": "纯粹正片台词(保持自然阿拉伯数字)", "emotion": "欢快热情|激昂有力|温和亲切|重点强调|悬念低沉|深沉史诗", "speechRate": 1.04, "role": "narrator|host", "accentWords": ["核心关键词"], "layout": "${zeroLayoutExample}", "threePreset": "orbital-core|cyber-terrain|particle-vortex|floating-monoliths|chrono-helix|matrix-cubes", "beatCount": ${pacingProfile.id === 'dynamic' ? 2 : 4}, "durationSec": ${pacingProfile.id === 'calm' ? 5.0 : pacingProfile.id === 'balanced' ? 4.5 : 2.0}, "transition": "${pacingProfile.id === 'calm' ? 'light-wipe' : 'slash-wipe'}", "visualBlueprint": "具体描述本镜专属视觉构图（紧扣 ${resolvedGenreLabel} 自由发明贴合内容的画面与镜头语言，不受任何固定版式上限约束）与镜头物理节奏", "highlights": ["要点1","要点2"]${isHistoricalPrompt ? ', "stageSpec": { "mood": "dawn-amber|crimson-war|indigo-night|ash-twilight|bronze-hall|jade-river|void-gold", "setting": "palace-stairs|mountain-camp|city-siege|river-gorge|vast-plain", "archetype": "hero-numeral|hero-stand|oath-break|cavalry-rush|slash-climax|duel-confront|farewell-tent|strategic-map|scroll-calligraphy|plaque-summary|channel-end", "heroNum": "119", "heroUnit": "年", "bannerChar": "汉", "plaques": ["要点1","要点2"], "headline": "结尾主标题", "subheadline": "副标题" }' : ''} }] }。
 核心硬性要求：
 1. **贴合题材的拆镜与节奏**：拆分为 **${desiredZeroShotsMin}~${desiredZeroShotsMax} 个镜头**，${pacingProfile.ruleHint}（单镜口播长度与时长严格匹配；每幕设置富有感染力的 \`emotion\` 与合理 \`speechRate\` \`0.92~1.14\`）。
-2. **零预设束缚，每镜写出独一无二的 \`visualBlueprint\`（下游 TSX 代码生成员直读！）**：严格遵循 ${genreProfile.label} 美学语言（不要乱套不相关的科技/电商卡片）。
+2. **零预设束缚，每镜写出独一无二的 \`visualBlueprint\`（下游 TSX 代码生成员直读！）**：严格遵循 ${resolvedGenreLabel} 的专属视觉审美自由造景（不要生搬硬套不相关的科技/电商卡片）。
 3. **绝对禁止输出任何网址 URL、参考来源标注或制作指令词**：所有旁白纯正自然，禁用双引号，阿拉伯数字原样保留（系统会自动按语义切分字幕）。
 4. \`transition\` 仅允许 \`${VALID_TRANSITIONS.join(' | ')}\` 中的合法值（首镜用 \`cut\`）。`
-          : `你是顶级商业与开源技术宣传片/交互式软件教程导演，擅长依据题材调整叙事节奏与声画表现。
+          : `你是顶级全题材动态导演兼交互式软件教程视觉总监，擅长依据具体题材灵活编排真实现场画面与自由写码分镜。
 ${pacingLabelHint}
 输出严格紧凑 JSON（不要输出冗余 cams/subChunks 大数组，聚焦高质量剧情、精确图片路径与清晰简短 visualBlueprint）：
-{ "version": "promo-plan/1", "genre": "${resolvedGenre}", "beatSync": ${narrationMode === 'subtitle-mv' || narrationMode === 'tts-beat-sync' || pacingProfile.id === 'dynamic'}, "title": "纯粹正片作品标题", "style": "tech|energetic|emerald|cinematic|documentary", "bpm": ${effectiveBgm?.bpm || (pacingProfile.id === 'calm' ? 92 : 114)}, "shots": [{ "id": "scene-01", "title": "...", "narration": "纯粹正片台词(保持自然阿拉伯数字,不含双引号)", "emotion": "欢快热情|激昂有力|温和亲切|重点强调|悬念低沉", "speechRate": 1.07, "accentWords": ["亮点"], "windowTheme": "${resolvedGenre === 'ui-tutorial' ? 'light' : 'auto'}", "layout": "app-focus-shot|svg-architecture-flow|hud-telemetry-dashboard|vibecoding-spring-stage|workflow-steps|split-wipe-compare|metric-dashboard|multi-window-trio", "windowTitle": "模块名称", "highlights": ["标签1","标签2"], "focusFx": 0.25, "focusFy": 0.28, "clickLabel": "点击动作", "visualBlueprint": "30~60字精炼描述推镜放大重点与交互过渡", "durationSec": ${pacingProfile.id === 'calm' ? 5.5 : pacingProfile.id === 'balanced' ? 4.8 : 2.5}, "transition": "${pacingProfile.id === 'calm' ? 'light-wipe' : 'slash-wipe'}", "assetRefs": ["assets/xxx.png"] }] }。
+{ "version": "promo-plan/1", "genre": "${resolvedGenre}", "genreLabel": "${resolvedGenreLabel}", "beatSync": ${narrationMode === 'subtitle-mv' || narrationMode === 'tts-beat-sync' || pacingProfile.id === 'dynamic'}, "title": "纯粹正片作品标题", "style": "tech|energetic|emerald|cinematic|documentary", "bpm": ${effectiveBgm?.bpm || (pacingProfile.id === 'calm' ? 92 : 114)}, "shots": [{ "id": "scene-01", "title": "...", "narration": "纯粹正片台词(保持自然阿拉伯数字,不含双引号)", "emotion": "欢快热情|激昂有力|温和亲切|重点强调|悬念低沉", "speechRate": 1.07, "accentWords": ["亮点"], "windowTheme": "${resolvedGenre === 'ui-tutorial' ? 'light' : 'auto'}", "layout": "${isFreeformCoding ? 'freeform-stage|app-focus-shot' : 'app-focus-shot|svg-architecture-flow|hud-telemetry-dashboard|vibecoding-spring-stage|workflow-steps|split-wipe-compare|metric-dashboard|multi-window-trio'}", "windowTitle": "模块名称", "highlights": ["标签1","标签2"], "focusFx": 0.25, "focusFy": 0.28, "clickLabel": "点击动作", "visualBlueprint": "30~60字精炼描述画面构图、推镜放大重点与交互过渡", "durationSec": ${pacingProfile.id === 'calm' ? 5.5 : pacingProfile.id === 'balanced' ? 4.8 : 2.5}, "transition": "${pacingProfile.id === 'calm' ? 'light-wipe' : 'slash-wipe'}", "assetRefs": ["assets/xxx.png"] }] }。
 核心硬性要求：
 1. **依应用场景适配节奏与富有感情的配音演播**：拆分为 **${desiredUiShotsMin}~${desiredUiShotsMax} 个镜头**，${pacingProfile.ruleHint} 每幕标注生动 \`emotion\` 与节奏感 \`speechRate\`（\`1.05~1.12\`）。
-2. **精确对应文件名与内容，拒绝错配！**：每张截图引用 exact \`relativeAssets\` 路径并只解说该文件名真实对应的界面（例如 \`01b-drawer-open-light\` 讲工程抽屉，\`01c-new-project-modal\` 讲新建工程弹窗，\`02a/02b\` 讲硬件/低配保护）；开篇/原理/结尾可置 \`assetRefs: []\` 由 AI 自由编码。
+2. **精确对应文件名与内容，拒绝错配！**：每张截图引用 exact \`relativeAssets\` 路径并只解说该文件名真实对应的界面（例如 \`01b-drawer-open-light\` 讲工程抽屉，\`01c-new-project-modal\` 讲新建工程弹窗，\`02a/02b\` 讲硬件/低配保护）；开篇/原理/转折/结尾或自由视觉场景可置 \`assetRefs: []\` 并用 \`layout: "freeform-stage"\` 交由 AI 自由编码。
 3. **严禁网址参考来源注释与元指令词，禁用双引号且保留阿拉伯数字**。\`transition\` 仅允许 ${VALID_TRANSITIONS.join('/')}。`
         const res = await callLlmChatFn({
           system: systemPrompt,
@@ -908,7 +941,7 @@ ${pacingLabelHint}
         const candShots = candidate?.shots || candidate?.scenes || candidate?.storyboard
         const hasExplicitCandidateShots = Array.isArray(candShots) && candShots.length >= 2
         const repaired = hasExplicitCandidateShots
-          ? repairPromoPlanRules(candidate, { topic: cleanTopic, style, genre: resolvedGenre, directorNotes: effectiveDirectorNotes, contentOutline, assetsManifest, existingScript: scriptData, bgmMeta: effectiveBgm, narrationMode, pacingMode: effectivePacingMode })
+          ? repairPromoPlanRules(candidate, { topic: cleanTopic, style, genre: resolvedGenre, genreLabel: resolvedGenreLabel, authoringMode: effectiveAuthoringMode, directorNotes: effectiveDirectorNotes, contentOutline, assetsManifest, existingScript: scriptData, bgmMeta: effectiveBgm, narrationMode, pacingMode: effectivePacingMode })
           : null
         if (repaired && validatePromoPlan(repaired).ok) {
           for (const sh of repaired.shots) {
@@ -935,10 +968,15 @@ ${pacingLabelHint}
       const zeroVisT2 = visualItemsT2.length === 0
       const mediaNamesT2 = visualItemsT2.map((it) => it.path).filter(Boolean)
       const t2CountRange = pacingProfile.id === 'calm' ? '6~12' : mediaNamesT2.length >= 8 ? `${mediaNamesT2.length}~${mediaNamesT2.length + 6}` : pacingProfile.id === 'balanced' ? '10~16' : '22~30'
+      const isHistoricalT2 =
+        resolvedGenre === 'history-theater' ||
+        /历史|霸王|项羽|霍去病|卫青|汉武|秦|汉|楚|三国|唐|宋|明|古风|武侠|战役|将军|帝王|演义/i.test(`${cleanTopic} ${effectiveDirectorNotes}`)
       const res = await callLlmChatFn({
         system: zeroVisT2
-          ? `用 ${t2CountRange} 行紧凑列出完整叙事分镜表（体裁：${genreProfile.label}），节奏方案【${pacingProfile.label}】：${pacingProfile.ruleHint}。严禁附带任何网址 URL、制作指令词、双引号或 Markdown 链接，保持自然阿拉伯数字。每行格式：镜头标题 | 舞台类型(${VALID_STAGE_ARCHETYPES.join('/')}) | 纯中文旁白金句(含关键要点) | 镜内视觉动作(visualBlueprint)`
-          : `用 ${t2CountRange} 行紧凑列出分镜方案（体裁：${genreProfile.label}），节奏方案【${pacingProfile.label}】：${pacingProfile.ruleHint}。严禁附带任何网址 URL、制作指令词、双引号或 Markdown 链接，保持自然阿拉伯数字。每行格式：镜头标题 | 配方(${VALID_SHOT_KINDS.join('/')}) | 旁白一句话 | 镜内视觉动作(含推镜放大与点击焦点) | 素材路径(从 availableAssets 精确挑选或填 none)`,
+          ? isHistoricalT2
+            ? `用 ${t2CountRange} 行紧凑列出完整叙事分镜表（体裁：${resolvedGenreLabel}），节奏方案【${pacingProfile.label}】：${pacingProfile.ruleHint}。严禁附带任何网址 URL、制作指令词、双引号或 Markdown 链接，保持自然阿拉伯数字。每行格式：镜头标题 | 舞台类型(${VALID_STAGE_ARCHETYPES.join('/')}) | 纯中文旁白金句(含关键要点) | 镜内视觉动作(visualBlueprint)`
+            : `用 ${t2CountRange} 行紧凑列出完整视觉分镜表（体裁：${resolvedGenreLabel}），节奏方案【${pacingProfile.label}】：${pacingProfile.ruleHint}。严禁附带任何网址 URL、制作指令词、双引号或 Markdown 链接，保持自然阿拉伯数字。每行格式：镜头标题 | 自由视觉风格标签 | 纯中文旁白金句(含关键要点) | 镜内自由视觉构想与运动描述(visualBlueprint)`
+          : `用 ${t2CountRange} 行紧凑列出分镜方案（体裁：${resolvedGenreLabel}），节奏方案【${pacingProfile.label}】：${pacingProfile.ruleHint}。严禁附带任何网址 URL、制作指令词、双引号或 Markdown 链接，保持自然阿拉伯数字。每行格式：镜头标题 | 配方(${VALID_SHOT_KINDS.join('/')}) | 旁白一句话 | 镜内视觉动作(含推镜放大与点击焦点) | 素材路径(从 availableAssets 精确挑选或填 none)`,
         messages: [{
           role: 'user',
           content: `主题: ${cleanTopic}\n内容纲要: ${effectiveDirectorNotes.slice(0, 700)}${mediaNamesT2.length ? `\n可用截图素材(availableAssets):\n${mediaNamesT2.join('\n')}` : ''}`,
@@ -980,12 +1018,12 @@ ${pacingLabelHint}
             visualBlueprint: rawVisual || `${rawTitle || '核心视觉'}：推镜景深推进配合主题切换`,
             recipe,
             transition: idx === 0 ? 'cut' : txPool[idx % txPool.length],
-            layout: zeroVisT2 ? 'narrative-diorama' : (matchedAssetRefs?.length ? 'app-focus-shot' : undefined),
+            layout: zeroVisT2 ? (isHistoricalT2 ? 'narrative-diorama' : 'freeform-stage') : (matchedAssetRefs?.length ? 'app-focus-shot' : (isFreeformCoding ? 'freeform-stage' : undefined)),
             assetRefs: matchedAssetRefs,
             focusFx: matchedAssetRefs?.length && resolvedGenre === 'ui-tutorial' ? 0.35 : undefined,
             focusFy: matchedAssetRefs?.length && resolvedGenre === 'ui-tutorial' ? 0.32 : undefined,
             clickLabel: matchedAssetRefs?.length && resolvedGenre === 'ui-tutorial' ? rawTitle?.slice(0, 10) : undefined,
-            stageSpec: zeroVisT2
+            stageSpec: zeroVisT2 && isHistoricalT2
               ? {
                   mood: idx === 0 ? 'dawn-amber' : idx >= lines.length - 3 ? 'ash-twilight' : idx % 3 === 1 ? 'crimson-war' : 'indigo-night',
                   setting: idx === 0 ? 'palace-stairs' : idx >= lines.length - 3 ? 'river-gorge' : idx % 2 === 0 ? 'city-siege' : 'mountain-camp',
@@ -1002,8 +1040,8 @@ ${pacingLabelHint}
         })
         const effectiveBgmT2 = bgmMeta?.analyzed ? bgmMeta : scriptData?.bgm?.analyzed ? scriptData.bgm : null
         chosenPlan = repairPromoPlanRules(
-          { shots, targetPlatform, genre: resolvedGenre, pacingMode: pacingProfile.id, mode: pacingProfile.id === 'dynamic' || zeroVisT2 ? 'narrative-mv' : 'promo-ui' },
-          { topic: cleanTopic, style, genre: resolvedGenre, directorNotes: effectiveDirectorNotes, contentOutline, assetsManifest, existingScript: scriptData, bgmMeta: effectiveBgmT2, narrationMode, pacingMode: effectivePacingMode },
+          { shots, targetPlatform, genre: resolvedGenre, genreLabel: resolvedGenreLabel, authoringMode: effectiveAuthoringMode, pacingMode: pacingProfile.id, mode: pacingProfile.id === 'dynamic' || (zeroVisT2 && isHistoricalT2) ? 'narrative-mv' : 'promo-ui' },
+          { topic: cleanTopic, style, genre: resolvedGenre, genreLabel: resolvedGenreLabel, authoringMode: effectiveAuthoringMode, directorNotes: effectiveDirectorNotes, contentOutline, assetsManifest, existingScript: scriptData, bgmMeta: effectiveBgmT2, narrationMode, pacingMode: effectivePacingMode },
         )
         degradationTier = 2
         trace.push({ tier: 2, name: 'Sectioned Prompt', ok: true })
@@ -1041,8 +1079,8 @@ ${pacingLabelHint}
           durationSec: baseScenes ? item.durationSec : pacingProfile.id === 'calm' ? 5.0 : 4.2,
         }))
         chosenPlan = repairPromoPlanRules(
-          { style: presetStyle, genre: resolvedGenre, targetPlatform, pacingMode: pacingProfile.id, shots },
-          { topic: cleanTopic, style: presetStyle, genre: resolvedGenre, directorNotes: effectiveDirectorNotes, contentOutline, assetsManifest, existingScript: scriptData, narrationMode, pacingMode: effectivePacingMode },
+          { style: presetStyle, genre: resolvedGenre, genreLabel: resolvedGenreLabel, authoringMode: effectiveAuthoringMode, targetPlatform, pacingMode: pacingProfile.id, shots },
+          { topic: cleanTopic, style: presetStyle, genre: resolvedGenre, genreLabel: resolvedGenreLabel, authoringMode: effectiveAuthoringMode, directorNotes: effectiveDirectorNotes, contentOutline, assetsManifest, existingScript: scriptData, narrationMode, pacingMode: effectivePacingMode },
         )
         degradationTier = 3
         trace.push({ tier: 3, name: `MCQ Choice (${ch})`, ok: true })
@@ -1057,15 +1095,15 @@ ${pacingLabelHint}
   // Tier 4: Deterministic Code Rules Fallback (zero failure guarantee)
   if (!chosenPlan) {
     chosenPlan = repairPromoPlanRules(
-      { targetPlatform, style, genre: resolvedGenre, pacingMode: pacingProfile.id },
-      { topic: cleanTopic, style, genre: resolvedGenre, directorNotes: effectiveDirectorNotes, contentOutline, assetsManifest, existingScript: scriptData, narrationMode, pacingMode: effectivePacingMode },
+      { targetPlatform, style, genre: resolvedGenre, genreLabel: resolvedGenreLabel, authoringMode: effectiveAuthoringMode, pacingMode: pacingProfile.id },
+      { topic: cleanTopic, style, genre: resolvedGenre, genreLabel: resolvedGenreLabel, authoringMode: effectiveAuthoringMode, directorNotes: effectiveDirectorNotes, contentOutline, assetsManifest, existingScript: scriptData, narrationMode, pacingMode: effectivePacingMode },
     )
     degradationTier = 4
     trace.push({ tier: 4, name: 'Deterministic Rule Engine Fallback', ok: true })
   }
 
   const validation = validatePromoPlan(chosenPlan)
-  const resolved = resolvePlanSchedule(chosenPlan, { ...scriptData, genre: resolvedGenre, targetPlatform })
+  const resolved = resolvePlanSchedule(chosenPlan, { ...scriptData, genre: resolvedGenre, genreLabel: resolvedGenreLabel, targetPlatform })
 
   if (projectDir) {
     const absDir = resolve(projectDir)

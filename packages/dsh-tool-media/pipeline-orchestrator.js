@@ -31,7 +31,7 @@ import { planVideoFromAssets, syncProjectCodeFromScript } from './ai-director.js
 import { buildRichHtmlVideo } from './html-generator.js'
 import { authorBatchedRemotionScenes, runCodeAutoRepairLoop } from './ai-coder.js'
 import { executeCurateAndEditAssets } from './media-editor.js'
-import { buildGenreGuidance, detectGenre } from './genre-router.js'
+import { buildGenreGuidance, detectGenre, resolveGenreSelection } from './genre-router.js'
 import { generateAiCodedBgmTrack, generateAiCodedSfxCues, synthesizeTtsEngineAudioCue } from './audio-coder.js'
 import {
   analyzeAudioBeatStructure,
@@ -168,6 +168,7 @@ async function executeMultiAgentRunner(run, helpers) {
     spec.directorNotes = brief.directorNotes
     spec.contentOutline = brief.contentOutline || spec.contentOutline || ''
     spec.genre = brief.genre || spec.genre || ''
+    spec.genreLabel = brief.genreLabel || spec.genreLabel || ''
     spec.displayTitle = brief.displayTitle
     spec.topic = brief.topic
     spec.title = brief.title
@@ -227,6 +228,7 @@ async function executeMultiAgentRunner(run, helpers) {
         directorNotes: spec.directorNotes,
         contentOutline: spec.contentOutline,
         genre: spec.genre,
+        genreLabel: spec.genreLabel,
         style,
         engine,
         aspectRatio,
@@ -302,6 +304,8 @@ async function executeMultiAgentRunner(run, helpers) {
           directorNotes: spec.directorNotes || curScript.directorNotes || '',
           contentOutline: spec.contentOutline || curScript.contentOutline || '',
           genre: spec.genre || curScript.genre || '',
+          genreLabel: spec.genreLabel || curScript.genreLabel || '',
+          authoringMode: mode,
           style,
           targetPlatform,
           scriptData: curScript,
@@ -402,10 +406,14 @@ async function executeMultiAgentRunner(run, helpers) {
             }
           })
           curScript.scenes = updatedScenes
-          curScript.genre =
-            schemaRes.plan?.genre ||
-            curScript.genre ||
-            detectGenre({ topic: spec.topic || curScript.title, goal: curScript.directorNotes || curScript.goal, style, hasMedia: visualPool.length > 0 })
+          const genreAfterDir = resolveGenreSelection({
+            genre: schemaRes.plan?.genre || curScript.genre || spec.genre || '',
+            genreLabel: schemaRes.plan?.genreLabel || curScript.genreLabel || spec.genreLabel || '',
+            text: { topic: spec.topic || curScript.title, goal: curScript.directorNotes || curScript.goal, style, hasMedia: visualPool.length > 0 },
+            hasScreenshots: visualPool.length > 0,
+          })
+          curScript.genre = genreAfterDir.id
+          curScript.genreLabel = genreAfterDir.label
           curScript.title =
             normalizeNumeralsForDisplay(stripMetaInstructions(schemaRes.plan?.title || curScript.displayTitle || curScript.title)) ||
             curScript.title
@@ -616,15 +624,17 @@ async function executeMultiAgentRunner(run, helpers) {
           message: `正在召唤大模型 (${llmSummary.model}) 根据主题与情绪语义挑选精品音色...`,
         })
         try {
-          const curGenre =
-            scriptNow.genre ||
-            spec.genre ||
-            detectGenre({ topic: scriptNow.title || spec.topic, goal: scriptNow.directorNotes || scriptNow.goal, style, hasMedia: visualItemsNow.length > 0 })
+          const curGenreInfo = resolveGenreSelection({
+            genre: scriptNow.genre || spec.genre || '',
+            genreLabel: scriptNow.genreLabel || spec.genreLabel || '',
+            text: { topic: scriptNow.title || spec.topic, goal: scriptNow.directorNotes || scriptNow.goal, style, hasMedia: visualItemsNow.length > 0 },
+            hasScreenshots: visualItemsNow.length > 0,
+          })
           const castRes = await castVoicesWithLlm({
             projectDir: absDir,
             scriptData: scriptNow,
-            genre: curGenre,
-            genreGuidance: buildGenreGuidance(curGenre),
+            genre: curGenreInfo.id,
+            genreGuidance: buildGenreGuidance(curGenreInfo.id, curGenreInfo.label),
             callLlmChatFn: (p) => callLlmChat({ ...p, signal }),
           })
           if (castRes?.ok) {

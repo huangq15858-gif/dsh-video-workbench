@@ -709,8 +709,8 @@ const SceneStage: React.FC<{
           </AbsoluteFill>
         ) : null}
 
-        {/* LAYOUT 3: kinetic-impact */}
-        {layout === 'kinetic-impact' ? (
+        {/* LAYOUT 3: kinetic-impact (also safe fallback for freeform-stage / custom layouts when no CustomSceneComp override is present) */}
+        {layout === 'kinetic-impact' || !['3d-stage-opener', 'media-split-motion', 'mosaic-pulse-wall', 'compare-dual', 'radial-climax', 'card-fan-opener', 'app-focus-shot', 'workflow-steps', 'split-wipe-compare', 'metric-dashboard', 'svg-architecture-flow', 'hud-telemetry-dashboard', 'vibecoding-spring-stage', 'multi-window-trio', 'narrative-diorama'].includes(layout) ? (
           <AbsoluteFill style={{ justifyContent: 'center', alignItems: 'center', padding: '0 130px 60px' }}>
             {/* Framing Light Rails */}
             <div

@@ -19,7 +19,7 @@ import {
   VIDEO_STYLES,
   writeScriptJson,
 } from '../shared/index.js'
-import { detectGenre } from './genre-router.js'
+import { resolveGenreSelection } from './genre-router.js'
 import { matchAllScenesInScript } from '../dsh-tool-local-tts/index.js'
 import { importAssets, readAssets } from './asset-manager.js'
 import { buildRichHtmlVideo, resolvePalette } from './html-generator.js'
@@ -290,19 +290,25 @@ export async function planVideoFromAssets(options = {}) {
     directorNotes: options.directorNotes || existing.directorNotes,
     contentOutline: options.contentOutline || existing.contentOutline,
     genre: options.genre || existing.genre,
+    genreLabel: options.genreLabel || existing.genreLabel,
   })
   const projectTitle = briefSplit.title || existing.title || briefSplit.topic || 'AI 动效视听作品'
   const coreTopic = briefSplit.topic || projectTitle
   const fps = Number(requestedFps) || Number(existing.fps) || 30
 
-  const resolvedGenre =
-    String(briefSplit.genre || existing.genre || '').trim() ||
-    detectGenre({
+  const genreInfo = resolveGenreSelection({
+    genre: briefSplit.genre || existing.genre || '',
+    genreLabel: briefSplit.genreLabel || existing.genreLabel || '',
+    text: {
       topic: coreTopic,
       goal: `${briefSplit.directorNotes || ''} ${goal || ''}`,
       style: normalizedStyle,
       hasMedia: visuals.length > 0,
-    })
+    },
+    hasScreenshots: visuals.length > 0,
+  })
+  const resolvedGenre = genreInfo.id
+  const resolvedGenreLabel = genreInfo.label
 
   const noteChunks = notesText
     ? notesText
@@ -660,6 +666,7 @@ export async function planVideoFromAssets(options = {}) {
     directorNotes: briefSplit.directorNotes || existing.directorNotes || '',
     contentOutline: briefSplit.contentOutline || existing.contentOutline || '',
     genre: resolvedGenre,
+    genreLabel: resolvedGenreLabel,
     style: normalizedStyle,
     engine: engine === 'remotion' ? 'remotion' : 'html',
     fps,

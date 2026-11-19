@@ -27,7 +27,7 @@ import {
 import { castVoicesWithLlm, executeGenerateSpeech, getActiveTtsEngineId, matchAllScenesInScript } from '../dsh-tool-local-tts/index.js'
 import { executeVideoLint, executeVideoRender, runTypecheckOnProject, scanAiGeneratedCodeSandbox } from '../dsh-tool-video-suite/index.js'
 import { importAssets, readAssets } from './asset-manager.js'
-import { buildGenreGuidance, detectGenre } from './genre-router.js'
+import { buildGenreGuidance, detectGenre, resolveGenreSelection } from './genre-router.js'
 import {
   analyzeAudioBeatStructure,
   buildBeatGrid,
@@ -434,6 +434,7 @@ export async function authorBatchedRemotionScenes({
         topic: lockedScript.displayTitle || lockedScript.topic || lockedScript.title || '',
         style: lockedScript.style || 'cinematic',
         genre: lockedScript.genre || '',
+        genreLabel: lockedScript.genreLabel || '',
         directorNotes: lockedScript.directorNotes || '',
         contentOutline: Array.isArray(lockedScript.contentOutline) ? lockedScript.contentOutline : [],
         bgmMeta: lockedScript.bgm,
@@ -720,13 +721,19 @@ export async function runAiStudioPipeline(options = {}) {
     directorNotes: options.directorNotes || existingScript?.directorNotes || userPrompt || '',
     contentOutline: options.contentOutline || existingScript?.contentOutline || [],
     genre: options.genre || existingScript?.genre || '',
+    genreLabel: options.genreLabel || existingScript?.genreLabel || '',
   })
   const coreTopic = rawBriefSplit.topic || rawBriefSplit.title || 'AI 视觉大片'
   const directorNotes = rawBriefSplit.directorNotes || ''
   const contentOutline = rawBriefSplit.contentOutline || []
-  const resolvedGenre =
-    String(rawBriefSplit.genre || existingScript?.genre || '').trim() ||
-    detectGenre({ topic: coreTopic, goal: `${directorNotes} ${userPrompt || ''}`, style: existingScript?.style || 'tech', hasMedia: visuals.length > 0 })
+  const resolvedGenreInfo = resolveGenreSelection({
+    genre: rawBriefSplit.genre || existingScript?.genre || '',
+    genreLabel: rawBriefSplit.genreLabel || existingScript?.genreLabel || '',
+    text: { topic: coreTopic, goal: `${directorNotes} ${userPrompt || ''}`, style: existingScript?.style || 'tech', hasMedia: visuals.length > 0 },
+    hasScreenshots: visuals.length > 0,
+  })
+  const resolvedGenre = resolvedGenreInfo.id
+  const resolvedGenreLabel = resolvedGenreInfo.label
   const resolvedPlatform = targetPlatform || existingScript?.targetPlatform || 'universal'
   const resolvedBgmMode = bgmMode || existingScript?.audioSpec?.bgmMode || 'llm-coded'
   const resolvedCreationMode = creationMode === 'schema-plan' ? 'schema-plan' : 'ai-coded'
@@ -773,6 +780,8 @@ export async function runAiStudioPipeline(options = {}) {
       projectDir: absDir,
       topic: coreTopic,
       genre: resolvedGenre,
+      genreLabel: resolvedGenreLabel,
+      authoringMode: resolvedCreationMode,
       directorNotes,
       contentOutline,
       style: existingScript?.style || 'tech',
@@ -798,6 +807,7 @@ export async function runAiStudioPipeline(options = {}) {
     plan = {
       title: schemaRes.plan.title,
       genre: schemaRes.plan.genre || resolvedGenre,
+      genreLabel: schemaRes.plan.genreLabel || resolvedGenreLabel,
       style: schemaRes.plan.style,
       audioSpec: { mood: schemaRes.plan.style, bpm: analyzedBgmMeta?.bpm || schemaRes.plan.bpm, bgmMode: resolvedBgmMode },
       scenes: schemaRes.resolved.resolvedShots.map((s) => ({
@@ -831,6 +841,7 @@ export async function runAiStudioPipeline(options = {}) {
     const directorPkg = buildDirectorPromptPackage({
       topic: coreTopic,
       genre: resolvedGenre,
+      genreLabel: resolvedGenreLabel,
       directorNotes,
       contentOutline,
       userPrompt: userPrompt || existingScript?.goal || coreTopic,
@@ -1013,6 +1024,7 @@ export async function runAiStudioPipeline(options = {}) {
     directorNotes,
     contentOutline,
     genre: plan.genre || resolvedGenre,
+    genreLabel: plan.genreLabel || resolvedGenreLabel,
     style: plan.style || existingScript?.style || 'tech',
     workflowSteps: Array.isArray(plan.workflowSteps) ? plan.workflowSteps : existingScript?.workflowSteps || [],
     brandMark: plan.brandMark || existingScript?.brandMark || '',
@@ -1063,7 +1075,7 @@ export async function runAiStudioPipeline(options = {}) {
         const castRes = await castVoicesWithLlm({
           projectDir: absDir,
           genre: resolvedGenre,
-          genreGuidance: buildGenreGuidance(resolvedGenre),
+          genreGuidance: buildGenreGuidance(resolvedGenre, preTtsScript.genreLabel),
           callLlmChatFn: async (p) => callLlmChat({ overrideConfig: llmCfg, fetchImpl, ...p }),
         })
         castOk = Boolean(castRes?.ok)
@@ -1208,6 +1220,7 @@ export async function runAiStudioPipeline(options = {}) {
     height: lockedScript.height,
     aspectRatio: lockedScript.aspectRatio,
     genre: lockedScript.genre || resolvedGenre,
+    genreLabel: lockedScript.genreLabel || resolvedGenreLabel,
     directorNotes: lockedScript.directorNotes || directorNotes || '',
     totalDurationSec: lockedScript.totalDurationSec,
     totalDurationInFrames: lockedScript.totalDurationInFrames,
