@@ -149,9 +149,82 @@ const VALID_STAGE_ARCHETYPES = [
   'farewell-tent',
   'strategic-map',
   'scroll-calligraphy',
+  'bamboo-slips',
   'plaque-summary',
   'channel-end',
 ]
+
+function inferHistoryBannerChar(text = '') {
+  const s = String(text || '')
+  if (/霍去病|卫青|汉武|大汉|冠军侯|骠骑|河西|祁连|漠北|封狼居胥|匈奴/.test(s)) return '汉'
+  if (/秦始皇|嬴政|大秦|咸阳|函谷|六国|长城|兵马俑|郡县/.test(s)) return '秦'
+  if (/项羽|霸王|江东|乌江|垓下|巨鹿|鸿门|楚军|西楚/.test(s)) return '楚'
+  if (/蜀汉|诸葛|刘备|关羽|张飞|赵云/.test(s)) return '蜀'
+  if (/曹操|曹魏|官渡|许昌/.test(s)) return '魏'
+  if (/孙权|东吴|赤壁/.test(s)) return '吴'
+  if (/李世民|大唐|盛唐|安史/.test(s)) return '唐'
+  if (/岳飞|大宋|汴京/.test(s)) return '宋'
+  if (/朱元璋|大明|郑和/.test(s)) return '明'
+  return '军'
+}
+
+function synthesizeHistoricalStageSpec(rawShot, idx, total, topicContext = '') {
+  const existing = rawShot?.stageSpec && typeof rawShot.stageSpec === 'object' ? { ...rawShot.stageSpec } : {}
+  const hay = `${rawShot?.title || ''} ${rawShot?.narration || ''} ${rawShot?.visualBlueprint || ''} ${topicContext}`
+  const bannerChar = existing.bannerChar || inferHistoryBannerChar(hay)
+  const moodCycle = ['dawn-amber', 'crimson-war', 'indigo-night', 'bronze-hall', 'ash-twilight', 'crimson-war', 'void-gold']
+  const settingCycle = ['mountain-camp', 'vast-plain', 'city-siege', 'palace-stairs', 'river-gorge']
+  const actionCycle = ['hero-stand', 'cavalry-rush', 'slash-climax', 'strategic-map', 'duel-confront', 'bamboo-slips', 'hero-numeral', 'cavalry-rush', 'slash-climax', 'plaque-summary']
+
+  let archetype = existing.archetype
+  if (!archetype || !VALID_STAGE_ARCHETYPES.includes(archetype)) {
+    if (idx === 0) archetype = 'hero-stand'
+    else if (idx === total - 1) archetype = 'channel-end'
+    else if (/封狼居胥|地图|版图|河西|走廊|六国|统一|疆域|进军|路线|北击|千里|行军/.test(hay)) archetype = 'strategic-map'
+    else if (/竹简|诏书|法令|功绩|册封|史记|典籍|铭刻|千古|传世|统一文字|车同轨/.test(hay)) archetype = idx % 2 === 0 ? 'bamboo-slips' : 'plaque-summary'
+    else if (/冲锋|铁骑|轻骑|骠骑|奔袭|奇袭|长驱|八百|战马|千军/.test(hay)) archetype = 'cavalry-rush'
+    else if (/斩|破|屠|击溃|血战|斩首|厮杀|大捷|暴击|横扫|夺/.test(hay)) archetype = 'slash-climax'
+    else if (/对峙|决战|单挑|围攻|迎战|交锋/.test(hay)) archetype = 'duel-confront'
+    else if (/病逝|陨落|悲|惜|离别|英年|告别|二十四岁|24岁/.test(hay)) archetype = 'farewell-tent'
+    else if (/破釜沉舟|誓师|出征/.test(hay)) archetype = 'oath-break'
+    else if (/\b\d{2,4}\s*(?:年|岁|里|骑|万)\b/.test(hay)) archetype = 'hero-numeral'
+    else archetype = actionCycle[idx % actionCycle.length]
+  }
+
+  let mood = existing.mood
+  if (!mood) {
+    if (/slash|cavalry|duel|oath/.test(archetype)) mood = 'crimson-war'
+    else if (/farewell|channel-end/.test(archetype)) mood = 'ash-twilight'
+    else if (/bamboo|plaque|scroll/.test(archetype)) mood = 'bronze-hall'
+    else if (idx === 0) mood = 'dawn-amber'
+    else mood = moodCycle[idx % moodCycle.length]
+  }
+
+  let setting = existing.setting
+  if (!setting) {
+    if (/咸阳|大殿|朝堂|长安|宫|帝|封侯/.test(hay)) setting = 'palace-stairs'
+    else if (/城|关|要塞|壁垒|攻城/.test(hay)) setting = 'city-siege'
+    else if (/河|江|渡|水|瀚海/.test(hay)) setting = 'river-gorge'
+    else setting = settingCycle[idx % settingCycle.length]
+  }
+
+  const numMatch = hay.match(/(?:前\s*)?(\d{2,4})\s*(年|岁|里|骑|万)/)
+  return {
+    ...existing,
+    mood,
+    setting,
+    archetype,
+    bannerChar,
+    headwear: existing.headwear || (bannerChar === '秦' || /帝|始皇|汉武/.test(hay) ? 'emperor' : 'plume'),
+    weapon: existing.weapon || (bannerChar === '汉' ? 'spear' : archetype === 'slash-climax' ? 'sword' : 'halberd'),
+    ...(archetype === 'hero-numeral' && !existing.heroNum && numMatch
+      ? { heroNum: numMatch[1], heroUnit: numMatch[2] }
+      : {}),
+    ...(archetype === 'channel-end' && !existing.headline
+      ? { headline: String(rawShot?.title || '').slice(0, 14) || '千古英雄', subheadline: String(rawShot?.narration || '').slice(0, 26) }
+      : {}),
+  }
+}
 
 export const VALID_THREE_PRESETS = [
   'orbital-core',
@@ -447,6 +520,10 @@ export function repairPromoPlanRules(
     let transition = normalizeTransitionKind(s?.transition || spec.transition || 'iris-circle', idx, isNarrativeMv)
     if (idx === 0) {
       transition = 'cut'
+    } else if (transition === 'cut' && (isNarrativeMv || isHistoricalTopic)) {
+      const punchPool = ['flash-cut', 'slash-wipe', 'zoom-punch', 'glitch-cut', 'iris-circle']
+      transition = punchPool[idx % punchPool.length]
+      if (transitionCount < maxTransitionsLimit) transitionCount++
     } else if (transition !== 'cut') {
       if (transitionCount >= maxTransitionsLimit) transition = 'cut'
       else transitionCount++
@@ -593,6 +670,21 @@ export function repairPromoPlanRules(
               ]
             : undefined
 
+    const computedStageSpec =
+      isHistoricalTopic && rawRefs.length === 0
+        ? {
+            ...synthesizeHistoricalStageSpec(
+              { ...s, title: cleanShotTitle, narration: nextNarration, stageSpec: s?.stageSpec || existingScenes[idx]?.stageSpec },
+              idx,
+              rawShots.length,
+              `${cleanTopic} ${directorNotes || ''}`,
+            ),
+            threePreset: s?.stageSpec?.threePreset || chosenThreePreset,
+          }
+        : s?.stageSpec
+          ? { ...s.stageSpec, threePreset: s.stageSpec.threePreset || chosenThreePreset }
+          : existingScenes[idx]?.stageSpec
+
     return {
       id: s?.id || existingScenes[idx]?.id || `scene-${String(idx + 1).padStart(2, '0')}`,
       title: cleanShotTitle,
@@ -600,7 +692,7 @@ export function repairPromoPlanRules(
       subChunks: cleanSubChunks,
       accentWords: Array.isArray(s?.accentWords) && s.accentWords.length > 0 ? s.accentWords : existingScenes[idx]?.accentWords,
       threePreset: chosenThreePreset,
-      stageSpec: s?.stageSpec ? { ...s.stageSpec, threePreset: s.stageSpec.threePreset || chosenThreePreset } : existingScenes[idx]?.stageSpec,
+      stageSpec: computedStageSpec,
       beatCount: Number.isFinite(Number(s?.beatCount)) ? Number(s.beatCount) : existingScenes[idx]?.beatCount,
       visualBlueprint: String(s?.visualBlueprint || existingScenes[idx]?.visualBlueprint || '').trim() || undefined,
       motionNotes: String(s?.motionNotes || s?.visualBlueprint || existingScenes[idx]?.motionNotes || '').trim() || undefined,
@@ -813,9 +905,11 @@ export async function runSchemaDirectorWithDegradation({
   pacingMode = '',
   durationMode = '',
   targetDurationSec = 0,
+  referenceStyle = null,
   callLlmChatFn = null,
   forceTierForTest = null,
 }) {
+  const effectiveRefStyle = referenceStyle || scriptData?.referenceStyle || null
   const trace = []
   let chosenPlan = null
   let degradationTier = 4
@@ -918,6 +1012,7 @@ export async function runSchemaDirectorWithDegradation({
         }
         const rawGoalText = `${cleanTopic} ${effectiveDirectorNotes} ${scriptData?.goal || ''} ${noteSummaries || ''}`
         const effectiveNarrationModeT1 = narrationMode || scriptData?.narrationMode || 'tts'
+        const isPureMusicMvT1 = effectiveNarrationModeT1 === 'subtitle-mv'
         const durationPolicy = resolveTargetDurationPolicy({
           durationMode: durationMode || scriptData?.durationMode || 'auto',
           targetDurationSec: Number(targetDurationSec) || Number(scriptData?.targetDurationSec) || 0,
@@ -926,9 +1021,10 @@ export async function runSchemaDirectorWithDegradation({
           narrationMode: effectiveNarrationModeT1,
           hasVisualAssets: mediaNames.length > 0,
           bgmDurationSec: Number(effectiveBgm?.durationSec) || 0,
+          referenceShotCount: Number(effectiveRefStyle?.pacingSignature?.targetShotCount || effectiveRefStyle?.shotCount || 0),
         })
         const isComprehensiveUnlimited = durationPolicy.unlimited || noteSummaries.length >= 420 || mediaNames.length >= 6
-        const desiredZeroShotsMin = durationPolicy.enforced
+        const desiredZeroShotsMin = durationPolicy.enforced || isPureMusicMvT1 || pacingProfile.id === 'dynamic'
           ? durationPolicy.targetShotsMin
           : isComprehensiveUnlimited
             ? Math.max(12, Math.min(durationPolicy.hardMaxShots - 6, durationPolicy.targetShotsMin))
@@ -940,7 +1036,7 @@ export async function runSchemaDirectorWithDegradation({
             ? Math.max(14, Math.min(22, mediaNames.length * 2))
             : durationPolicy.targetShotsMin
         const desiredUiShotsMax = Math.max(desiredUiShotsMin + 4, durationPolicy.targetShotsMax)
-        if (durationPolicy.enforced) {
+        if (durationPolicy.enforced || isPureMusicMvT1) {
           prompt.targetDuration = {
             mode: durationPolicy.mode,
             targetSec: durationPolicy.targetSec,
@@ -950,14 +1046,37 @@ export async function runSchemaDirectorWithDegradation({
             ...(durationPolicy.requiredCharsMin > 0 ? { recommendedNarrationChars: `${durationPolicy.requiredCharsMin}~${durationPolicy.requiredCharsMax}` } : {}),
           }
         }
+        if (effectiveRefStyle?.replicationPrompt) {
+          prompt.referenceVideoBlueprint = {
+            sourceName: effectiveRefStyle.sourceName || effectiveRefStyle.title || 'reference',
+            shotCount: effectiveRefStyle.shotCount || effectiveRefStyle.pacingSignature?.targetShotCount,
+            bpm: effectiveRefStyle.bpm || undefined,
+            narrationMode: effectiveRefStyle.narrationMode || undefined,
+            visualStyle: effectiveRefStyle.visualStyle || undefined,
+            colorPalette: effectiveRefStyle.colorPalette || undefined,
+            vfxSignature: effectiveRefStyle.vfxSignature || undefined,
+            transitionSignature: effectiveRefStyle.transitionSignature || undefined,
+            shotFormula: effectiveRefStyle.shotFormula || undefined,
+          }
+        }
         const isHistoricalPrompt =
           resolvedGenre === 'history-theater' ||
           /历史|霸王|项羽|霍去病|卫青|汉武|秦|汉|楚|三国|唐|宋|明|古风|武侠|战役|将军|帝王|演义/i.test(rawGoalText)
         const unlimitedDurationHint = `\n- ${durationPolicy.promptDirective}`
+        const refReplicationRules = effectiveRefStyle?.replicationPrompt
+          ? `\n【红线铁律 · 参考视频复刻基因】：用户上传了参考视频并要求复刻同款风格与节奏！必须严格继承以下风格蓝图（替换为用户新主题内容）：\n${String(effectiveRefStyle.replicationPrompt).slice(0, 1200)}`
+          : ''
+        const pureMvRules = isPureMusicMvT1
+          ? `\n【红线铁律 · 纯音乐高燃卡点 MV (免 TTS 旁白)】：
+- 本片无朗读配音，完全靠 **强节拍切镜 + 高燃字幕金句 + 爆炸动画人物/动作特效 + 同步打击/刀光音效** 驱动！
+- 每幕 \`narration\` 写 **6~16 字铿锵短金句**（将直接作为醒目电影衬线大字幕展示，标出 \`accentWords\` 高亮关键词），切勿写长段拖沓纪录片说明文！
+- 全片必须拆足 **${desiredZeroShotsMin}~${desiredZeroShotsMax} 个高密度镜头**（常规镜 \`beatCount: 2\` 或 \`4\`，高潮突降点 \`drops\` 连续穿插 \`beatCount: 0.5\` / \`1\` 闪电快切），每镜 \`transition\` 在 \`flash-cut|slash-wipe|zoom-punch|glitch-cut|iris-circle\` 中丰富轮换（仅首镜用 \`cut\`）！
+- 每镜务必写满 \`stageSpec\`（\`archetype\` 在 \`hero-stand|cavalry-rush|slash-climax|duel-confront|strategic-map|bamboo-slips|hero-numeral|plaque-summary|farewell-tent|channel-end\` 之间大幅变换，绝不连着 3 镜重复同一构图！）。`
+          : ''
         const strictContentRules = `
 【红线铁律 1 · 零指令词污染】：\`directorNotesOnlyInternalDoNotReadAloud\`、风格需求与润色指令仅供你规划视觉和写作 \`visualBlueprint\`，**严禁将任何“本视频要求…/分镜指令…/画面风格…/节奏设定…/受众定位…/制作规格…”写进 \`title\`、\`narration\`、\`subChunks\` 或 \`highlights\`**！输出给观众看听的必须是 100% 纯正片正文！
 【红线铁律 2 · 字幕自然阿拉伯数字与去标点断句】：\`narration\` 与 \`subChunks\` 中的年份、数量、规格全部保持**自然阿拉伯数字**（如 \`206年\`、\`3000人\`、\`119年\`、\`8 GB\`），严禁写成“二零六年”“三千人”；**\`subChunks\` 中严禁出现任何双引号 \`“”""\`、单引号、书名号 \`《》\` 及首尾逗号/句号**，确保每条短句词意完整、标点不孤立出现在行首或行尾！
-【红线铁律 3 · 全题材开放路由与无预设自由创作】：当前创作定位为 **${resolvedGenreLabel} (\`${resolvedGenre}\`)**。${genreGuidance}`
+【红线铁律 3 · 全题材开放路由与无预设自由创作】：当前创作定位为 **${resolvedGenreLabel} (\`${resolvedGenre}\`)**。${genreGuidance}${pureMvRules}${refReplicationRules}`
         const uiInteractiveRules =
           resolvedGenre === 'ui-tutorial' || (!zeroVisualAssets && /工作台|教程|客户端|软件|UI|界面|实操/.test(rawGoalText))
             ? `\n【红线铁律 4 · 高清亮色交互式软件教程镜头规范（零错位 · 零 PPT 感！）】：
@@ -979,7 +1098,7 @@ export async function runSchemaDirectorWithDegradation({
           ? `你是顶级音画动态导演 (AI Visual & Motion Director)，擅长 Remotion + 原生 Three.js 3D + 动态 SVG / Canvas 全题材无限制自由编程创作。
 当前没有任何图片/视频素材 (zeroVisualAssets=true)，全部画面将由下游 AI 主程根据你为每一幕撰写的 \`visualBlueprint\`，使用 \`<FreeformThreeStage>\` + 动态 \`<svg>\` / \`<canvas>\` **100% 从零自由编写专属代码**（${isFreeformCoding ? '直接填写 `"layout": "freeform-stage"`，严禁千篇一律套用宣传片黑卡片！' : '`layout` 为内置安全预设'}）！
 ${pacingLabelHint}
-输出严格紧凑 JSON：{ "version": "promo-plan/1", "genre": "${resolvedGenre}", "genreLabel": "${resolvedGenreLabel}", "mode": "${pacingProfile.id === 'dynamic' ? 'narrative-mv' : 'promo-ui'}", "beatSync": ${pacingProfile.id === 'dynamic' || narrationMode === 'subtitle-mv' || narrationMode === 'tts-beat-sync'}, "title": "纯粹正片作品标题", "style": "cinematic|tech|emerald|energetic|documentary", "bpm": ${effectiveBgm?.bpm || (pacingProfile.id === 'calm' ? 88 : 110)}, "shots": [{ "id": "scene-01", "title": "...", "narration": "纯粹正片台词(保持自然阿拉伯数字)", "emotion": "欢快热情|激昂有力|温和亲切|重点强调|悬念低沉|深沉史诗", "speechRate": 1.04, "role": "narrator|host", "accentWords": ["核心关键词"], "layout": "${zeroLayoutExample}", "threePreset": "orbital-core|cyber-terrain|particle-vortex|floating-monoliths|chrono-helix|matrix-cubes", "beatCount": ${pacingProfile.id === 'dynamic' ? 2 : 4}, "durationSec": ${pacingProfile.id === 'calm' ? 5.0 : pacingProfile.id === 'balanced' ? 4.5 : 2.0}, "transition": "${pacingProfile.id === 'calm' ? 'light-wipe' : 'slash-wipe'}", "visualBlueprint": "具体描述本镜专属视觉构图（紧扣 ${resolvedGenreLabel} 自由发明贴合内容的画面与镜头语言，不受任何固定版式上限约束）与镜头物理节奏", "highlights": ["要点1","要点2"]${isHistoricalPrompt ? ', "stageSpec": { "mood": "dawn-amber|crimson-war|indigo-night|ash-twilight|bronze-hall|jade-river|void-gold", "setting": "palace-stairs|mountain-camp|city-siege|river-gorge|vast-plain", "archetype": "hero-numeral|hero-stand|oath-break|cavalry-rush|slash-climax|duel-confront|farewell-tent|strategic-map|scroll-calligraphy|plaque-summary|channel-end", "heroNum": "119", "heroUnit": "年", "bannerChar": "汉", "plaques": ["要点1","要点2"], "headline": "结尾主标题", "subheadline": "副标题" }' : ''} }] }。
+输出严格紧凑 JSON：{ "version": "promo-plan/1", "genre": "${resolvedGenre}", "genreLabel": "${resolvedGenreLabel}", "mode": "${pacingProfile.id === 'dynamic' ? 'narrative-mv' : 'promo-ui'}", "beatSync": ${pacingProfile.id === 'dynamic' || narrationMode === 'subtitle-mv' || narrationMode === 'tts-beat-sync'}, "title": "纯粹正片作品标题", "style": "cinematic|tech|emerald|energetic|documentary", "bpm": ${effectiveBgm?.bpm || (pacingProfile.id === 'calm' ? 88 : 110)}, "shots": [{ "id": "scene-01", "title": "...", "narration": "纯粹正片台词(保持自然阿拉伯数字)", "emotion": "欢快热情|激昂有力|温和亲切|重点强调|悬念低沉|深沉史诗", "speechRate": 1.04, "role": "narrator|host", "accentWords": ["核心关键词"], "layout": "${zeroLayoutExample}", "threePreset": "orbital-core|cyber-terrain|particle-vortex|floating-monoliths|chrono-helix|matrix-cubes", "beatCount": ${pacingProfile.id === 'dynamic' ? 2 : 4}, "durationSec": ${pacingProfile.id === 'calm' ? 5.0 : pacingProfile.id === 'balanced' ? 4.5 : 2.0}, "transition": "${pacingProfile.id === 'calm' ? 'light-wipe' : 'slash-wipe'}", "visualBlueprint": "具体描述本镜专属视觉构图（紧扣 ${resolvedGenreLabel} 自由发明贴合内容的画面与镜头语言，不受任何固定版式上限约束）与镜头物理节奏", "highlights": ["要点1","要点2"]${isHistoricalPrompt ? ', "stageSpec": { "mood": "dawn-amber|crimson-war|indigo-night|ash-twilight|bronze-hall|jade-river|void-gold", "setting": "palace-stairs|mountain-camp|city-siege|river-gorge|vast-plain", "archetype": "hero-numeral|hero-stand|oath-break|cavalry-rush|slash-climax|duel-confront|farewell-tent|strategic-map|bamboo-slips|scroll-calligraphy|plaque-summary|channel-end", "headwear": "plume|helmet|emperor|crown", "weapon": "spear|sword|halberd|raised-arm", "heroNum": "119", "heroUnit": "年", "bannerChar": "汉", "plaques": ["要点1","要点2"], "headline": "结尾主标题", "subheadline": "副标题" }' : ''} }] }。
 核心硬性要求：
 1. **贴合题材的拆镜与节奏**：拆分为 **${desiredZeroShotsMin}~${desiredZeroShotsMax} 个镜头**，${pacingProfile.ruleHint}（单镜口播长度与时长严格匹配；每幕设置富有感染力的 \`emotion\` 与合理 \`speechRate\` \`0.92~1.14\`）。
 2. **零预设束缚，每镜写出独一无二的 \`visualBlueprint\`（下游 TSX 代码生成员直读！）**：严格遵循 ${resolvedGenreLabel} 的专属视觉审美自由造景（不要生搬硬套不相关的科技/电商卡片）。
@@ -997,8 +1116,8 @@ ${pacingLabelHint}
           system: systemPrompt,
           messages: [{ role: 'user', content: JSON.stringify(prompt) }],
           temperature: zeroVisualAssets ? 0.4 : 0.28,
-          maxTokens: durationPolicy.targetSec >= 110 ? 12000 : isComprehensiveUnlimited || zeroVisualAssets ? 9000 : 7500,
-          timeoutMs: 300_000,
+          maxTokens: desiredZeroShotsMin >= 30 || durationPolicy.targetSec >= 110 ? 15000 : isComprehensiveUnlimited || zeroVisualAssets ? 10000 : 7500,
+          timeoutMs: 420_000,
           responseFormat: 'json',
         })
         const candidate = safeExtractJson(res?.text)
@@ -1008,23 +1127,37 @@ ${pacingLabelHint}
           ? repairPromoPlanRules(candidate, { topic: cleanTopic, style, genre: resolvedGenre, genreLabel: resolvedGenreLabel, authoringMode: effectiveAuthoringMode, directorNotes: effectiveDirectorNotes, contentOutline, assetsManifest, existingScript: scriptData, bgmMeta: effectiveBgm, narrationMode, pacingMode: effectivePacingMode })
           : null
 
-        // Anti-shrink duration guard: if user requested a concrete duration (e.g. >= 120s) and LLM under-produced (< 82% of minSec),
-        // automatically ask LLM to append continuation shots so final rendered duration reliably hits user's target!
-        if (repaired && validatePromoPlan(repaired).ok && durationPolicy.enforced && durationPolicy.minSec >= 45) {
+        // Anti-shrink duration & anti-sparse shot-count guard:
+        // If duration falls short OR pure-music/dynamic beat-sync returned too few shots (e.g. 20 instead of 36+),
+        // automatically ask LLM to append continuation/climax shots so final video hits target density & duration!
+        const needsDensityBoost =
+          zeroVisualAssets &&
+          (isPureMusicMvT1 || pacingProfile.id === 'dynamic') &&
+          repaired &&
+          repaired.shots.length < Math.round(desiredZeroShotsMin * 0.85)
+        if (repaired && validatePromoPlan(repaired).ok && ((durationPolicy.enforced && durationPolicy.minSec >= 45) || needsDensityBoost)) {
           const estSec = estimatePlanDurationSec(repaired.shots, { narrationMode: effectiveNarrationModeT1 })
-          if (estSec < durationPolicy.minSec * 0.84) {
+          const shortByDur = durationPolicy.enforced && estSec < durationPolicy.minSec * 0.84
+          if (shortByDur || needsDensityBoost) {
             const missingSec = Math.max(20, Math.round(durationPolicy.targetSec - estSec))
-            const extraShotsMin = Math.max(4, Math.round(missingSec / Math.max(2.5, pacingProfile.id === 'dynamic' ? 3.2 : 5.2)))
+            const missingShots = Math.max(0, desiredZeroShotsMin - repaired.shots.length)
+            const extraShotsMin = Math.max(
+              4,
+              missingShots,
+              Math.round(missingSec / Math.max(2.2, pacingProfile.id === 'dynamic' || isPureMusicMvT1 ? 2.6 : 5.2)),
+            )
             const extraCharsMin = effectiveNarrationModeT1 === 'subtitle-mv' ? 0 : Math.round(missingSec * 3.85)
             try {
               const expandRes = await callLlmChatFn({
-                system: `${systemPrompt}\n\n【紧急时长补镜任务】：上一轮规划的分镜预估总时长仅约 ${Math.round(estSec)} 秒，远低于用户要求的 ${durationPolicy.label}（底线 ${durationPolicy.minSec} 秒）！请紧接上一轮已有分镜的剧情/章节继续深入展开，**仅输出需要追加补充的新分镜数组**（JSON: { "appendShots": [...] }），至少补充 **${extraShotsMin} 个高质量新分镜**${extraCharsMin > 0 ? `（新增总旁白至少 ${extraCharsMin} 字，每镜深入展开细节、案例、转折或高潮收束，严禁重复已有台词）` : `（新增总时长至少 ${missingSec} 秒，紧贴 BGM 节拍与高潮突降点）`}！`,
+                system: `${systemPrompt}\n\n【紧急补镜加密任务】：上一轮仅输出 ${repaired.shots.length} 镜（预估约 ${Math.round(estSec)} 秒），低于要求的 **${desiredZeroShotsMin}~${desiredZeroShotsMax} 镜 / ${durationPolicy.label}**！请紧接已有分镜继续深化战役高潮、人物动作特写、地图推进、竹简功绩与收束镜头，**仅输出需要追加补充的新分镜数组**（JSON: { "appendShots": [...] }），至少补充 **${extraShotsMin} 个高质量新分镜**${extraCharsMin > 0 ? `（新增总旁白至少 ${extraCharsMin} 字，每镜深入展开细节、案例、转折或高潮收束，严禁重复已有台词）` : `（每镜 1~4 拍紧贴 BGM 重拍与高潮突降点，带完整 stageSpec 与不同 archetype）`}！`,
                 messages: [
                   {
                     role: 'user',
                     content: JSON.stringify({
                       topic: cleanTopic,
                       targetDurationSec: durationPolicy.targetSec,
+                      targetShotsMin: desiredZeroShotsMin,
+                      currentShotCount: repaired.shots.length,
                       currentEstimatedSec: estSec,
                       missingSec,
                       existingTitles: repaired.shots.map((s) => `${s.id}: ${s.title}`),
@@ -1034,8 +1167,8 @@ ${pacingLabelHint}
                   },
                 ],
                 temperature: 0.42,
-                maxTokens: 9000,
-                timeoutMs: 240_000,
+                maxTokens: 11000,
+                timeoutMs: 300_000,
                 responseFormat: 'json',
               })
               const expJson = safeExtractJson(expandRes?.text)

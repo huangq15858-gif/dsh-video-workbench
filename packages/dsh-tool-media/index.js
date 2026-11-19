@@ -66,9 +66,21 @@ import {
 import { buildMediaDimsMap, groundVisualAssets, loadSidecarAnchors } from './vision-grounding.js'
 import { exportPublishPack } from './publish-pack.js'
 import { registerVendorClip, renderVendorClipIsolated } from './vendor-clip.js'
+import {
+  analyzeReferenceVideo,
+  buildMotionMarkdown,
+  exportProjectMotionMd,
+  loadBrandKit,
+  saveBrandKit,
+} from './reference-analyzer.js'
 
 export {
   analyzeAudioBeatStructure,
+  analyzeReferenceVideo,
+  buildMotionMarkdown,
+  exportProjectMotionMd,
+  loadBrandKit,
+  saveBrandKit,
   choreographBeatSfxCues,
   quantizeScenesToBeatGrid,
   importAssets,
@@ -673,6 +685,59 @@ export function apply(ctx) {
     async execute(args) {
       if (args.background) return await startPipelineBackground(args)
       return await runMultiAgentPipeline(args)
+    },
+  })
+
+  ctx.tools.register({
+    name: 'analyze_reference_video',
+    description:
+      'Reverse-engineer an uploaded reference video using FFprobe + FFmpeg shot-cut detection + audio BPM/drop analysis + 9-frame contact sheet + 4-protocol Multimodal Vision LLM to extract replicable visual/character/VFX/transition/pacing DNA, write MOTION.md, and attach referenceStyle to script.json for same-style video recreation.',
+    parameters: {
+      type: 'object',
+      properties: {
+        projectDir: { type: 'string', description: 'Video project directory.' },
+        videoPath: { type: 'string', description: 'Path to the reference video file (absolute or relative to projectDir).' },
+        extractAudioAsBgm: { type: 'boolean', description: 'If true, also extract the reference video audio track as uploaded BGM.' },
+        applyToScript: { type: 'boolean', description: 'If true (default), bind extracted referenceStyle, genre, pacing, and narrationMode directly onto script.json.' },
+        useVision: { type: 'boolean', description: 'If true (default), call configured multimodal Vision LLM on the 3x3 keyframe contact sheet.' },
+      },
+      required: ['projectDir', 'videoPath'],
+      additionalProperties: false,
+    },
+    output: { schema: { type: 'object', additionalProperties: true } },
+    timeoutMs: 300_000,
+    isConcurrencySafe: () => false,
+    async execute(args) {
+      return await analyzeReferenceVideo(args)
+    },
+  })
+
+  ctx.tools.register({
+    name: 'manage_brand_kit',
+    description:
+      'Read or save a reusable Brand Kit (brandName, tagline, primaryColor, accentColor, backgroundColor, logoPath, watermarkText, defaultStyle, defaultPlatform) and/or export a project MOTION.md shot blueprint.',
+    parameters: {
+      type: 'object',
+      properties: {
+        action: { type: 'string', enum: ['get', 'save', 'export_motion_md'], description: 'Operation to perform.' },
+        projectDir: { type: 'string', description: 'Optional project directory (required for export_motion_md).' },
+        brandKit: { type: 'object', description: 'Brand kit object when action is save.', additionalProperties: true },
+      },
+      required: ['action'],
+      additionalProperties: false,
+    },
+    output: { schema: { type: 'object', additionalProperties: true } },
+    timeoutMs: 30_000,
+    isConcurrencySafe: () => true,
+    async execute(args) {
+      if (args.action === 'save') {
+        return { ok: true, brandKit: saveBrandKit(args.brandKit || {}, args.projectDir || '') }
+      }
+      if (args.action === 'export_motion_md') {
+        if (!args.projectDir) throw new Error('projectDir is required for export_motion_md')
+        return exportProjectMotionMd(args.projectDir)
+      }
+      return { ok: true, brandKit: loadBrandKit(args.projectDir || '') }
     },
   })
 }

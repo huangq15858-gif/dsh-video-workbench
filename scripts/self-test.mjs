@@ -2427,7 +2427,166 @@ export const BATCH_01_SCENES: Record<string, React.FC<CustomSceneProps>> = {
     throw new Error(`v0.3.8/0.3.9 anti-shrink or 10-min polish check failed: calls=${mockTierCalls} shots=${expandedPlanRes?.plan?.shots?.length} estSec=${expandedEstSec}`)
   }
   console.log(
-    `[20/20] v0.3.9 Uploaded BGM/Note Auto-Bind + Audible Mix (${meanDb.toFixed(1)} dB) + Custom Duration & Anti-Shrink (${expandedEstSec}s, ${expandedPlanRes.plan.shots.length} shots) + 10-Min Async AI Polish Verified!`,
+    `[20/22] v0.3.9 Uploaded BGM/Note Auto-Bind + Audible Mix (${meanDb.toFixed(1)} dB) + Custom Duration & Anti-Shrink (${expandedEstSec}s, ${expandedPlanRes.plan.shots.length} shots) + 10-Min Async AI Polish Verified!`,
+  )
+
+  // =========================================================================
+  // 21. v0.4.0 Universal Multi-Agent MCP Server (29 Tools) + Reference Video Remake + MOTION.md + Brand Kit + TTS Installer
+  // =========================================================================
+  const { spawn: spawnChild } = await import('node:child_process')
+  const mcpReplies = await new Promise((resolveMcp, rejectMcp) => {
+    const mcpProc = spawnChild(process.execPath, [join(REPO_ROOT, 'bin', 'dsh-video-mcp.mjs')], {
+      cwd: REPO_ROOT,
+      stdio: ['pipe', 'pipe', 'pipe'],
+    })
+    let outBuf = ''
+    const msgs = []
+    const timer = setTimeout(() => {
+      try { mcpProc.kill('SIGKILL') } catch {}
+      rejectMcp(new Error(`MCP stdio server timed out (received ${msgs.length} replies)`))
+    }, 20_000)
+    mcpProc.stdout.on('data', (chunk) => {
+      outBuf += chunk.toString('utf8')
+      const lines = outBuf.split('\n')
+      outBuf = lines.pop() || ''
+      for (const l of lines) {
+        if (!l.trim()) continue
+        try {
+          msgs.push(JSON.parse(l.trim()))
+          if (msgs.length >= 3) {
+            clearTimeout(timer)
+            try { mcpProc.kill() } catch {}
+            resolveMcp(msgs)
+          }
+        } catch {}
+      }
+    })
+    mcpProc.on('error', (e) => {
+      clearTimeout(timer)
+      rejectMcp(e)
+    })
+    mcpProc.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'self-test', version: '1.0' } } }) + '\n')
+    mcpProc.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} }) + '\n')
+    mcpProc.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: 3, method: 'prompts/list', params: {} }) + '\n')
+  })
+  const initReply = mcpReplies.find((m) => m.id === 1)?.result
+  const toolsReply = mcpReplies.find((m) => m.id === 2)?.result
+  const promptsReply = mcpReplies.find((m) => m.id === 3)?.result
+  const mcpToolNames = (toolsReply?.tools || []).map((t) => t.name)
+  if (
+    !initReply?.serverInfo?.title?.includes('Merziller') ||
+    mcpToolNames.length < 28 ||
+    !mcpToolNames.includes('analyze_reference_video') ||
+    !mcpToolNames.includes('manage_brand_kit') ||
+    !mcpToolNames.includes('open_video_studio') ||
+    !mcpToolNames.includes('install_tts_engine') ||
+    !(promptsReply?.prompts || []).some((p) => p.name === 'video-maker')
+  ) {
+    throw new Error(`v0.4.0 MCP stdio verification failed: tools=${mcpToolNames.length}, title=${initReply?.serverInfo?.title}`)
+  }
+
+  // Reference Video Reverse-Engineering + MOTION.md + Brand Kit + TTS Installer Catalog
+  const { analyzeReferenceVideo, loadBrandKit, saveBrandKit } = await import('../packages/dsh-tool-media/reference-analyzer.js')
+  const { getTtsInstallerCatalog } = await import('../packages/dsh-tool-local-tts/tts-installer.js')
+  const tmpV040Proj = join(REPO_ROOT, '.tmp', `self-test-v040-${Date.now()}`)
+  mkdirSync(tmpV040Proj, { recursive: true })
+  scaffoldVideoProject(tmpV040Proj, { title: 'v040参考复刻测试', engine: 'remotion' })
+  const synthRefMp4 = join(tmpV040Proj, 'sample-ref.mp4')
+  const mkRefRes = await runCommandRedirected(
+    bins.ffmpeg,
+    [
+      '-y',
+      '-f', 'lavfi', '-i', 'color=c=0x881111:s=640x360:d=2:r=24',
+      '-f', 'lavfi', '-i', 'color=c=0x114488:s=640x360:d=2:r=24',
+      '-f', 'lavfi', '-i', 'color=c=0xdd9922:s=640x360:d=2:r=24',
+      '-f', 'lavfi', '-i', 'sine=frequency=220:duration=6',
+      '-filter_complex', '[0:v][1:v][2:v]concat=n=3:v=1:a=0[v]',
+      '-map', '[v]', '-map', '3:a',
+      '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac',
+      synthRefMp4,
+    ],
+    { timeoutMs: 30_000 },
+  )
+  if (mkRefRes.code !== 0 || !existsSync(synthRefMp4)) {
+    throw new Error(`Failed to synthesize sample reference MP4: ${mkRefRes.stderr}`)
+  }
+  const refRes = await analyzeReferenceVideo({
+    projectDir: tmpV040Proj,
+    videoPath: synthRefMp4,
+    useVision: false,
+    applyToScript: true,
+  })
+  const savedKit = saveBrandKit({ brandName: 'Merziller Studio', primaryColor: '#F59E0B', accentColor: '#E11D48' }, tmpV040Proj)
+  const loadedKit = loadBrandKit(tmpV040Proj)
+  const ttsInstCat = getTtsInstallerCatalog()
+  if (
+    !refRes.ok ||
+    !existsSync(refRes.motionMdPath) ||
+    !existsSync(join(tmpV040Proj, 'reference', 'ref-sheet-3x3.jpg')) ||
+    (refRes.referenceStyle?.shotCount || 0) < 2 ||
+    loadedKit.brandName !== savedKit.brandName ||
+    (ttsInstCat?.packages?.length || 0) < 4
+  ) {
+    throw new Error(`v0.4.0 reference analyzer / brand kit / tts installer check failed`)
+  }
+  rmSync(tmpV040Proj, { recursive: true, force: true })
+  console.log(
+    `[21/22] v0.4.0 Universal MCP Server (${mcpToolNames.length} tools over stdio) + Reference Video Remake (${refRes.referenceStyle.shotCount} cuts + MOTION.md) + Brand Kit + Optional TTS Installer (${ttsInstCat.packages.length} pkgs) Verified!`,
+  )
+
+  // =========================================================================
+  // 22. v0.4.0 High-Density History Beat-Sync (34+ shots) + NarrativeDiorama Fallback + UTF-8 TTS + Complete Author Attribution
+  // =========================================================================
+  const { repairPromoPlanRules: repairPlanV040 } = await import('../packages/dsh-tool-media/plan-schema.js')
+  const histMvPolicy = resolveTargetDurationPolicy({
+    durationMode: 'custom',
+    targetDurationSec: 135,
+    narrationMode: 'subtitle-mv',
+    hasVisualAssets: false,
+  })
+  if (histMvPolicy.targetShotsMin < 34) {
+    throw new Error(`v0.4.0 pure-music 135s MV targetShotsMin too low: ${histMvPolicy.targetShotsMin} (expected >= 34)`)
+  }
+  const repairedHist = repairPlanV040(
+    {
+      title: '冠军侯霍去病',
+      genre: 'history-theater',
+      shots: [
+        { id: 'scene-01', title: '少年点兵', narration: '17岁八百轻骑直捣匈奴大营', durationSec: 2.4, transition: 'cut' },
+        { id: 'scene-02', title: '封狼居胥', narration: '漠北封狼居胥饮马瀚海', durationSec: 2.2, transition: 'cut' },
+        { id: 'scene-03', title: '大汉军魂', narration: '匈奴未灭何以家为', durationSec: 2.8, transition: 'cut' },
+      ],
+    },
+    { topic: '以第二人称讲述霍去病的一生', genre: 'history-theater', narrationMode: 'subtitle-mv' },
+  )
+  if (
+    repairedHist.shots[0]?.stageSpec?.bannerChar !== '汉' ||
+    repairedHist.shots[1]?.stageSpec?.archetype !== 'strategic-map' ||
+    repairedHist.shots[2]?.stageSpec?.archetype !== 'channel-end' ||
+    repairedHist.shots[1]?.transition === 'cut'
+  ) {
+    throw new Error(`v0.4.0 history stageSpec / transition upgrade failed: ${JSON.stringify(repairedHist.shots)}`)
+  }
+  const remGenSrc = readFileSync(join(REPO_ROOT, 'packages', 'dsh-tool-media', 'remotion-generator.js'), 'utf8')
+  const ttsBridgeSrc = readFileSync(join(REPO_ROOT, 'scripts', 'tts-bridge.py'), 'utf8')
+  const ttsServerSrc = readFileSync(join(REPO_ROOT, 'scripts', 'tts-server.py'), 'utf8')
+  if (
+    !remGenSrc.includes('useNarrativeDioramaFallback') ||
+    !remGenSrc.includes('applyBeatCamera') ||
+    !ttsBridgeSrc.includes('reconfigure(encoding="utf-8"') ||
+    !ttsServerSrc.includes('os.makedirs(os.path.join(a.root, "voices"), exist_ok=True)')
+  ) {
+    throw new Error('v0.4.0 Remotion beat-camera/fallback or TTS UTF-8/voices guard missing!')
+  }
+  const attributionFiles = ['LICENSE', 'NOTICE', 'package.json', 'README.md', 'index.js', 'bin/dsh-video-mcp.mjs', 'packages/dsh-web-video-workbench/lib/client.js', '.claude-plugin/plugin.json']
+  for (const relF of attributionFiles) {
+    const content = readFileSync(join(REPO_ROOT, relF), 'utf8')
+    if (!content.includes('Merziller') || !content.includes('1411574209') || !content.includes('k26789228@gmail.com')) {
+      throw new Error(`Author attribution missing in ${relF}!`)
+    }
+  }
+  console.log(
+    `[22/22] v0.4.0 History Beat-Sync (${histMvPolicy.targetShotsMin}~${histMvPolicy.targetShotsMax} shots · banner='汉') + NarrativeDiorama Fallback + TTS UTF-8/voices Fix + Full Author Attribution (${attributionFiles.length} files) Verified!`,
   )
   console.log('======================================================================')
 }

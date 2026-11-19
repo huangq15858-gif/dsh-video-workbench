@@ -23,6 +23,28 @@ import time
 import traceback
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        if hasattr(_stream, "reconfigure"):
+            _stream.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
+def find_fallback_speaker_wav(root: str) -> str:
+    if not root or not os.path.isdir(root):
+        return ""
+    for sub in ("voices", "examples", "prompts", "reference_audio", "assets"):
+        cand_dir = os.path.join(root, sub)
+        if not os.path.isdir(cand_dir):
+            continue
+        for dirpath, _, filenames in os.walk(cand_dir):
+            for fn in sorted(filenames):
+                if fn.lower().endswith((".wav", ".mp3", ".flac")):
+                    p = os.path.join(dirpath, fn)
+                    if os.path.getsize(p) >= 2048:
+                        return p
+    return ""
+
 STATE = {
     "ready": False,
     "error": "",
@@ -174,7 +196,11 @@ def synthesize(payload):
         if fallback and os.path.exists(fallback):
             spk = fallback
         else:
-            raise ValueError(f"speaker reference not found: {spk}")
+            auto_ref = find_fallback_speaker_wav(STATE.get("root") or "")
+            if auto_ref and os.path.exists(auto_ref):
+                spk = auto_ref
+            else:
+                raise ValueError(f"speaker reference not found (voices/ 目录为空，请放入任意 5~10 秒人声 WAV 或重新试听自动生成默认参考音): {spk}")
 
     fd, tmp_out = tempfile.mkstemp(prefix="dsh_srv_", suffix=".wav")
     os.close(fd)
@@ -276,6 +302,10 @@ def main():
     ap.add_argument("--host", default="127.0.0.1")
     a = ap.parse_args()
     STATE["root"] = a.root
+    try:
+        os.makedirs(os.path.join(a.root, "voices"), exist_ok=True)
+    except Exception:
+        pass
     server = ThreadingHTTPServer((a.host, a.port), Handler)
     threading.Thread(target=load_engine, args=(a.root,), daemon=True).start()
     print(f"[tts-server] listening on http://{a.host}:{a.port} (loading IndexTTS-2.5...)", flush=True)

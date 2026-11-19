@@ -3550,6 +3550,8 @@ export function buildBatchedRemotionScenesPrompt({
   contentOutline = [],
   bgmMeta = null,
   assetCatalog = [],
+  narrationMode = 'tts',
+  referenceStyle = null,
 }) {
   const isPortrait = width < height
   const pad = String(batchIndex + 1).padStart(2, '0')
@@ -3566,15 +3568,20 @@ export function buildBatchedRemotionScenesPrompt({
   const resolvedGenreLabel = genreInfo.label
   const genreGuide = buildGenreGuidance(resolvedGenre, resolvedGenreLabel)
   const isUiTutorial = resolvedGenre === 'ui-tutorial'
+  const isHistoryOrMv = resolvedGenre === 'history-theater' || resolvedGenre === 'mv-lyric'
+  const isPureMusicMv = narrationMode === 'subtitle-mv'
+  const refBlueprintText = referenceStyle?.replicationPrompt
+    ? `\n【参考视频视觉基因（用户上传参考视频复刻，必须严格对齐同款美学、构图、转场、动效与节奏！）】：\n${String(referenceStyle.replicationPrompt).slice(0, 1200)}`
+    : ''
 
   const system = `你是全球顶尖的 Opus 5.5 Vibecoding 视频动效创意主程（精通 Remotion v4 + 原生 Three.js 3D 自由编程 + 动态矢量 SVG 创作 + React 交互动效 + 弹簧物理动画）。
 你的核心使命：**彻底粉碎模板套壳！禁止多幕共用同一个页面框架/Card/Lesson 组件只换右侧文字！**
 面对本批次的每一幕，你拥有一张 **100% 自由的 React + Three.js 3D + 动态 SVG 编程画布**。请严格围绕题材路由与导演创作指导，为每一幕编写真正差异化、生动有呼吸感、贴合题材灵魂的专属代码！
 
 ${genreGuide}
-${directorNotes ? `\n【导演备注（仅供你编排视觉/运镜/动效时参考，严禁把“本视频要求…”之类指令原文写入画面或字幕！）】：\n${String(directorNotes).slice(0, 900)}` : ''}
+${directorNotes ? `\n【导演备注（仅供你编排视觉/运镜/动效时参考，严禁把“本视频要求…”之类指令原文写入画面或字幕！）】：\n${String(directorNotes).slice(0, 900)}` : ''}${refBlueprintText}
 
-=== 按题材定制的自由创作规范（当前画布 ${width}x${height} ${isPortrait ? '竖屏构图' : '横屏构图'}） ===
+=== 按题材定制的自由创作规范（当前画布 ${width}x${height} ${isPortrait ? '竖屏构图' : '横屏构图'}${isPureMusicMv ? ' · 🔥 纯音乐高燃卡点 MV 模式' : ''}） ===
 ${isUiTutorial ? `- **【软件实操教程专属视觉规范 —— 零错位精准点击 · 坚决拒绝 PPT 死图！】**：
   1. **全幅高清亮色沉浸呈现（绝不做成左图右字 PPT 幻灯片！）**：
      - 严禁把截图/录屏缩小塞在左半边、右边列大段要点文字（那是劣质 PPT！）；严禁在真实软件界面上贴大块白色悬浮便签或假输入框遮挡真实软件界面！
@@ -3585,8 +3592,14 @@ ${isUiTutorial ? `- **【软件实操教程专属视觉规范 —— 零错位�
   3. **真实录屏视频优先 + 动态推镜特写（拒绝静态死图！）**：
      - 若本幕 \`publicAssetFiles\` 含真实操作录屏视频（\`.mp4\` / \`.webm\`）：直接传入 \`<FocusShot src={videoPath} cams={...} marks={...} />\` 全幅清晰播放真实动态交互（真实鼠标移动、抽屉展开、真实打字、开关切换），配合平滑 1.4x–2.0x 镜头推近追踪操作区；**切勿在已有真实光标动作的录屏视频上再叠加第二个假 \`cursors\`！**
      - 若本幕为静态高清截图：使用 \`assetCatalog[].uiAnchors\` 精准坐标执行 1.7x–2.2x 局部推镜 + 精准光标点击涟漪；有前后两张状态截图时使用 \`<UiDrawerSlide beforeSrc={...} afterSrc={...} revealAt={0.38} direction="left|modal" />\` 平滑展开抽屉或弹窗！
-  4. **无重叠安全区**：右上角 \`top: 0~74px, right: 0~240px\` 严格留给合规角标 \`<AIBadge>\`，严禁在右上角放任何章节文字；底部 \`118px\` 留给字幕条！` : `- **【按题材定制视觉语言 —— 严禁千篇一律用同一套科技风卡片！】**：
-  * **历史剧场 / 纪实传奇 (\`history-theater\`)**：使用水墨留白/宣纸/玄金卷轴色调，用动态 \`<svg>\` 画山河等高线、弯曲行军路线（\`pathLength=1\` + \`strokeDashoffset\` + 发光箭矢行进）、朱砂印章、纵排/衬线大字（\`FONT_SERIF\`）、以及 \`<FreeformThreeStage>\` 营造沙场火星/尘烟粒子或青铜战鼓三维光影！严禁使用现代 SaaS 科技仪表盘卡片！
+  4. **无重叠安全区**：右上角 \`top: 0~74px, right: 0~240px\` 严格留给合规角标 \`<AIBadge>\`，严禁在右上角放任何章节文字；底部 \`118px\` 留给字幕条！` : isHistoryOrMv ? `- **【历史史诗 / 高燃卡点动画铁律 —— 禁止空洞线条背景！每幕必须有动画人物 + 动效 + 特效！】**：
+  1. **严禁偷懒只画几条山脉线条或一张白纸！**：每幕必须具备**丰富的前景动画人物主体与动作特效**——例如：逆光高大将领/帝王剪影（披风随风狂舞、长枪/佩剑挥砍）、大军冲锋骑兵与飘扬战旗阵、战马奔腾速度线、月牙斩击刀光与绯红爆裂冲击波、红黑疆域攻占发光地图与印章重锤砸落、立体竹简与书法纵排卷轴！
+  2. **强力推荐组合使用已内置的史诗动画原语（从 \`'../lib/narrative-diorama'\` 导入）并在此基础上叠加你的定制 SVG/粒子/字效层**：
+     - 可直接导入 \`NarrativeDioramaStage, HeroWarriorFigure, StrategicMapStage, SlashBurstOverlay, CalligraphyColumnPanel, MOOD_PRESETS, computeBeatSignal, resolveBannerChar\`！
+     - **最佳实践**：若本幕 \`stageSpec\` 完整，可直接以 \`<NarrativeDioramaStage scene={scene} idx={idx} total={total} beats={beats} />\` 作为饱满的人物/大军/地图/竹简/斩击底层舞台，**再在其上方叠加该幕独有的定制动态 SVG 视觉层**（例如：巨大年份数字轰击弹出、定制战役箭雨/烽火狼烟/封狼居胥祭天坛/汉匈攻防路线/兵马冲阵特写/朱砂大字印章/节拍脉冲冲击环），或者用 \`HeroWarriorFigure\` + \`SlashBurstOverlay\` + 自定义多层动态 SVG 亲手构图，让每一幕既有电影级人物剪影细节又有鲜明剧情变化！
+  3. **严禁出现现代赛博科技仪表盘/SaaS 卡片/蓝色网格 HUD**：历史片必须保持炽金朝霞/血红战场/墨夜玄金/青铜大殿等影院级历史质感！
+  4. **节拍驱动的暴力动感**：每幕读取 \`computeBeatSignal((Number(scene.startSec) || 0) + frame / fps, beats)\`，让人物披风/发光描边、刀光爆裂、大字缩放、火星粒子和镜头冲击波随音乐重拍实时弹跳！` : `- **【按题材定制视觉语言 —— 严禁千篇一律用同一套科技风卡片！】**：
+  * **历史剧场 / 纪实传奇 (\`history-theater\`)**：必须使用 \`NarrativeDioramaStage\` / \`HeroWarriorFigure\` / \`SlashBurstOverlay\` / \`StrategicMapStage\` 与定制动态 \`<svg>\` 打造逆光人物剪影、冲锋铁骑、战旗大军、月牙斩击特效、红黑疆域路线、立体竹简与书法印章（\`FONT_SERIF\`）！严禁只画空白山脉线，严禁使用现代 SaaS 科技仪表盘卡片！
   * **火柴人 / 角色动画 (\`stickman-story\`)**：手写多关节层级 SVG 骨骼动画（头/躯干/大臂/小臂/大腿/小腿用嵌套 \`<g transform="translate(...) rotate(...)">\` 受 \`spring\` 与正弦周期驱动跑跳指点）、手绘对话气泡、拟声字、速度线与道具！
   * **代码动画 / 科普原理 / 数据故事 (\`code-animation\` / \`science-explainer\` / \`data-story\`)**：用 \`<FreeformThreeStage buildScene={(api) => { ... }} />\` 手写专属 3D 模型（行星轨道、分子球棍、芯片层爆炸拆解、神经网络连线、柱状矩阵），叠加实时生长的 SVG K线/雷达/脑图/代码流/公式推导与 \`computeBeatSpring\`！
   * **口播 / 数字人 / 自由其他题材 (\`talking-head\` / \`digital-human\` / \`other\`)**：随主题发明最贴切的 React + SVG + Three.js 视听舞台，不设任何题材或构图上限！`}
@@ -3595,7 +3608,7 @@ ${isUiTutorial ? `- **【软件实操教程专属视觉规范 —— 零错位�
 - **【第二画笔：原生动态 \`<svg>\` + 数学路径与弹簧物理】**：
   \`buildSmoothSvgPath(points)\`、\`describeSvgArc(cx, cy, r, a0, a1)\`、\`computeBeatSpring(frame, fps, beats)\`、\`spring()\`、\`interpolate()\`。
 - **【防错位与安全留白规则】**：
-  1. **每幕独立写专属视觉结构**：严禁定义单个全局函数套全批 6 个分镜仅替换右侧 3 行字；允许复用小型通用工具（如文字/粒子辅助），但主体构图与交互动效必须随本幕台词与视觉蓝图显著变化！
+  1. **每幕独立写专属视觉结构**：严禁定义单个全局函数套全批分镜仅替换右侧 3 行字；允许复用小型通用工具（如文字/粒子辅助），但主体构图与交互动效必须随本幕台词与视觉蓝图显著变化！
   2. 屏幕底部 \`${isPortrait ? 420 : 158}px\` 区域（Y > ${isPortrait ? Math.round(height - 440) : Math.round(height - 165)}）留给主合成器字幕条，右上角 \`top: 16~68px, right: 20~200px\` 预留给合规角标 \`<AIBadge>\`，切勿把角标文字放到右上角与它重叠！若是软件教程/产品演示分镜，如需顶部步骤标题条，请使用 \`display:'flex', flexDirection:'column'\` 在 \`<FocusShot>\` 上方独立留出 \`48~56px\` 顶栏（并保留右侧 \`200px\` 给 \`<AIBadge>\`），切勿用 \`position:'absolute'\` 浮标压住软件自身的左上角导航栏！主要画面主体放在 Y = 50 ~ ${isPortrait ? 1400 : 880} 清晰区域内；严禁自行渲染底部大字幕或 Audio！
   3. 屏幕文字（title/highlights/标签/标注）必须全部使用**阿拉伯数字**（如 \`206年\`、\`3000人\`、\`8 GB\`），不要强行改写为中文数字，也不要带无意义双引号或“本视频要求…”字样！
 
@@ -3614,7 +3627,7 @@ ${isUiTutorial ? `- **【软件实操教程专属视觉规范 —— 零错位�
    可用导入（严格以此为准）：
    - \`from 'remotion'\`: \`AbsoluteFill, Easing, Img, OffthreadVideo, interpolate, random, spring, staticFile, useCurrentFrame, useVideoConfig\`
    - \`from '../lib/shotcraft'\`: \`FreeformThreeStage, FreeformThreeApi, ThreeCyberStage, THREE, ThreeCanvas, THREE_STAGE_PRESETS, buildSmoothSvgPath, describeSvgArc, SvgArchitectureDiagram, HudDataDashboard, HudTelemetryOverlay, BeatSpringPhysicsRig, computeBeatSpring, CameraRig, AnimatedRoutePath, ParallaxHorizon, AppWindow, FocusShot, InteractiveCursor, UiDrawerSlide, UiTypingOverlay, BeforeAfterWipe, MetricPanel, DigitRoll, ClipCard, PageCam, computeBeatPulse, FONT_SANS, FONT_MONO, FONT_SERIF\`
-   - \`from '../lib/narrative-diorama'\`: \`NarrativeDioramaStage, HeroWarriorFigure, StrategicMapStage, SlashBurstOverlay, CalligraphyColumnPanel, MOOD_PRESETS, computeBeatSignal\``
+   - \`from '../lib/narrative-diorama'\`: \`NarrativeDioramaStage, HeroWarriorFigure, StrategicMapStage, SlashBurstOverlay, CalligraphyColumnPanel, MOOD_PRESETS, computeBeatSignal, resolveBannerChar\``
 
   const user = JSON.stringify(
     {

@@ -47,6 +47,13 @@ voice-packs/catalog.json
 voice-packs/voice_library.json
 voice-packs/imported/
 voice-packs/samples/
+voice-packs/builtin/
+
+# Python Bytecode & Archive Bundles
+__pycache__/
+*.pyc
+*.pyo
+*.zip
 
 # Generated Media & Test Artifacts
 *.tgz

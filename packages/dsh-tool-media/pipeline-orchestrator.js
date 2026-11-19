@@ -200,9 +200,18 @@ async function executeMultiAgentRunner(run, helpers) {
   const uploadedMusicSnap = (initialAssetsSnap.items || []).filter((it) => it.role === 'music')
   const intentFullText = `${spec.rawTopic || ''} ${spec.directorNotes || ''} ${spec.goal || ''} ${initialScriptSnap.goal || ''}`
   const wantsUploadedBgmByPrompt = /(?:上传|自带|导入|个人|我的|现有|本机).{0,10}(?:bgm|配乐|音乐|背景音|歌曲)|(?:bgm|配乐|背景音).{0,12}(?:节拍|卡点|踩拍|踩死|突降|高潮|同步)/i.test(intentFullText)
-  const wantsBeatSyncByPrompt = /(?:踩死|踩准|踩拍|卡点|高潮突降|重拍切镜|同步节拍|节拍同步|beat[- ]?sync)/i.test(intentFullText)
-  if (wantsBeatSyncByPrompt) {
+  const wantsBeatSyncByPrompt = /(?:踩死|踩准|踩拍|踩点|卡点|卡拍|高潮突降|主高潮|突降|重拍|切镜|同步节拍|节拍同步|beat[- ]?sync)/i.test(intentFullText)
+  const wantsPureMusicByPrompt = /(?:纯音乐|免配音|无配音|无旁白|不要配音|不用配音|去掉配音|无需配音|纯卡点|卡点\s*MV|无解说|免\s*TTS)/i.test(intentFullText)
+  const refStyleSnap = spec.referenceStyle || initialScriptSnap.referenceStyle || null
+  const wantsRefSubtitleMv =
+    refStyleSnap?.narrationMode === 'subtitle-mv' &&
+    !/(?:需要配音|真人配音|口播解说|语音旁白|人声旁白)/.test(intentFullText)
+  if (wantsBeatSyncByPrompt || wantsPureMusicByPrompt || refStyleSnap?.narrationMode === 'subtitle-mv' || refStyleSnap?.narrationMode === 'tts-beat-sync') {
     spec.beatSync = true
+  }
+  if ((wantsPureMusicByPrompt || wantsRefSubtitleMv) && (!spec.narrationMode || spec.narrationMode === 'tts')) {
+    spec.narrationMode = 'subtitle-mv'
+    appendLog('director', `检测到${wantsPureMusicByPrompt ? '指令要求纯音乐卡点/免配音' : '参考视频为纯音乐卡点 MV 模式'}，已自动切换为「🔥 纯音乐卡点 (subtitle-mv · 免 TTS)」并激活高密度重拍切镜与卡点音效！`)
   }
 
   let bgmMode = spec.bgmMode || initialScriptSnap.bgmMode || initialScriptSnap.audioSpec?.bgmMode || (uploadedMusicSnap.length > 0 ? 'uploaded' : 'llm-coded')
@@ -224,6 +233,7 @@ async function executeMultiAgentRunner(run, helpers) {
     narrationMode: spec.narrationMode || initialScriptSnap.narrationMode || 'tts',
     hasVisualAssets: (initialAssetsSnap.items || []).some((it) => it.type === 'image' || it.type === 'video'),
     bgmDurationSec: Number(uploadedMusicSnap[0]?.durationSec || initialScriptSnap.bgm?.durationSec) || 0,
+    referenceShotCount: Number(refStyleSnap?.pacingSignature?.targetShotCount || refStyleSnap?.shotCount || 0),
   })
   const effectiveDurationMode = durationPolicy.durationMode === 'custom' ? 'custom' : (spec.durationMode || initialScriptSnap.durationMode || 'auto')
   const effectiveTargetDurationSec = durationPolicy.enforced ? durationPolicy.targetSec : 0
@@ -403,9 +413,10 @@ async function executeMultiAgentRunner(run, helpers) {
           assetsManifest,
           bgmMeta: analyzedBgmMeta,
           narrationMode: spec.narrationMode || curScript.narrationMode || '',
-          pacingMode: spec.pacingMode || curScript.pacingMode || 'auto',
+          pacingMode: spec.pacingMode || curScript.pacingMode || (spec.narrationMode === 'subtitle-mv' ? 'dynamic' : 'auto'),
           durationMode: effectiveDurationMode,
           targetDurationSec: effectiveTargetDurationSec,
+          referenceStyle: refStyleSnap || curScript.referenceStyle || null,
           callLlmChatFn: (p) => callLlmChat({ ...p, signal }),
         })
         if (schemaRes?.resolved?.resolvedShots?.length >= 2) {
@@ -699,11 +710,16 @@ async function executeMultiAgentRunner(run, helpers) {
       spec.narrationMode ||
       scriptNow.narrationMode ||
       (visualItemsNow.length === 0 && bgmMode === 'uploaded' && !spec.useHostVocal ? 'subtitle-mv' : 'tts')
-    if (wantsBeatSyncByPrompt && bgmMode === 'uploaded' && effectiveNarrationMode === 'tts') {
+    if ((wantsPureMusicByPrompt || wantsRefSubtitleMv) && !spec.useHostVocal) {
+      effectiveNarrationMode = 'subtitle-mv'
+    } else if (wantsBeatSyncByPrompt && bgmMode === 'uploaded' && effectiveNarrationMode === 'tts') {
       effectiveNarrationMode = 'tts-beat-sync'
       appendLog('audio', '检测到指令要求分镜与动效全程踩死上传 BGM 节拍，已自动切换为「AI 配音 + 真实节拍踩点切镜」模式')
     }
     scriptNow.narrationMode = effectiveNarrationMode
+    if (effectiveNarrationMode === 'subtitle-mv') {
+      scriptNow.subtitleStyle = 'cinematic'
+    }
 
     // Auto-adopt uploaded voice_clone sample when user didn't pick another voice explicitly
     if (effectiveNarrationMode !== 'subtitle-mv' && voiceCloneSample && (!voiceId || voiceId === 'auto')) {
@@ -922,10 +938,14 @@ async function executeMultiAgentRunner(run, helpers) {
     }
 
     const postBgmScript = readScriptJson(absDir).data
+    const curGenreForBeat = String(postBgmScript.genre || spec.genre || '').toLowerCase()
     const wantsBeatSync =
       effectiveNarrationMode === 'subtitle-mv' ||
       effectiveNarrationMode === 'tts-beat-sync' ||
-      Boolean(spec.beatSync)
+      Boolean(spec.beatSync) ||
+      bgmMode === 'uploaded' ||
+      curGenreForBeat === 'history-theater' ||
+      curGenreForBeat === 'mv-lyric'
     if (wantsBeatSync && !(postBgmScript.scenes || []).some((s) => s.beatCutAligned)) {
       const bgmWavRel = postBgmScript.bgm?.path || ''
       const bgmWavAbs = bgmWavRel ? (isAbsolute(bgmWavRel) ? bgmWavRel : resolve(absDir, bgmWavRel)) : ''
@@ -1141,11 +1161,15 @@ async function executeMultiAgentRunner(run, helpers) {
 
         let repairRes = null
         if (engine === 'remotion') {
+          const isHeavyNarrative =
+            String(curScript.genre || '').toLowerCase() === 'history-theater' ||
+            String(curScript.genre || '').toLowerCase() === 'mv-lyric' ||
+            curScript.narrationMode === 'subtitle-mv'
           repairRes = await authorBatchedRemotionScenes({
             absDir,
             lockedScript: curScript,
             llmConfig: spec.llmOverride || {},
-            batchSize: (curScript.scenes || []).length >= 16 ? 6 : 4,
+            batchSize: isHeavyNarrative ? 4 : (curScript.scenes || []).length >= 16 ? 5 : 4,
             concurrency: Math.max(2, hwPolicy.batchCoderConcurrency || 3),
             maxRepairRounds: Math.max(1, Math.min(3, Number(llmSummary.maxRepairRounds) || 2)),
             signal,

@@ -1,3 +1,9 @@
+/**
+ * @dsh-video/web-video-workbench — Backend REST API & Cordis Plugin Adapter
+ * Copyright (c) 2026 Merziller
+ * Author: Merziller | QQ: 1411574209 | WeChat: Merziller | Email: k26789228@gmail.com
+ * Official Repo: https://github.com/Merziller/dsh-video-workbench (MIT License)
+ */
 import {
   closeSync,
   existsSync,
@@ -44,12 +50,15 @@ import {
 import {
   addOrUpdateCustomTtsEngine,
   cloneRecordedVoice,
+  ensureDefaultReferenceVoices,
   executeGenerateSpeech,
   getActiveTtsEngineId,
   getSafeTtsConfigSummary,
+  getTtsInstallerCatalog,
   getTtsServerHealth,
   getVoiceCatalog,
   importVoicePack,
+  installTtsEngine,
   matchAllScenesInScript,
   removeCustomTtsEngine,
   resolveTtsEngineSpec,
@@ -65,12 +74,15 @@ import {
 } from '../../dsh-tool-video-suite/index.js'
 import {
   analyzeAudioBeatStructure,
+  analyzeReferenceVideo,
   callLlmChat,
   detectGenre,
+  exportProjectMotionMd,
   extractJsonFromLlmText,
   getGenreProfile,
   GENRE_PROFILES,
   listGenresForPrompt,
+  loadBrandKit,
   exportPublishPack,
   generateAiCodedBgmTrack,
   generateBgmWav,
@@ -87,6 +99,7 @@ import {
   renderVendorClipIsolated,
   rollbackAiVersion,
   runAiStudioPipeline,
+  saveBrandKit,
   saveLlmConfig,
   saveUploadedAsset,
   summarizeAssets,
@@ -98,6 +111,16 @@ import {
   startPipelineBackground,
   taskManager,
 } from '../../dsh-tool-media/index.js'
+
+export const AUTHOR_INFO = Object.freeze({
+  name: 'Merziller',
+  qq: '1411574209',
+  wechat: 'Merziller',
+  email: 'k26789228@gmail.com',
+  github: 'https://github.com/Merziller/dsh-video-workbench',
+  license: 'MIT',
+  notice: '© 2026 Merziller · 开源免费（MIT），二次分发/修改请保留原作者署名与联系方式',
+})
 import {
   scaffoldVideoProject,
   VIDEO_MAKER_SYSTEM_PROMPT,
@@ -265,20 +288,38 @@ export async function polishTopicPrompt(body = {}, { fetchImpl } = {}) {
     .filter((it) => ['host_video', 'avatar_base', 'voice_clone'].includes(it.role))
     .map((it) => `${it.originalName || it.name} [${it.role}]`)
   const noteSnippets = (manifest.notes || []).map((n) => String(n.text || '').slice(0, 600)).filter(Boolean)
-  const guessedGenre = detectGenre(`${rawPrompt} ${noteSnippets.join(' ')}`, visualList.length > 0)
+  let projectScriptSnap = null
+  if (projectDir && existsSync(join(resolve(projectDir), 'script.json'))) {
+    try { projectScriptSnap = readScriptJson(projectDir).data } catch {}
+  }
+  const refStyle = projectScriptSnap?.referenceStyle || null
+  const wantsPureMusic =
+    body.narrationMode === 'subtitle-mv' ||
+    /(?:纯音乐|免配音|无配音|无旁白|不要配音|不用配音|去掉配音|无需配音|纯卡点|卡点\s*MV|无解说|免\s*TTS)/i.test(rawPrompt) ||
+    (refStyle?.narrationMode === 'subtitle-mv' && !/(?:需要配音|真人配音|口播解说)/.test(rawPrompt))
+  const wantsBeatSync =
+    wantsPureMusic ||
+    body.narrationMode === 'tts-beat-sync' ||
+    /(?:踩死|踩准|踩拍|踩点|卡点|卡拍|高潮突降|主高潮|突降|重拍|切镜|同步节拍)/i.test(rawPrompt)
+  const effectivePolishNarrationMode = wantsPureMusic ? 'subtitle-mv' : (wantsBeatSync && musicList.length > 0 ? 'tts-beat-sync' : (body.narrationMode || 'tts'))
+  const guessedGenre = refStyle?.genre && refStyle.genre !== 'other' ? refStyle.genre : detectGenre(`${rawPrompt} ${noteSnippets.join(' ')}`, visualList.length > 0)
   const durationPolicy = resolveTargetDurationPolicy({
     durationMode: body.durationMode || 'auto',
     targetDurationSec: Number(body.targetDurationSec) || 0,
     text: rawPrompt,
-    narrationMode: body.narrationMode || 'tts',
+    narrationMode: effectivePolishNarrationMode,
     hasVisualAssets: visualList.length > 0,
     bgmDurationSec: Number(musicItems[0]?.durationSec) || 0,
+    referenceShotCount: Number(refStyle?.pacingSignature?.targetShotCount || refStyle?.shotCount || 0),
   })
   const durationRuleLine = durationPolicy.enforced
-    ? `6. **目标时长硬要求**：用户明确指定目标时长为 **${durationPolicy.label}**（底线 ${durationPolicy.minSec} 秒）！请务必把 \`contentOutline\` 拆解为 **${durationPolicy.outlineCountMin}~${durationPolicy.outlineCountMax} 条** 扎实充实的内容章节要点（保证后续分镜可自然展开到 **${durationPolicy.targetSec} 秒**、约 ${durationPolicy.requiredCharsMin}~${durationPolicy.requiredCharsMax} 字口播或对应密集踩拍镜头），并在 \`directorNotes\` 中明确写明按 **${durationPolicy.targetSec} 秒** 完整铺陈，绝不能缩水成 50 秒！`
+    ? `6. **目标时长硬要求**：用户明确指定目标时长为 **${durationPolicy.label}**（底线 ${durationPolicy.minSec} 秒）！请务必把 \`contentOutline\` 拆解为 **${durationPolicy.outlineCountMin}~${durationPolicy.outlineCountMax} 条** 扎实充实的内容章节要点（保证后续分镜可自然展开到 **${durationPolicy.targetSec} 秒**${effectivePolishNarrationMode === 'subtitle-mv' ? `、共 **${durationPolicy.targetShotsMin}~${durationPolicy.targetShotsMax} 个高密度卡点分镜**` : `、约 ${durationPolicy.requiredCharsMin}~${durationPolicy.requiredCharsMax} 字口播`}），并在 \`directorNotes\` 中明确写明按 **${durationPolicy.targetSec} 秒** 完整铺陈，绝不能缩水！`
     : `6. **时长策略**：当前为「AI 自由匹配时长」，请按题材和素材丰富度自由给出最合适的章节条数与节奏安排。`
   const bgmRuleLine = musicList.length > 0
-    ? `\n7. **已上传 BGM 配乐**：用户已上传背景音乐 ${musicList.join('、')}，请在 \`directorNotes\` 中明确要求全程使用上传的 BGM 并贴合其真实节拍与高潮突降点（如用户要求踩拍）。`
+    ? `\n7. **已上传 BGM 配乐**：用户已上传背景音乐 ${musicList.join('、')}，请在 \`directorNotes\` 中明确要求全程使用上传的 BGM 并贴合其真实节拍与高潮突降点${wantsPureMusic ? '（纯音乐高燃卡点免 TTS 旁白，强调动画人物剪影/动作、刀光斩击特效、转场闪切与鼓点打击音效）' : ''}。`
+    : ''
+  const refRuleLine = refStyle?.replicationPrompt
+    ? `\n8. **已挂载参考视频复刻基因（必须严格沿用同款视觉与节奏！）**：参考视频「${refStyle.sourceName || '参考样片'}」实测 **${refStyle.shotCount || 0} 镜 / ${refStyle.bpm || '?'} BPM / ${refStyle.narrationMode || 'subtitle-mv'}**。风格基因：${String(refStyle.replicationPrompt).slice(0, 700)}。请把这套视觉与节奏要求完美迁移到用户的新主题中！`
     : ''
 
   const systemPrompt = `你是全品类视频创作总导演，擅长把一句大白话想法扩写成 AI 制作团队可直接执行的结构化创作方案。
@@ -302,7 +343,7 @@ ${listGenresForPrompt()}
 3. 结合 uploadedVisualAssets / uploadedNotes / uploadedMusic：有素材就写明如何使用；没有素材就由代码动画自由绘制（Three.js / SVG / Canvas，不受固定模板限制）。
 4. 严禁虚构不存在的数据；用户给出的产品名、网址须原样保留在 contentOutline 中。
 5. 数字用阿拉伯数字书写（206 年、3000 人）。
-${durationRuleLine}${bgmRuleLine}`
+${durationRuleLine}${bgmRuleLine}${refRuleLine}`
 
   const userMsg = JSON.stringify({
     userInput: rawPrompt,
@@ -403,7 +444,9 @@ ${durationRuleLine}${bgmRuleLine}`
     contentOutline: outline,
     directorNotes: `${directorNotes}${voiceStyle ? `\n配音取向：${voiceStyle}` : ''}`,
     voiceStyle,
-    suggestedStyle: str(parsed.suggestedStyle),
+    suggestedStyle: str(parsed.suggestedStyle) || (refStyle?.style || ''),
+    suggestedNarrationMode: effectivePolishNarrationMode,
+    suggestedPacingMode: wantsPureMusic || refStyle?.pacingSignature?.recommendedPacingMode === 'dynamic' ? 'dynamic' : (body.pacingMode || 'auto'),
     model,
   }
 }
@@ -672,10 +715,13 @@ export async function handleWorkbenchApiRequest(req) {
         activeProject,
         llmConfig: getSafeLlmConfigSummary(),
         ttsConfig: getSafeTtsConfigSummary(),
+        ttsInstallCatalog: getTtsInstallerCatalog(),
         voiceCatalog: catalog.voices,
         voiceCategories: catalog.categories,
         availableEmotions: Object.keys(catalog.emotionReferences),
         ttsStatus,
+        brandKit: loadBrandKit(requestedProject),
+        authorInfo: AUTHOR_INFO,
         hardwareProfile,
         hardwarePreferences,
         hardwarePolicy,
@@ -1967,6 +2013,156 @@ export async function handleWorkbenchApiRequest(req) {
       }
     }
 
+    // 6h-4. GET /api/video-workbench/tts/install-options & POST /tts/install & POST /tts/repair-voices
+    if (pathname === '/api/video-workbench/tts/install-options' && req.method === 'GET') {
+      return jsonResponse({ ok: true, catalog: getTtsInstallerCatalog() })
+    }
+    if (pathname === '/api/video-workbench/tts/repair-voices' && req.method === 'POST') {
+      const body = await parseRequestJson(req)
+      const res = await ensureDefaultReferenceVoices({
+        idxRoot: body.idxRoot || '',
+        gptRoot: body.gptRoot || '',
+      })
+      const cat = getVoiceCatalog()
+      return jsonResponse({
+        ok: true,
+        ...res,
+        voiceCount: cat.voices.length,
+        availableCount: cat.voices.filter((v) => v.available).length,
+      })
+    }
+    if (pathname === '/api/video-workbench/tts/install' && req.method === 'POST') {
+      const body = await parseRequestJson(req)
+      if (!body.engineId) return jsonResponse({ ok: false, error: 'engineId is required' }, 400)
+      if (body.async !== false) {
+        const job = createBackgroundJob(`📦 正在自动安装 ${body.engineId} 配音依赖包并接入插件...`, async (onProgress) => {
+          return await installTtsEngine({
+            engineId: body.engineId,
+            installDir: body.installDir || '',
+            mirror: body.mirror || 'cn',
+            pythonBin: body.pythonBin || '',
+            autoActivate: body.autoActivate !== false,
+            skipModelDownload: Boolean(body.skipModelDownload),
+            onProgress,
+          })
+        })
+        return jsonResponse({ ok: true, async: true, jobId: job.id, job })
+      }
+      const res = await installTtsEngine(body)
+      return jsonResponse({ ok: true, ...res, ttsConfig: getSafeTtsConfigSummary(), catalog: getTtsInstallerCatalog() })
+    }
+
+    // 6h-5. Reference Video Upload & Deep Reverse-Engineering (/reference/upload, /reference/analyze, /reference/clear)
+    if (pathname === '/api/video-workbench/reference/upload' && req.method === 'POST') {
+      const ct = String(req.headers.get('content-type') || '').toLowerCase()
+      let projectDir = ''
+      let fileName = `reference-${Date.now()}.mp4`
+      let extractAudioAsBgm = false
+      let useVision = true
+      let isAsync = true
+      let localPath = ''
+      let binBuf = null
+
+      if (ct.includes('application/json')) {
+        const body = await parseRequestJson(req)
+        projectDir = body.projectDir || ''
+        fileName = body.fileName || fileName
+        extractAudioAsBgm = Boolean(body.extractAudioAsBgm)
+        useVision = body.useVision !== false
+        isAsync = body.async !== false
+        localPath = body.localPath || body.videoPath || ''
+        if (typeof body.dataBase64 === 'string') {
+          binBuf = Buffer.from(body.dataBase64.replace(/^data:[^;]+;base64,/, ''), 'base64')
+        }
+      } else {
+        projectDir = url.searchParams.get('projectDir') || ''
+        fileName = url.searchParams.get('fileName') || fileName
+        extractAudioAsBgm = ['1', 'true', 'yes'].includes(String(url.searchParams.get('extractAudioAsBgm') || '').toLowerCase())
+        useVision = url.searchParams.get('useVision') !== '0'
+        isAsync = url.searchParams.get('async') !== '0'
+        localPath = url.searchParams.get('localPath') || ''
+        try {
+          binBuf = Buffer.from(await req.arrayBuffer())
+        } catch {}
+      }
+
+      if (!projectDir) return jsonResponse({ ok: false, error: 'projectDir is required' }, 400)
+      const absProject = resolve(projectDir)
+      const refDir = join(absProject, 'reference')
+      mkdirSync(refDir, { recursive: true })
+
+      let stagedPath = ''
+      if (binBuf && binBuf.length > 0) {
+        const safeName = basename(fileName).replace(/[^a-zA-Z0-9._\u4e00-\u9fa5-]/g, '_') || 'reference.mp4'
+        stagedPath = join(refDir, safeName)
+        writeFileSync(stagedPath, binBuf)
+      } else if (localPath && existsSync(localPath)) {
+        stagedPath = localPath
+      } else {
+        return jsonResponse({ ok: false, error: '请上传参考视频文件或提供有效本地路径' }, 400)
+      }
+
+      const runner = (onProgress) =>
+        analyzeReferenceVideo({
+          projectDir: absProject,
+          videoPath: stagedPath,
+          extractAudioAsBgm,
+          applyToScript: true,
+          useVision,
+          onProgress,
+        })
+
+      if (isAsync) {
+        const job = createBackgroundJob('🎯 正在拆解参考视频分镜节奏、节拍与多模态视觉基因...', runner)
+        return jsonResponse({ ok: true, async: true, jobId: job.id, job })
+      }
+      const res = await runner()
+      return jsonResponse(res)
+    }
+
+    if (pathname === '/api/video-workbench/reference/analyze' && req.method === 'POST') {
+      const body = await parseRequestJson(req)
+      if (!body.projectDir || !body.videoPath) {
+        return jsonResponse({ ok: false, error: 'projectDir and videoPath are required' }, 400)
+      }
+      if (body.async) {
+        const job = createBackgroundJob('🎯 正在拆解参考视频视觉基因与镜头公式...', (onProgress) =>
+          analyzeReferenceVideo({ ...body, onProgress }),
+        )
+        return jsonResponse({ ok: true, async: true, jobId: job.id, job })
+      }
+      const res = await analyzeReferenceVideo(body)
+      return jsonResponse(res)
+    }
+
+    if (pathname === '/api/video-workbench/reference/clear' && req.method === 'POST') {
+      const body = await parseRequestJson(req)
+      if (!body.projectDir) return jsonResponse({ ok: false, error: 'projectDir is required' }, 400)
+      const { data } = readScriptJson(body.projectDir)
+      delete data.referenceStyle
+      const saved = writeScriptJson(body.projectDir, data)
+      return jsonResponse({ ok: true, script: saved.data })
+    }
+
+    // 6h-6. Brand Kit & MOTION.md Blueprint (/brand-kit, /motion-md)
+    if (pathname === '/api/video-workbench/brand-kit') {
+      const projectDir = url.searchParams.get('projectDir') || ''
+      if (req.method === 'GET') {
+        return jsonResponse({ ok: true, brandKit: loadBrandKit(projectDir) })
+      }
+      if (req.method === 'POST') {
+        const body = await parseRequestJson(req)
+        const saved = saveBrandKit(body.brandKit || body, body.projectDir || projectDir)
+        return jsonResponse({ ok: true, brandKit: saved })
+      }
+    }
+
+    if (pathname === '/api/video-workbench/motion-md' && req.method === 'POST') {
+      const body = await parseRequestJson(req)
+      if (!body.projectDir) return jsonResponse({ ok: false, error: 'projectDir is required' }, 400)
+      return jsonResponse(exportProjectMotionMd(body.projectDir))
+    }
+
     // 6i. POST /api/video-workbench/skin/upload & GET /api/video-workbench/skin (Custom background skin)
     if (pathname === '/api/video-workbench/skin/upload' && req.method === 'POST') {
       const ct = String(req.headers.get('content-type') || '').toLowerCase()
@@ -2093,6 +2289,14 @@ export function apply(ctx) {
       { path: '/api/video-workbench/avatar/generate', methods: ['POST'] },
       { path: '/api/video-workbench/avatar/config', methods: ['GET', 'POST'] },
       { path: '/api/video-workbench/polish-topic', methods: ['POST'] },
+      { path: '/api/video-workbench/tts/install-options', methods: ['GET'] },
+      { path: '/api/video-workbench/tts/install', methods: ['POST'] },
+      { path: '/api/video-workbench/tts/repair-voices', methods: ['POST'] },
+      { path: '/api/video-workbench/reference/upload', methods: ['POST'] },
+      { path: '/api/video-workbench/reference/analyze', methods: ['POST'] },
+      { path: '/api/video-workbench/reference/clear', methods: ['POST'] },
+      { path: '/api/video-workbench/brand-kit', methods: ['GET', 'POST'] },
+      { path: '/api/video-workbench/motion-md', methods: ['POST'] },
       { path: '/api/video-workbench/skin/upload', methods: ['POST'] },
       { path: '/api/video-workbench/skin', methods: ['GET'] },
       { path: '/api/video-workbench/asset', methods: ['GET'] },

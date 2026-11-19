@@ -22,12 +22,16 @@ jobs:
       - name: Verify JS syntax and clean manifest
         run: |
           node -c index.js
+          node -c bin/dsh-video-mcp.mjs
+          node -c bin/dsh-video-cli.mjs
           node -c packages/shared/index.js
           node -c packages/dsh-preset-video/index.js
+          node -c packages/dsh-tool-local-tts/tts-installer.js
+          node -c packages/dsh-tool-media/reference-analyzer.js
           node -c packages/dsh-web-video-workbench/lib/index.js
           node -c packages/dsh-web-video-workbench/lib/client.js
 
-      - name: Pack prebuilt DSH bundle tarball
+      - name: Pack prebuilt bundle tarball & optional TTS installer pack
         id: pack
         run: |
           node scripts/pack-bundle.mjs
@@ -35,7 +39,18 @@ jobs:
           VERSION=$(node -p "require('./package.json').version")
           CLEAN_NAME="dsh-video-workbench-${VERSION}.tgz"
           cp "$TARBALL" "$CLEAN_NAME"
+          mkdir -p .tmp/tts-pack/scripts .tmp/tts-pack/packages/dsh-tool-local-tts .tmp/tts-pack/packages/shared .tmp/tts-pack/docs
+          cp scripts/install-tts-engine.ps1 scripts/install-tts-engine.mjs .tmp/tts-pack/scripts/
+          cp packages/dsh-tool-local-tts/tts-installer.js packages/dsh-tool-local-tts/tts-config.js packages/dsh-tool-local-tts/voice-manager.js .tmp/tts-pack/packages/dsh-tool-local-tts/
+          cp packages/shared/*.js .tmp/tts-pack/packages/shared/
+          cp LICENSE NOTICE .tmp/tts-pack/
+          cp docs/install.md .tmp/tts-pack/docs/
+          printf '{"name":"dsh-tts-installer-pack","version":"%s","type":"module","author":"Merziller <k26789228@gmail.com>"}\n' "$VERSION" > .tmp/tts-pack/package.json
+          printf 'Set-Location $PSScriptRoot\r\n& powershell -ExecutionPolicy Bypass -File "$PSScriptRoot\\scripts\\install-tts-engine.ps1" @args\r\n' > .tmp/tts-pack/INSTALL-TTS.ps1
+          printf 'DSH Video Workbench v%s — Optional Local TTS Installer Pack (by Merziller)\r\nQQ: 1411574209 | WeChat: Merziller | Email: k26789228@gmail.com\r\n\r\nUsage (Windows PowerShell):\r\n  .\\INSTALL-TTS.ps1\r\n\r\nUsage (Any OS with Node.js >= 20):\r\n  node scripts/install-tts-engine.mjs --list\r\n  node scripts/install-tts-engine.mjs --engine indextts25 --mirror cn\r\n  node scripts/install-tts-engine.mjs --engine gptvoice --mirror cn\r\n  node scripts/install-tts-engine.mjs --engine edge-tts\r\n' "$VERSION" > .tmp/tts-pack/README-INSTALL.txt
+          (cd .tmp/tts-pack && zip -r "../../dsh-tts-installer-pack-${VERSION}.zip" .)
           echo "asset=$CLEAN_NAME" >> "$GITHUB_OUTPUT"
+          echo "tts_pack=dsh-tts-installer-pack-${VERSION}.zip" >> "$GITHUB_OUTPUT"
           echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Publish GitHub Release asset
@@ -45,4 +60,5 @@ jobs:
           generate_release_notes: true
           files: |
             ${{ steps.pack.outputs.asset }}
+            ${{ steps.pack.outputs.tts_pack }}
             docs/tutorial/dsh-video-workbench-tutorial.mp4

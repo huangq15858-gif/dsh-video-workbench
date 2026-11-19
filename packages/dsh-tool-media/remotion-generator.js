@@ -472,6 +472,10 @@ const HighlightsRow: React.FC<{
   );
 };
 
+function hydratedThemeIsLight(scene: any, genreName: string): boolean {
+  return scene?.windowTheme === 'light' || genreName === 'ui-tutorial';
+}
+
 const SceneStage: React.FC<{
   scene: any;
   idx: number;
@@ -502,6 +506,23 @@ const SceneStage: React.FC<{
     scene?.stageSpec?.threePreset ||
     THREE_STAGE_PRESETS[idx % THREE_STAGE_PRESETS.length];
 
+  const genreName = String((scriptData as any)?.genre || '').toLowerCase();
+  const narrationModeStr = String((scriptData as any)?.narrationMode || 'tts').toLowerCase();
+  const isBeatEnergyVideo =
+    narrationModeStr === 'subtitle-mv' ||
+    narrationModeStr === 'tts-beat-sync' ||
+    genreName === 'history-theater' ||
+    genreName === 'mv-lyric';
+  const effectiveTxKind =
+    idx > 0 && (!txKind || txKind === 'cut') && isBeatEnergyVideo
+      ? ['flash-cut', 'slash-wipe', 'zoom-punch', 'glitch-cut'][idx % 4]
+      : txKind;
+
+  const hasSceneVisualMedia =
+    (Array.isArray(scene.media) && scene.media.length > 0) ||
+    (Array.isArray(scene.poolMedia) && scene.poolMedia.length > 0) ||
+    Boolean(scene.mediaPath);
+
   if (CustomSceneComp) {
     const publicAssetFiles =
       Array.isArray(scene.publicAssetFiles) && scene.publicAssetFiles.length > 0
@@ -513,19 +534,47 @@ const SceneStage: React.FC<{
             : scene.mediaPath
               ? [String(scene.mediaPath).replace(/^[/\\\\]+/, '').replace(/\\\\/g, '/')]
               : [];
-    const genreName = String((scriptData as any)?.genre || '').toLowerCase();
+    const isLightCustom = hydratedThemeIsLight(scene, genreName);
     const allowTechHudOverlay =
       visual3dMode === 'on' &&
       (!genreName || genreName === 'code-animation' || genreName === 'product-promo' || genreName === 'data-story');
     const hydratedScene = {
       ...scene,
       genre: (scriptData as any)?.genre || '',
+      narrationMode: narrationModeStr,
       publicAssetFiles,
       threePreset: sceneThreePreset,
     };
+    const applyBeatCamera = !isLightCustom && (isBeatEnergyVideo || beats.length > 0);
+    const cutImpact = applyBeatCamera && idx > 0 && localFrame < 9 ? Math.exp(-localFrame * 0.34) : 0;
+    const customShakeX = cutImpact * Math.sin(localFrame * 4.1 + idx) * (isBeatEnergyVideo ? 10 : 4);
+    const customShakeY = cutImpact * Math.cos(localFrame * 4.7 + idx) * (isBeatEnergyVideo ? 7 : 3);
+    const customPunchScale =
+      applyBeatCamera && (effectiveTxKind === 'zoom-punch' || effectiveTxKind === 'flash-cut' || effectiveTxKind === 'slash-wipe') && localFrame < 10
+        ? interpolate(localFrame, [0, 10], [isBeatEnergyVideo ? 1.075 : 1.035, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: easeOut })
+        : 1;
+    const customScale = applyBeatCamera ? customPunchScale + bp * (isBeatEnergyVideo ? 0.026 : 0.008) : 1;
+    const customFlashAlpha =
+      applyBeatCamera && isBeatEnergyVideo && idx > 0 && localFrame < 5
+        ? interpolate(localFrame, [0, 5], [effectiveTxKind === 'flash-cut' ? 0.42 : 0.22, 0], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })
+        : 0;
     return (
-      <AbsoluteFill style={{ overflow: 'hidden', backgroundColor: hydratedScene.windowTheme === 'light' || genreName === 'ui-tutorial' ? '#F4F7FB' : PALETTE.background }}>
-        <CustomSceneComp scene={hydratedScene} idx={idx} total={total} beats={beats} />
+      <AbsoluteFill style={{ overflow: 'hidden', backgroundColor: isLightCustom ? '#F4F7FB' : PALETTE.background }}>
+        <AbsoluteFill
+          style={
+            applyBeatCamera
+              ? {
+                  transform: \`translate3d(\${customShakeX.toFixed(1)}px, \${customShakeY.toFixed(1)}px, 0) scale(\${customScale.toFixed(4)})\`,
+                  transformOrigin: 'center center',
+                }
+              : undefined
+          }
+        >
+          <CustomSceneComp scene={hydratedScene} idx={idx} total={total} beats={beats} />
+        </AbsoluteFill>
+        {customFlashAlpha > 0.01 ? (
+          <AbsoluteFill style={{ backgroundColor: '#FFF7E8', opacity: customFlashAlpha, pointerEvents: 'none', zIndex: 25 }} />
+        ) : null}
         {allowTechHudOverlay ? (
           <HudTelemetryOverlay
             accentColor={PALETTE.accent}
@@ -537,7 +586,7 @@ const SceneStage: React.FC<{
           />
         ) : null}
         <SceneTransitionOverlay
-          txKind={txKind}
+          txKind={effectiveTxKind}
           localFrame={localFrame}
           dur={dur}
           accentColor={PALETTE.accent}
@@ -548,22 +597,17 @@ const SceneStage: React.FC<{
     );
   }
 
-  if (layout === 'narrative-diorama') {
+  const useNarrativeDioramaFallback =
+    layout === 'narrative-diorama' ||
+    Boolean(scene.stageSpec) ||
+    ((genreName === 'history-theater' || genreName === 'mv-lyric') && !hasSceneVisualMedia);
+
+  if (useNarrativeDioramaFallback) {
     return (
       <AbsoluteFill style={{ overflow: 'hidden', backgroundColor: PALETTE.background }}>
         <NarrativeDioramaStage scene={scene} idx={idx} total={total} beats={beats} />
-        {enable3dStage ? (
-          <ThreeCyberStage
-            preset={sceneThreePreset}
-            primaryColor={PALETTE.accent}
-            secondaryColor={PALETTE.gold || PALETTE.accent2}
-            beatPulse={bp}
-            opacity={0.48}
-            seed={idx + 1}
-          />
-        ) : null}
         <SceneTransitionOverlay
-          txKind={txKind}
+          txKind={effectiveTxKind}
           localFrame={localFrame}
           dur={dur}
           accentColor={PALETTE.accent}
@@ -1638,8 +1682,15 @@ export const VideoComposition: React.FC = () => {
       : undefined);
 
   const subText = activeSub?.text || (Array.isArray(activeScene?.subtitles) && activeScene.subtitles[0]?.text) || activeScene?.subtitleLine || '';
-  const isLightFrame = activeScene?.windowTheme === 'light' || String((sData as any)?.genre || '') === 'ui-tutorial';
-  const isCinematicSub = !isLightFrame && (sData.subtitleStyle === 'cinematic' || activeScene?.layout === 'narrative-diorama');
+  const activeGenreLower = String((sData as any)?.genre || '').toLowerCase();
+  const isLightFrame = activeScene?.windowTheme === 'light' || activeGenreLower === 'ui-tutorial';
+  const isCinematicSub =
+    !isLightFrame &&
+    (sData.subtitleStyle === 'cinematic' ||
+      sData.narrationMode === 'subtitle-mv' ||
+      activeScene?.layout === 'narrative-diorama' ||
+      activeGenreLower === 'history-theater' ||
+      activeGenreLower === 'mv-lyric');
   const accentWords: string[] = Array.isArray(activeScene?.accentWords) ? activeScene.accentWords : [];
   const activeAvatar = activeScene?.avatarClip?.path ? activeScene.avatarClip : (sData?.avatarClip?.path ? sData.avatarClip : null);
   const avatarLayout = activeScene?.avatarLayout || activeAvatar?.layout || sData?.avatarLayout || 'pip-br';

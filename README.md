@@ -1,23 +1,28 @@
-# 🎬 DSH Video Workbench (`dsh-video-workbench`)
+# 🎬 DSH Video Workbench (`dsh-video-workbench` · v0.4.0)
 
-> **面向 DeepSeek Harness (DSH) 的双引擎（Remotion 4.x + Three.js 3D & HyperFrames HTML5 + Three.js）多智能体 AI 视频全链路工作台插件套件**  
-> **Dual-Engine (Remotion 4.x + Three.js 3D & HTML5 + Three.js) Multi-Agent AI Video Studio for DeepSeek Harness — Import Assets, AI Script & Prompt Polish, BGM Beat-Sync, IndexTTS-2.5 / GPT-SoVITS Voice & Clone, Opus 5.5 Vibecoding 3D TSX Coding & Full-FPS MP4**
+> **全智能体通用双引擎 AI 视频全链路工作台（不再局限于 DSH！原生支持 DeepSeek Harness · Claude Code · OpenAI Codex CLI · WorkBuddy · Cursor · Windsurf · Cline · Antigravity · 独立网页）**  
+> **Universal Multi-Agent Dual-Engine AI Video Studio (Remotion 4.x + Three.js 3D & HyperFrames HTML5) — Reference Video Reverse-Engineering & Same-Style Remake (`MOTION.md` + Brand Kit), Beat-Synced Historical/MV Silhouette & Combat VFX, Optional One-Click Local TTS Installer (`Edge-TTS` / `IndexTTS-2.5` / `GPT-SoVITS` / `Windows Native`), & Low-Spec Protection**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
-[![Platform: Windows 11](https://img.shields.io/badge/Platform-Windows%2011-0078D6.svg)](#)
+[![Agents: DSH | Claude Code | Codex | WorkBuddy | Cursor](https://img.shields.io/badge/Agents-DSH%20%7C%20Claude%20Code%20%7C%20Codex%20%7C%20WorkBuddy%20%7C%20Cursor-7c3aed.svg)](#-四全智能体安装与接入指南不限-dsh-universal-multi-agent-setup)
 [![Engine: Remotion 4.x + Three.js 3D & HTML5](https://img.shields.io/badge/Engine-Remotion%204.x%20%2B%20Three.js%203D%20%7C%20HTML5-38bdf8.svg)](#)
-[![TTS: IndexTTS-2.5 & GPT-SoVITS](https://img.shields.io/badge/TTS-IndexTTS--2.5%20%7C%20GPT--SoVITS-10b981.svg)](#)
-[![Author QQ: 1411574209](https://img.shields.io/badge/Author%20QQ-1411574209-12B7F5.svg)](#-联系作者与交流反馈-contact)
+[![Author: Merziller](https://img.shields.io/badge/Original%20Author-Merziller-f59e0b.svg)](#-联系作者与原创版权声明-author--copyright)
+[![QQ: 1411574209](https://img.shields.io/badge/QQ-1411574209-12B7F5.svg)](#-联系作者与原创版权声明-author--copyright)
+[![WeChat: Merziller](https://img.shields.io/badge/WeChat-Merziller-07C160.svg)](#-联系作者与原创版权声明-author--copyright)
+[![Gmail: k26789228@gmail.com](https://img.shields.io/badge/Gmail-k26789228%40gmail.com-EA4335.svg)](#-联系作者与原创版权声明-author--copyright)
+
+> 🛡️ **原创开源署名声明**：本项目由 **Merziller** 原创开源并依据 [MIT 协议](./LICENSE) 免费提供使用。任何二次分发、修改、打包、转载或商业/演示使用，**必须完整保留原作者署名与联系方式（作者：`Merziller` ｜ QQ：`1411574209` ｜ 微信：`Merziller` ｜ Gmail：`k26789228@gmail.com` ｜ 官方仓库：`https://github.com/Merziller/dsh-video-workbench`）**，严禁抹除作者信息冒充原创。详见 [`NOTICE`](./NOTICE)。
 
 ---
 
-## 🎥 官方完整实操教程视频（由本插件全流程自动生成）
+## 🎥 官方完整实操教程视频 & 可选本地配音安装器
 
-> 想要快速上手从「新建工程 → 算力体检与低配保护 → AI 一键润色提示词 → 素材提词拍 → 四协议大模型与多引擎配音 → 监看台 AI 改片 → 9 宫格质检导出与任务断点重试」的全流程，可直接观看或下载本仓库附带的 **1080P 高清亮色交互实操教程成片（3 分 17 秒，24 幕分镜，由本插件自身全链路自动生成）**：
->
-> - **仓库内视频文件**：[`docs/tutorial/dsh-video-workbench-tutorial.mp4`](./docs/tutorial/dsh-video-workbench-tutorial.mp4)
-> - **GitHub Release 高速直链下载**：[`dsh-video-workbench-tutorial.mp4 (1080P MP4)`](https://github.com/Merziller/dsh-video-workbench/releases/download/v0.3.9/dsh-video-workbench-tutorial.mp4)
-> - **作者交流联系（Bug 反馈 / 定制建议 / 使用答疑）**：**QQ `1411574209`**
+> - **仓库内教程视频**：[`docs/tutorial/dsh-video-workbench-tutorial.mp4`](./docs/tutorial/dsh-video-workbench-tutorial.mp4)（1080P · 3 分 17 秒 · 由本插件全链路自动生成）
+> - **GitHub Release 高速直链下载**：
+>   - 插件全能单包：[`dsh-video-workbench-0.4.0.tgz`](https://github.com/Merziller/dsh-video-workbench/releases/download/v0.4.0/dsh-video-workbench-0.4.0.tgz)
+>   - 可选本地配音一键安装包（`Edge-TTS` / `IndexTTS-2.5` / `GPT-SoVITS`）：[`dsh-tts-installer-pack-0.4.0.zip`](https://github.com/Merziller/dsh-video-workbench/releases/download/v0.4.0/dsh-tts-installer-pack-0.4.0.zip)
+>   - 1080P 教程成片：[`dsh-video-workbench-tutorial.mp4`](https://github.com/Merziller/dsh-video-workbench/releases/download/v0.4.0/dsh-video-workbench-tutorial.mp4)
+> - **作者联系（Bug 反馈 / 交流 / 建议）**：**QQ `1411574209`** ｜ **微信 `Merziller`** ｜ **Gmail `k26789228@gmail.com`**
 
 ![DSH Video Workbench 实操教程 3×3 关键帧预览](./docs/tutorial/tutorial-preview-3x3.png)
 
@@ -140,7 +145,27 @@ flowchart TB
 
 ---
 
-## 🚀 四、Windows 11 安装与挂载 DeepSeek Harness (Quick Start)
+## 🚀 四、全智能体安装与接入指南（不限 DSH！Universal Multi-Agent Setup）
+
+> **v0.4.0 重大架构升级**：本插件现已全面解耦 DeepSeek Harness (DSH) 宿主限制，内置 **标准零依赖 MCP 服务器 (`bin/dsh-video-mcp.mjs`，暴露全部 29 个创作工具)**、**统一 CLI (`bin/dsh-video-cli.mjs`)**、**通用 Agent Skill (`SKILL.md`)** 与 **独立网页工作台**！无论你使用 **Claude Code、OpenAI Codex CLI、WorkBuddy、Cursor、Windsurf、Cline、OpenCode、Antigravity 还是 DeepSeek Harness**，均可一键安装使用。完整多智能体安装指引见 [`docs/install.md`](./docs/install.md)。
+
+### 🤖 一句话让你的 AI 智能体自动安装（支持 Claude Code / Codex / WorkBuddy / Cursor / Antigravity）
+```text
+请阅读 https://github.com/Merziller/dsh-video-workbench/blob/main/docs/install.md 并帮我安装连接 dsh-video-workbench 的 MCP 服务与本地视频工作台。
+```
+
+| 目标环境 / 智能体 | 接入方式 | 快速命令 / 配置 |
+| :--- | :--- | :--- |
+| **DeepSeek Harness (DSH)** | 原生 Cordis 插件 + DSH 市场 | `dsh plugin --profile desktop add github:Merziller/dsh-video-workbench` |
+| **Claude Code** | 原生 MCP + `.claude-plugin` + `SKILL.md` | `claude mcp add dsh-video-workbench -- node "<路径>/bin/dsh-video-mcp.mjs"` |
+| **OpenAI Codex CLI** | MCP + `AGENTS.md` + `SKILL.md` | `~/.codex/config.toml` 添加 `[mcp_servers.dsh_video_workbench]` 指向 `bin/dsh-video-mcp.mjs` |
+| **WorkBuddy / Cursor / Windsurf / Cline** | 标准 `.mcp.json` + Skills CLI | `npx skills add Merziller/dsh-video-workbench` 并导入 `.mcp.json` |
+| **独立本地浏览器（免任何客户端）** | 本地 Web Studio (`http://127.0.0.1:4399`) | `node ./bin/dsh-video-cli.mjs studio --open` 或 `npm run studio` |
+
+> 🎯 **v0.4.0 核心新能力亮点**：
+> 1. **🎯 上传参考视频 · AI 深度拆解并复刻同款 (`analyze_reference_video` + `MOTION.md` + Brand Kit)**：在作战大屏 Card 1 点击「上传参考视频」，插件自动用 `ffprobe` + `ffmpeg scene` 探测真实分镜数与切点节奏、提取 BPM 与高潮突降点、抽取 9 宫格关键帧并召唤多模态大模型逆向拆解人物/特效/配色/转场/字幕基因，自动生成可跨智能体复用的 **`MOTION.md`** 与品牌套件，输入新主题即可一键复刻同款！
+> 2. **🔥 高燃历史剪影/骑兵/刀光/地图/竹简卡点动画全面升级（34~54 镜高密度快切）**：全面升级 `NarrativeDioramaStage`、`HeroWarriorFigure`（帝王冕旒/翎羽/长枪/佩剑）、`SlashBurstOverlay`（三层月牙刀光+冲击波环+竖向光柱+绯红飞溅）、冲锋骑兵战车与自动识别国号战旗（汉/秦/楚等）、立体编绳竹简与红黑攻占地图；彻底修复批次超时回退赛博线框、纯音乐免配音自动识别（`subtitle-mv`）及高燃鼓点/刀光 SFX 自动编排！
+> 3. **📦 可选本地配音一键依赖安装器 + 彻底根治 `voices/` 缺失与中文乱码**：在「🎙 多引擎配音中心 → 📦 一键安装依赖包」（或运行 `node ./bin/dsh-video-cli.mjs install-tts` / 下载 Release 中的 `dsh-tts-installer-pack-0.4.0.zip`）可**自由选择**安装 `Edge-TTS (0GB 纯 CPU)`、`IndexTTS-2.5`、`IndexTTS-2` 或 `GPT-SoVITS`（支持国内 HF-Mirror/清华镜像加速），安装后自动创建 `voices/` 目录、用系统语音自动生成默认参考音色 WAV 并自动接入插件；同时强制 Python UTF-8 输出，彻底消除 Windows 下报错乱码！
 
 ### 前置依赖（按需准备）
 - **必装**：
@@ -259,12 +284,18 @@ node scripts/pack-bundle.mjs
 
 ---
 
-## 📬 联系作者与交流反馈 (Contact)
+## 📬 联系作者与原创版权声明 (Author & Copyright)
 
-使用过程中遇到任何安装配置问题、Bug 反馈、功能建议或合作交流，欢迎直接联系作者：
+本项目由 **Merziller** 原创开发并基于 [MIT License](./LICENSE) **完全开源免费**发布，欢迎个人创作者、开源社区及各类 AI 智能体用户使用与二次开发。
 
+> ⚠️ **防盗用与署名要求**：根据 [`LICENSE`](./LICENSE) 与 [`NOTICE`](./NOTICE)，**任何复制、二次修改、打包分发、搬运上架插件市场或视频教程展示，均须保留原作者 Merziller 的版权署名及以下联系信息，严禁抹除署名冒充原创或倒卖套壳。**
+
+- **原创作者 / Original Author**：**`Merziller`**
 - **作者 QQ**：`1411574209`
-- **GitHub 仓库与 Issue 反馈**：https://github.com/Merziller/dsh-video-workbench/issues
+- **作者微信 / WeChat**：`Merziller`
+- **作者邮箱 / Gmail**：`k26789228@gmail.com`
+- **官方开源仓库 / GitHub**：https://github.com/Merziller/dsh-video-workbench
+- **Bug 反馈与功能建议**：https://github.com/Merziller/dsh-video-workbench/issues
 - **实操教程视频**：[`docs/tutorial/dsh-video-workbench-tutorial.mp4`](./docs/tutorial/dsh-video-workbench-tutorial.mp4)
 
 ---
@@ -272,7 +303,7 @@ node scripts/pack-bundle.mjs
 ## 🌐 八、English Documentation
 
 ### Overview
-**DSH Video Workbench (`dsh-video-workbench`)** is an open-source multi-agent Cordis plugin suite for **DeepSeek Harness (DSH)** on Windows 11. It orchestrates a 4-Agent pipeline (`Director → Asset Editor → TTS/SFX/BGM Mixer → Motion Coder & QA Renderer`) supporting **Remotion 4.x TSX** (with `<FreeformThreeStage />` unrestricted Three.js 3D + custom SVG/HUD + beat-synced spring physics) and **HyperFrames HTML5/Canvas + Three.js (`proj3D`)** engines, adaptive genre pacing, FFT/RMS BGM beat-sync (`tts`, `tts-beat-sync`, `subtitle-mv`), multi-engine TTS (`IndexTTS-2.5`, `IndexTTS-2`, low-VRAM `GPT-SoVITS`, zero-GPU `Windows Native SAPI`, plus extensible OpenAI/HTTP/CPU-CLI model import) with voice cloning, real-time **Hardware Preflight & Low-Spec Protection Mode** (`8GB RAM + iGPU/CPU-only supported`), commercial-safe OFL typography (`Noto Sans SC`, `Source Han Serif SC Heavy`, `JetBrains Mono`), and model-agnostic 4-protocol LLM authoring (`OpenAI Chat`, `Anthropic Messages`, `OpenAI Responses`, `Gemini Native`).
+**DSH Video Workbench (`dsh-video-workbench` v0.4.0)** is an open-source, **universal multi-agent Dual-Engine AI Video Studio** compatible with **Claude Code, OpenAI Codex CLI, WorkBuddy, Cursor, Windsurf, Cline, OpenCode, Antigravity, DeepSeek Harness (DSH), and Standalone Local Browser**. It exposes **29 MCP & Cordis tools** plus a visual Web Studio supporting **Remotion 4.x TSX + Three.js 3D** & **HyperFrames HTML5/Canvas**, **Reference Video Deep Reverse-Engineering & Same-Style Remake (`MOTION.md` + Brand Kit)**, high-energy beat-synced silhouette/combat historical animation (`NarrativeDioramaStage`, `HeroWarriorFigure`, `SlashBurstOverlay`, 34–54 shots), **optional one-click local TTS installer** (`Edge-TTS 0GB`, `IndexTTS-2.5`, `IndexTTS-2`, `GPT-SoVITS`, plus zero-install `Windows Native SAPI` with automatic `voices/` seeding), real-time **Hardware Preflight & Low-Spec Protection Mode** (`8GB RAM + iGPU` supported), commercial-safe OFL typography, and model-agnostic 4-protocol LLM authoring.
 
 ### System Requirements & Low-Spec Protection
 - **Minimum (Low-Spec Protection Mode)**: 4-core CPU, 8 GB RAM (`>= 2.5 GB` free), integrated/no dedicated GPU (rasterized 3D + Windows SAPI / Edge-TTS / Beat-Sync MV), 3 GB free disk (`720p 30fps`).
@@ -280,15 +311,17 @@ node scripts/pack-bundle.mjs
 - Toggle anytime via the Topbar **Hardware Guard** button or `check_hardware_profile` tool (`auto` / `safe` / `performance`).
 
 ### Package Structure
-- `packages/shared`: Zero-hardcode `.env` loader, Windows sandbox-safe `ffmpeg`/`ffprobe` runner, OFL font sync, and safe-zone compliance calculator.
-- `packages/dsh-tool-media`: Multimodal director & 4-tier schema degradation planner (`plan-schema.js`), FFT/energy BGM beat analyzer (`beat-analyzer.js`), DSP 48kHz WAV synthesizer & ducked mixer, adaptive genre pacing, and batched Remotion TSX / HTML5 coder (`ai-coder.js`).
-- `packages/dsh-tool-local-tts`: Multi-engine TTS adapter (`IndexTTS-2.5` persistent server, `IndexTTS-2`, low-VRAM `GPT-SoVITS` `api_v2.py`/v1, plus importable OpenAI `/v1/audio/speech`, custom HTTP JSON, and CPU CLI models like `edge-tts`), 205+ voice catalog, voice cloning, and `ffprobe` duration alignment.
-- `packages/dsh-tool-avatar`: Transparent `yuva420p` WebM digital human compositor (RMS-driven SVG anchor, FFmpeg squircle/chromakey overlay, and pluggable external MuseTalk / LatentSync REST adapter).
-- `packages/dsh-tool-video-suite`: Static sandbox linter, 3×3 contact sheet snapshots, keyframe thumbnail extractor (`output/scene-thumbs/*.jpg`), full-FPS CDP / `@remotion/renderer` exporter, and FFmpeg loudness/black-frame QA.
-- `packages/dsh-preset-video`: Registers the `视频制作模式` (`video-maker`) DSH Agent Preset and project scaffolder.
-- `packages/dsh-web-video-workbench`: Registers `/api/video-workbench/*` endpoints and the DSH Desktop `main` (with top-left `← DeepSeek 对话` layout switcher), `sidebar.panellist`, and `tool.call.toolview` UI slots.
+- `bin/dsh-video-mcp.mjs` & `bin/dsh-video-cli.mjs`: Zero-dependency stdio MCP Server (29 tools) and universal CLI (`studio`, `mcp`, `doctor`, `install-tts`, `print-config`).
+- `SKILL.md`, `AGENTS.md`, `.mcp.json`, `.claude-plugin/plugin.json`, `docs/install.md`: Cross-agent native manifests for Claude Code, Codex CLI, WorkBuddy, Cursor, Windsurf, Cline & Skills CLI.
+- `packages/shared`: Zero-hardcode `.env` loader, duration policy, Windows sandbox-safe `ffmpeg`/`ffprobe` runner, OFL font sync, and safe-zone compliance calculator.
+- `packages/dsh-tool-media`: Multimodal director & 4-tier schema degradation planner (`plan-schema.js`), **Reference Video Reverse-Engineering & `MOTION.md` + Brand Kit (`reference-analyzer.js`)**, `NarrativeDioramaStage` silhouette/combat engine (`narrative-diorama.js`), FFT/energy BGM beat analyzer (`beat-analyzer.js`), DSP 48kHz WAV synthesizer & ducked mixer, and batched Remotion TSX / HTML5 coder (`ai-coder.js`).
+- `packages/dsh-tool-local-tts`: Multi-engine TTS adapter + **optional one-click installer (`tts-installer.js`)** + automatic `voices/` & default speaker WAV bootstrap + UTF-8 error bridge (`tts-bridge.py`, `tts-server.py`).
+- `packages/dsh-tool-avatar`: Transparent `yuva420p` WebM digital human compositor.
+- `packages/dsh-tool-video-suite`: Static sandbox linter, 3×3 contact sheet snapshots, keyframe thumbnail extractor, full-FPS CDP / `@remotion/renderer` exporter, and FFmpeg QA.
+- `packages/dsh-preset-video` & `packages/dsh-web-video-workbench`: Cordis plugin adapter, REST API, and visual War Room / Step Studio UI.
 
-### Contact & License
-- **Author**: Merziller — **QQ**: `1411574209` · [GitHub Issues](https://github.com/Merziller/dsh-video-workbench/issues)
-- **Full Interactive Tutorial Video (1080p MP4)**: [`docs/tutorial/dsh-video-workbench-tutorial.mp4`](./docs/tutorial/dsh-video-workbench-tutorial.mp4)
-- **License**: Released under the [MIT License](./LICENSE).
+### Contact, Attribution & License
+- **Original Author**: **Merziller**
+- **QQ**: `1411574209` · **WeChat**: `Merziller` · **Gmail**: `k26789228@gmail.com`
+- **Repository**: https://github.com/Merziller/dsh-video-workbench
+- **License**: Released under the [MIT License](./LICENSE) — all redistributions, forks, and derivative works **must retain original author attribution** per [`LICENSE`](./LICENSE) and [`NOTICE`](./NOTICE).

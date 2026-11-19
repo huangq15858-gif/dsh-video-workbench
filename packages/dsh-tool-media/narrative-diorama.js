@@ -178,20 +178,38 @@ const EMBERS = Array.from({ length: 34 }, (_, i) => ({
   alpha: 0.3 + hashDet(i * 9.1) * 0.55,
 }))
 
-const RAY_ANGLES = Array.from({ length: 18 }, (_, i) => -168 + i * 10.2)
+const RAY_ANGLES = Array.from({ length: 24 }, (_, i) => -172 + i * 7.8)
+
+export function resolveBannerChar(scene: any = {}, spec: any = {}): string {
+  const explicit = String(spec?.bannerChar || '').trim()
+  if (explicit) return explicit.slice(0, 2)
+  const hay = \`\${scene?.title || ''} \${scene?.narration || ''} \${scene?.headline || ''} \${spec?.headline || ''} \${(scene?.highlights || []).join(' ')}\`
+  if (/霍去病|卫青|汉武|大汉|冠军侯|骠骑|河西|祁连|漠北|封狼居胥|长安|匈奴/.test(hay)) return '汉'
+  if (/秦始皇|嬴政|大秦|咸阳|函谷|六国|长城|兵马俑|郡县|阿房/.test(hay)) return '秦'
+  if (/项羽|霸王|江东|乌江|垓下|巨鹿|鸿门|楚军|西楚/.test(hay)) return '楚'
+  if (/蜀汉|诸葛|刘备|关羽|张飞|赵云/.test(hay)) return '蜀'
+  if (/曹操|曹魏|官渡|许昌/.test(hay)) return '魏'
+  if (/孙权|东吴|赤壁/.test(hay)) return '吴'
+  if (/李世民|大唐|盛唐|玄奘|安史/.test(hay)) return '唐'
+  if (/岳飞|大宋|汴京|临安/.test(hay)) return '宋'
+  if (/朱元璋|大明|锦衣卫|郑和/.test(hay)) return '明'
+  return '军'
+}
 
 const SkylineClouds: React.FC<{ progress: number; pal: DioramaMoodPalette }> = ({ progress, pal }) => (
-  <g opacity={0.42}>
+  <g opacity={0.56}>
     {[
-      { x: 180 + progress * 55, y: 165, w: 380, h: 42 },
-      { x: 820 - progress * 48, y: 125, w: 520, h: 52 },
-      { x: 1320 + progress * 36, y: 215, w: 340, h: 36 },
+      { x: 95 + progress * 62, y: 145, w: 460, h: 48 },
+      { x: 760 - progress * 52, y: 108, w: 580, h: 58 },
+      { x: 1290 + progress * 44, y: 195, w: 420, h: 42 },
+      { x: 340 - progress * 34, y: 275, w: 360, h: 34 },
+      { x: 1180 - progress * 40, y: 285, w: 390, h: 36 },
     ].map((c, ci) => (
       <g key={ci} transform={\`translate(\${c.x.toFixed(1)}, \${c.y})\`}>
-        <rect x={0} y={c.h * 0.4} width={c.w} height={c.h * 0.6} rx={c.h * 0.3} fill={pal.ridgeNear} opacity={0.55} />
-        <ellipse cx={c.w * 0.3} cy={c.h * 0.4} rx={c.w * 0.24} ry={c.h * 0.38} fill={pal.skyBot} opacity={0.35} />
-        <ellipse cx={c.w * 0.62} cy={c.h * 0.35} rx={c.w * 0.28} ry={c.h * 0.45} fill={pal.skyMid} opacity={0.45} />
-        <line x1={12} y1={c.h * 0.96} x2={c.w - 12} y2={c.h * 0.96} stroke={pal.accent} strokeWidth={1} opacity={0.18} />
+        <rect x={0} y={c.h * 0.42} width={c.w} height={c.h * 0.58} rx={c.h * 0.29} fill={pal.ridgeNear} opacity={0.58} />
+        <ellipse cx={c.w * 0.28} cy={c.h * 0.42} rx={c.w * 0.25} ry={c.h * 0.4} fill={pal.skyBot} opacity={0.42} />
+        <ellipse cx={c.w * 0.62} cy={c.h * 0.34} rx={c.w * 0.3} ry={c.h * 0.48} fill={pal.skyMid} opacity={0.52} />
+        <line x1={16} y1={c.h * 0.96} x2={c.w - 16} y2={c.h * 0.96} stroke={pal.sunCore} strokeWidth={1.6} opacity={0.3} />
       </g>
     ))}
   </g>
@@ -259,7 +277,7 @@ const MountainCampSetting: React.FC<{
   bannerChar?: string
   showBeacons?: boolean
   showArmy?: boolean
-}> = ({ pal, frame, bannerChar = '楚', showBeacons = true, showArmy = true }) => (
+}> = ({ pal, frame, bannerChar = '汉', showBeacons = true, showArmy = true }) => (
   <g>
     {/* Distant Misty Mountains */}
     <path
@@ -309,21 +327,49 @@ const MountainCampSetting: React.FC<{
       )
     }) : null}
 
-    {/* Horizon Soldier Phalanx & Banners */}
-    {showArmy ? Array.from({ length: 24 }, (_, ai) => {
-      const ax = 48 + ai * 80
-      const hasFlag = ai % 4 === 1
-      const sway = Math.sin(frame * 0.14 + ai) * 6
+    {/* Midground War Chariots & Cavalry Silhouettes */}
+    {showArmy ? [280, 1520].map((cxPos, ci) => {
+      const chShift = Math.sin(frame * 0.12 + ci * 2.1) * 14
+      const dir = ci === 0 ? 1 : -1
       return (
-        <g key={ai} transform={\`translate(\${ax}, 855)\`}>
-          <line x1={14} y1={-110} x2={14} y2={0} stroke={pal.silhouette} strokeWidth={3} />
-          <polygon points="14,-122 9,-104 19,-104" fill={pal.silhouette} />
-          <circle cx={0} cy={-64} r={9} fill={pal.silhouette} />
-          <path d="M-12,-54 L12,-54 L15,0 L-15,0 Z" fill={pal.silhouette} />
+        <g key={\`ch-\${ci}\`} transform={\`translate(\${(cxPos + chShift).toFixed(1)}, 825) scale(\${dir * 0.88}, 0.88)\`} opacity={0.92}>
+          {/* Chariot Box & Spoked Wheel */}
+          <rect x={-90} y={-58} width={84} height={46} rx={4} fill={pal.silhouette} stroke={pal.accent} strokeWidth={1.4} strokeOpacity={0.35} />
+          <circle cx={-48} cy={-4} r={30} fill="none" stroke={pal.silhouette} strokeWidth={7} />
+          <circle cx={-48} cy={-4} r={7} fill={pal.accent} opacity={0.6} />
+          <line x1={-48} y1={-34} x2={-48} y2={26} stroke={pal.silhouette} strokeWidth={3} />
+          <line x1={-78} y1={-4} x2={-18} y2={-4} stroke={pal.silhouette} strokeWidth={3} />
+          {/* Charioteer */}
+          <circle cx={-56} cy={-80} r={12} fill={pal.silhouette} />
+          <path d="M-72,-68 L-38,-68 L-34,-26 L-76,-26 Z" fill={pal.silhouette} />
+          {/* Pulling Warhorse */}
+          <line x1={-6} y1={-32} x2={68} y2={-38} stroke={pal.silhouette} strokeWidth={5} />
+          <path d="M46,-46 Q92,-68 134,-48 L158,-80 L176,-72 L156,-42 L138,16 L154,32 L138,34 L120,4 L70,6 L46,32 L34,26 L56,-2 Z" fill={pal.silhouette} />
+        </g>
+      )
+    }) : null}
+
+    {/* Horizon Dense Soldier Phalanx & Waving Faction Banners */}
+    {showArmy ? Array.from({ length: 32 }, (_, ai) => {
+      const ax = 28 + ai * 60
+      const hasFlag = ai % 5 === 2
+      const sway = Math.sin(frame * 0.18 + ai * 0.9) * 8
+      const marchY = Math.abs(Math.sin(frame * 0.22 + ai * 0.7)) * 4
+      return (
+        <g key={ai} transform={\`translate(\${ax}, \${(860 - marchY).toFixed(1)})\`}>
+          <line x1={14} y1={-124} x2={14} y2={0} stroke={pal.silhouette} strokeWidth={3.2} />
+          <polygon points="14,-138 8,-118 20,-118" fill={pal.silhouette} />
+          <circle cx={0} cy={-66} r={9.5} fill={pal.silhouette} />
+          <path d="M-13,-56 L13,-56 L16,0 L-16,0 Z" fill={pal.silhouette} />
           {hasFlag ? (
-            <g transform="translate(14, -108)">
-              <path d={\`M0,0 Q26,\${sway.toFixed(1)} 52,4 L48,38 Q22,\${(34 - sway * 0.5).toFixed(1)} 0,34 Z\`} fill={pal.silhouette} stroke={pal.accent} strokeWidth={1.5} />
-              <text x={24} y={25} textAnchor="middle" fill={pal.accent} fontFamily={FONT_SERIF} fontSize={20} fontWeight={900}>
+            <g transform="translate(14, -124)">
+              <path
+                d={\`M0,0 Q30,\${sway.toFixed(1)} 62,5 L56,46 Q26,\${(42 - sway * 0.6).toFixed(1)} 0,40 Z\`}
+                fill={ai % 10 === 2 ? pal.crimson : pal.silhouette}
+                stroke={pal.accent}
+                strokeWidth={1.8}
+              />
+              <text x={29} y={30} textAnchor="middle" fill="#FFFDF5" fontFamily={FONT_SERIF} fontSize={23} fontWeight={900}>
                 {bannerChar}
               </text>
             </g>
@@ -334,7 +380,7 @@ const MountainCampSetting: React.FC<{
   </g>
 )
 
-const CityWallSetting: React.FC<{ pal: DioramaMoodPalette; frame: number; bannerChar?: string }> = ({ pal, frame, bannerChar = '楚' }) => (
+const CityWallSetting: React.FC<{ pal: DioramaMoodPalette; frame: number; bannerChar?: string }> = ({ pal, frame, bannerChar = '汉' }) => (
   <g>
     <path d="M-20,690 L380,610 L840,670 L1320,595 L1940,665 L1940,1080 L-20,1080 Z" fill={pal.ridgeFar} opacity={0.65} />
     <rect x={0} y={710} width={1920} height={370} fill={pal.ground} />
@@ -407,44 +453,91 @@ export const SlashBurstOverlay: React.FC<{ progress: number; pal: DioramaMoodPal
   cx = 1020,
   cy = 580,
 }) => {
-  const slashP = interpolate(progress, [0.12, 0.42], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: easeOutCubic })
-  const burstFade = interpolate(progress, [0.18, 0.34, 0.85], [0, 1, 0.15], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })
+  const slashP = interpolate(progress, [0.06, 0.36], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: easeOutCubic })
+  const burstFade = interpolate(progress, [0.12, 0.28, 0.88], [0, 1, 0.14], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })
+  const ringExpand = interpolate(progress, [0.12, 0.72], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: easeOutCubic })
+  const beamFade = interpolate(progress, [0.08, 0.18, 0.55], [0, 0.9, 0], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })
   return (
     <g>
-      {/* Sweeping Crescent Blade Slash */}
+      {/* Vertical Celestial Impact Beam Pillar */}
+      {beamFade > 0.02 ? (
+        <g opacity={beamFade}>
+          <rect x={cx - 46} y={0} width={92} height={1080} fill={pal.crimson} opacity={0.34} />
+          <rect x={cx - 16} y={0} width={32} height={1080} fill={pal.sunCore} opacity={0.82} />
+        </g>
+      ) : null}
+
+      {/* Expanding Concentric Shockwave Rings */}
+      {ringExpand > 0.01 && ringExpand < 0.99 ? (
+        <g opacity={Math.max(0, 1 - ringExpand)}>
+          <circle cx={cx} cy={cy - 20} r={48 + ringExpand * 460} fill="none" stroke={pal.sunCore} strokeWidth={12 * (1 - ringExpand * 0.7)} />
+          <circle cx={cx} cy={cy - 20} r={24 + ringExpand * 340} fill="none" stroke={pal.crimson} strokeWidth={8 * (1 - ringExpand * 0.6)} strokeDasharray="24 14" />
+        </g>
+      ) : null}
+
+      {/* Triple-Layered Sweeping Crescent Blade Slash */}
       <path
-        d={\`M\${cx - 320},\${cy + 140} Q\${cx + 40},\${cy - 260} \${cx + 380},\${cy + 90}\`}
-        fill="none"
-        stroke={pal.sunCore}
-        strokeWidth={18 * (1 - slashP * 0.45)}
-        strokeLinecap="round"
-        strokeDasharray={920}
-        strokeDashoffset={920 * (1 - slashP)}
-        opacity={0.92}
-      />
-      <path
-        d={\`M\${cx - 300},\${cy + 146} Q\${cx + 40},\${cy - 235} \${cx + 365},\${cy + 94}\`}
+        d={\`M\${cx - 420},\${cy + 160} Q\${cx + 35},\${cy - 310} \${cx + 460},\${cy + 110}\`}
         fill="none"
         stroke={pal.crimson}
-        strokeWidth={9}
+        strokeWidth={34 * (1 - slashP * 0.35)}
         strokeLinecap="round"
-        strokeDasharray={920}
-        strokeDashoffset={920 * (1 - slashP)}
-        opacity={0.85}
+        strokeDasharray={1180}
+        strokeDashoffset={1180 * (1 - slashP)}
+        opacity={0.76}
       />
-      {/* Impact Burst Polygon */}
+      <path
+        d={\`M\${cx - 390},\${cy + 150} Q\${cx + 40},\${cy - 285} \${cx + 430},\${cy + 100}\`}
+        fill="none"
+        stroke={pal.accent}
+        strokeWidth={20 * (1 - slashP * 0.42)}
+        strokeLinecap="round"
+        strokeDasharray={1100}
+        strokeDashoffset={1100 * (1 - slashP)}
+        opacity={0.94}
+      />
+      <path
+        d={\`M\${cx - 365},\${cy + 144} Q\${cx + 42},\${cy - 270} \${cx + 405},\${cy + 94}\`}
+        fill="none"
+        stroke="#FFFFFF"
+        strokeWidth={9 * (1 - slashP * 0.4)}
+        strokeLinecap="round"
+        strokeDasharray={1060}
+        strokeDashoffset={1060 * (1 - slashP)}
+        opacity={0.98}
+      />
+
+      {/* Crimson Splash Petals & Impact Star Burst */}
       {burstFade > 0.02 ? (
-        <g transform={\`translate(\${cx}, \${cy - 30}) scale(\${(0.65 + burstFade * 0.55).toFixed(2)})\`} opacity={burstFade}>
+        <g transform={\`translate(\${cx}, \${cy - 25}) scale(\${(0.7 + burstFade * 0.62).toFixed(2)})\`} opacity={burstFade}>
           <polygon
-            points={Array.from({ length: 16 }, (_, pi) => {
-              const ang = (pi / 16) * Math.PI * 2 + seed * 0.3
-              const rad = pi % 2 === 0 ? 155 : 52
+            points={Array.from({ length: 18 }, (_, pi) => {
+              const ang = (pi / 18) * Math.PI * 2 + seed * 0.35
+              const rad = pi % 2 === 0 ? 185 : 58
               return \`\${(Math.cos(ang) * rad).toFixed(1)},\${(Math.sin(ang) * rad).toFixed(1)}\`
             }).join(' ')}
             fill={pal.crimson}
-            opacity={0.85}
+            opacity={0.86}
           />
-          <circle cx={0} cy={0} r={42} fill={pal.sunCore} opacity={0.92} />
+          {Array.from({ length: 12 }, (_, si) => {
+            const ang = (si / 12) * Math.PI * 2 + seed * 0.7
+            const dist = 110 + ringExpand * (140 + (si % 3) * 75)
+            const px = Math.cos(ang) * dist
+            const py = Math.sin(ang) * dist
+            return (
+              <ellipse
+                key={si}
+                cx={px.toFixed(1)}
+                cy={py.toFixed(1)}
+                rx={16 - (si % 3) * 3}
+                ry={5}
+                transform={\`rotate(\${((ang * 180) / Math.PI).toFixed(1)}, \${px.toFixed(1)}, \${py.toFixed(1)})\`}
+                fill={si % 3 === 0 ? '#FFFFFF' : si % 2 === 0 ? pal.accent : pal.crimson}
+                opacity={0.9}
+              />
+            )
+          })}
+          <circle cx={0} cy={0} r={54} fill="#FFFFFF" opacity={0.95} />
         </g>
       ) : null}
     </g>
@@ -459,75 +552,96 @@ export const HeroWarriorFigure: React.FC<{
   progress?: number
   beatPulse: number
   pal: DioramaMoodPalette
-  headwear?: 'plume' | 'helmet' | 'crown'
-  weapon?: 'halberd' | 'sword' | 'raised-arm'
+  headwear?: 'plume' | 'helmet' | 'crown' | 'emperor'
+  weapon?: 'halberd' | 'sword' | 'spear' | 'raised-arm'
   flip?: boolean
 }> = ({ x, y, scale = 1, frame, progress = 0.5, beatPulse, pal, headwear = 'plume', weapon = 'halberd', flip = false }) => {
-  const cloakWave = Math.sin(frame * 0.22) * 26 + beatPulse * 22
-  const breathY = Math.sin(frame * 0.14) * 5 - beatPulse * 10
-  const strideLean = Math.sin(progress * Math.PI) * 7 + beatPulse * 4
+  const cloakWave = Math.sin(frame * 0.24) * 28 + beatPulse * 26
+  const breathY = Math.sin(frame * 0.14) * 5 - beatPulse * 12
+  const strideLean = Math.sin(progress * Math.PI) * 7 + beatPulse * 4.5
   const raiseY = weapon === 'raised-arm' ? -18 - Math.sin(Math.min(1, progress * 1.4) * Math.PI * 0.5) * 44 : Math.sin(frame * 0.12) * 8
   const swingAngle = weapon === 'sword'
-    ? -42 + Math.sin(progress * Math.PI * 1.15) * 78 + beatPulse * 14
-    : weapon === 'halberd'
-      ? 14 - Math.sin(progress * Math.PI) * 26 - beatPulse * 8
-      : -12
+    ? -46 + Math.sin(progress * Math.PI * 1.15) * 84 + beatPulse * 16
+    : weapon === 'spear'
+      ? 24 - Math.sin(progress * Math.PI * 1.1) * 38 - beatPulse * 12
+      : weapon === 'halberd'
+        ? 14 - Math.sin(progress * Math.PI) * 26 - beatPulse * 8
+        : -12
+  const rimStroke = pal.sunRim || pal.accent
   return (
     <g transform={\`translate(\${x}, \${(y + breathY).toFixed(1)}) scale(\${(flip ? -scale : scale).toFixed(2)}, \${scale.toFixed(2)}) rotate(\${strideLean.toFixed(2)})\`}>
-      {/* Kinetic Ground Shadow & Speed Aura */}
-      <ellipse cx={-4} cy={30} rx={68 + beatPulse * 16} ry={12} fill={pal.silhouette} opacity={0.55} />
-      {/* Dynamic Billowing War Cloak */}
+      {/* Kinetic Ground Shadow & Backlit Aura */}
+      <ellipse cx={-4} cy={30} rx={76 + beatPulse * 20} ry={13} fill={pal.silhouette} opacity={0.62} />
+      {/* Dynamic Billowing War Cloak with Glowing Rim */}
       <path
-        d={\`M-18,-230 C-82,-175 \${(-148 - cloakWave).toFixed(1)},-72 \${(-182 - cloakWave * 1.35).toFixed(1)},28 L52,26 C34,-65 26,-165 18,-230 Z\`}
+        d={\`M-22,-234 C-92,-176 \${(-162 - cloakWave).toFixed(1)},-70 \${(-198 - cloakWave * 1.38).toFixed(1)},30 L64,28 C44,-66 32,-168 22,-234 Z\`}
         fill={pal.silhouette}
-        stroke={pal.accent}
-        strokeWidth={2}
-        strokeOpacity={0.42 + beatPulse * 0.35}
+        stroke={rimStroke}
+        strokeWidth={2.6}
+        strokeOpacity={0.52 + beatPulse * 0.4}
       />
       {/* Articulated Stride Legs */}
-      <path d={\`M-26,-10 L\${(-48 - strideLean * 1.6).toFixed(1)},30 L-22,32 L-4,-8 Z\`} fill={pal.silhouette} />
-      <path d={\`M16,-10 L\${(44 + strideLean * 1.8).toFixed(1)},30 L64,28 L34,-10 Z\`} fill={pal.silhouette} />
-      {/* Plumed Helmet / Crown */}
+      <path d={\`M-28,-10 L\${(-50 - strideLean * 1.6).toFixed(1)},30 L-22,32 L-4,-8 Z\`} fill={pal.silhouette} />
+      <path d={\`M18,-10 L\${(46 + strideLean * 1.8).toFixed(1)},30 L66,28 L36,-10 Z\`} fill={pal.silhouette} />
+      {/* Plumed Helmet / Imperial Mian Crown / General Helmet */}
       {headwear === 'plume' ? (
         <g transform="translate(0, -280)">
-          <ellipse cx={0} cy={0} rx={22} ry={25} fill={pal.silhouette} />
-          <path d="M-24,-14 C-12,-34 12,-34 24,-14 Z" fill={pal.silhouette} />
-          {/* Twin Hero Pheasant Plumes sweeping dynamically */}
-          <path d={\`M-6,-28 Q-58,\${(-92 - cloakWave * 0.45).toFixed(1)} \${(-104 - cloakWave * 0.3).toFixed(1)},\${(-68 - cloakWave * 0.5).toFixed(1)}\`} fill="none" stroke={pal.silhouette} strokeWidth={7} strokeLinecap="round" />
-          <path d={\`M4,-28 Q42,\${(-96 - cloakWave * 0.35).toFixed(1)} \${(84 + cloakWave * 0.25).toFixed(1)},\${(-72 - cloakWave * 0.4).toFixed(1)}\`} fill="none" stroke={pal.silhouette} strokeWidth={7} strokeLinecap="round" />
+          <ellipse cx={0} cy={0} rx={22} ry={25} fill={pal.silhouette} stroke={rimStroke} strokeWidth={1.6} strokeOpacity={0.5} />
+          <path d="M-24,-14 C-12,-36 12,-36 24,-14 Z" fill={pal.silhouette} />
+          <path d={\`M-6,-28 Q-62,\${(-98 - cloakWave * 0.48).toFixed(1)} \${(-112 - cloakWave * 0.34).toFixed(1)},\${(-70 - cloakWave * 0.5).toFixed(1)}\`} fill="none" stroke={pal.silhouette} strokeWidth={7.5} strokeLinecap="round" />
+          <path d={\`M4,-28 Q46,\${(-102 - cloakWave * 0.38).toFixed(1)} \${(92 + cloakWave * 0.28).toFixed(1)},\${(-74 - cloakWave * 0.42).toFixed(1)}\`} fill="none" stroke={pal.silhouette} strokeWidth={7.5} strokeLinecap="round" />
         </g>
-      ) : headwear === 'crown' ? (
+      ) : headwear === 'emperor' || headwear === 'crown' ? (
         <g transform="translate(0, -282)">
-          <ellipse cx={0} cy={0} rx={21} ry={24} fill={pal.silhouette} />
-          <rect x={-38} y={-32} width={76} height={8} fill={pal.silhouette} />
-          {[-30, -15, 0, 15, 30].map((lx, li) => (
-            <line key={li} x1={lx} y1={-24} x2={lx} y2={-4} stroke={pal.silhouette} strokeWidth={2.5} />
+          <ellipse cx={0} cy={0} rx={22} ry={25} fill={pal.silhouette} stroke={rimStroke} strokeWidth={1.8} strokeOpacity={0.55} />
+          <path d="M-22,-18 L22,-18 L18,-32 L-18,-32 Z" fill={pal.silhouette} />
+          <rect x={-48} y={-36} width={96} height={9} rx={2} fill={pal.silhouette} stroke={pal.accent} strokeWidth={1.6} />
+          {[-38, -24, -10, 4, 18, 32].map((lx, li) => (
+            <g key={li}>
+              <line x1={lx} y1={-27} x2={lx + Math.sin(frame * 0.16 + li) * 2} y2={-4} stroke={pal.accent} strokeWidth={2.2} opacity={0.85} />
+              <circle cx={lx + Math.sin(frame * 0.16 + li) * 2} cy={-3} r={2.4} fill={pal.sunCore} />
+            </g>
           ))}
         </g>
       ) : (
         <g transform="translate(0, -280)">
-          <ellipse cx={0} cy={0} rx={22} ry={25} fill={pal.silhouette} />
-          <polygon points="-24,-10 0,-40 24,-10" fill={pal.silhouette} />
+          <ellipse cx={0} cy={0} rx={22} ry={25} fill={pal.silhouette} stroke={rimStroke} strokeWidth={1.6} strokeOpacity={0.5} />
+          <polygon points="-26,-10 0,-44 26,-10" fill={pal.silhouette} />
+          <path d={\`M0,-44 Q-26,\${(-72 - cloakWave * 0.35).toFixed(1)} -56,\${(-48 - cloakWave * 0.25).toFixed(1)}\`} fill="none" stroke={pal.crimson} strokeWidth={6} strokeLinecap="round" />
         </g>
       )}
-      {/* Sculpted Torso Armor + Rim Highlight */}
-      <path d="M-56,-242 L56,-242 L44,-130 L52,0 L-52,0 L-44,-130 Z" fill={pal.silhouette} stroke={pal.accent} strokeWidth={1.2} strokeOpacity={0.28 + beatPulse * 0.35} />
+      {/* Sculpted Broad Shoulder & Torso Armor + Glowing Rim Highlight */}
+      <path
+        d="M-66,-244 L66,-244 L54,-198 L46,-126 L56,4 L-56,4 L-46,-126 L-54,-198 Z"
+        fill={pal.silhouette}
+        stroke={rimStroke}
+        strokeWidth={2}
+        strokeOpacity={0.42 + beatPulse * 0.38}
+      />
       {/* Leading Forearm + Articulated Weapon Swing */}
       {weapon === 'halberd' ? (
-        <g transform={\`translate(62, -165) rotate(\${swingAngle.toFixed(1)})\`}>
+        <g transform={\`translate(64, -165) rotate(\${swingAngle.toFixed(1)})\`}>
           <path d="M-16,12 L10,-4 L14,12 L-8,28 Z" fill={pal.silhouette} />
-          <line x1={0} y1={-240} x2={0} y2={195} stroke={pal.silhouette} strokeWidth={8} />
-          <polygon points="0,-288 -12,-232 12,-232" fill={pal.silhouette} stroke={pal.accent} strokeWidth={1.5} />
-          <path d="M4,-232 C56,-220 66,-168 18,-154 C38,-178 32,-206 4,-214 Z" fill={pal.silhouette} />
+          <line x1={0} y1={-250} x2={0} y2={198} stroke={pal.silhouette} strokeWidth={8.5} />
+          <polygon points="0,-298 -13,-240 13,-240" fill={pal.silhouette} stroke={pal.accent} strokeWidth={1.8} />
+          <path d="M4,-240 C60,-226 70,-172 18,-158 C40,-182 34,-210 4,-220 Z" fill={pal.silhouette} />
+        </g>
+      ) : weapon === 'spear' ? (
+        <g transform={\`translate(66, -172) rotate(\${swingAngle.toFixed(1)})\`}>
+          <line x1={0} y1={-275} x2={0} y2={205} stroke={pal.silhouette} strokeWidth={7.5} />
+          <polygon points="0,-328 -14,-266 14,-266" fill={pal.sunCore} stroke={pal.accent} strokeWidth={1.8} />
+          {/* Flowing Crimson Spear Tassel */}
+          <path d={\`M0,-266 Q-26,\${(-240 + cloakWave * 0.35).toFixed(1)} -46,\${(-216 + cloakWave * 0.25).toFixed(1)}\`} fill="none" stroke={pal.crimson} strokeWidth={9} strokeLinecap="round" />
         </g>
       ) : weapon === 'sword' ? (
-        <g transform={\`translate(52, \${(-195 + raiseY).toFixed(1)}) rotate(\${swingAngle.toFixed(1)})\`}>
-          <line x1={0} y1={-225} x2={0} y2={35} stroke={pal.sunCore} strokeWidth={7} strokeLinecap="round" />
-          <rect x={-20} y={10} width={40} height={8} fill={pal.accent} />
+        <g transform={\`translate(56, \${(-195 + raiseY).toFixed(1)}) rotate(\${swingAngle.toFixed(1)})\`}>
+          <line x1={0} y1={-245} x2={0} y2={36} stroke={pal.sunCore} strokeWidth={8} strokeLinecap="round" />
+          <line x1={0} y1={-242} x2={0} y2={28} stroke="#FFFFFF" strokeWidth={3.5} strokeLinecap="round" />
+          <rect x={-22} y={10} width={44} height={9} rx={2} fill={pal.accent} />
         </g>
       ) : (
-        <g transform={\`translate(48, \${(-210 + raiseY).toFixed(1)}) rotate(\${(-18 + beatPulse * 14).toFixed(1)})\`}>
-          <path d="M0,0 L46,-96 L62,-86 L14,14 Z" fill={pal.silhouette} />
+        <g transform={\`translate(50, \${(-210 + raiseY).toFixed(1)}) rotate(\${(-18 + beatPulse * 14).toFixed(1)})\`}>
+          <path d="M0,0 L48,-102 L66,-90 L16,16 Z" fill={pal.silhouette} stroke={rimStroke} strokeWidth={1.4} strokeOpacity={0.45} />
         </g>
       )}
     </g>
@@ -539,16 +653,51 @@ export const StrategicMapStage: React.FC<{
   progress: number
   beatPulse: number
   pal: DioramaMoodPalette
-}> = ({ stageSpec, progress, beatPulse, pal }) => {
-  const zones = Array.isArray(stageSpec?.zones) && stageSpec.zones.length > 0
-    ? stageSpec.zones
-    : [
-        { name: '楚', x: 1060, y: 560, color: '#991B1B', r: 195 },
-        { name: '秦', x: 540, y: 460, color: '#1F2937', r: 165 },
-        { name: '汉', x: 640, y: 690, color: '#1E3A8A', r: 145 },
+  bannerChar?: string
+}> = ({ stageSpec, progress, beatPulse, pal, bannerChar = '汉' }) => {
+  const defaultZones = bannerChar === '汉'
+    ? [
+        { name: '长安·大汉', x: 1120, y: 690, color: '#B91C1C', r: 175 },
+        { name: '河西走廊', x: 760, y: 540, color: '#DC2626', r: 155 },
+        { name: '祁连山', x: 640, y: 410, color: '#991B1B', r: 135 },
+        { name: '漠北·狼居胥', x: 1020, y: 270, color: '#1F2937', r: 165 },
       ]
-  const routes = Array.isArray(stageSpec?.routes) ? stageSpec.routes : []
-  const stamps = Array.isArray(stageSpec?.stamps) ? stageSpec.stamps : []
+    : bannerChar === '秦'
+      ? [
+          { name: '秦', x: 560, y: 540, color: '#991B1B', r: 195 },
+          { name: '韩', x: 860, y: 540, color: '#1F2937', r: 115 },
+          { name: '赵', x: 960, y: 340, color: '#1E3A8A', r: 140 },
+          { name: '魏', x: 1050, y: 500, color: '#065F46', r: 120 },
+          { name: '楚', x: 1080, y: 740, color: '#7C2D12', r: 170 },
+          { name: '齐', x: 1320, y: 450, color: '#374151', r: 135 },
+        ]
+      : [
+          { name: '楚', x: 1060, y: 560, color: '#991B1B', r: 195 },
+          { name: '秦', x: 540, y: 460, color: '#1F2937', r: 165 },
+          { name: '汉', x: 640, y: 690, color: '#1E3A8A', r: 145 },
+        ]
+  const zones = Array.isArray(stageSpec?.zones) && stageSpec.zones.length > 0 ? stageSpec.zones : defaultZones
+  const defaultRoutes = bannerChar === '汉'
+    ? [
+        { from: [1120, 690], to: [760, 540], label: '奔袭河西', color: '#F59E0B', triggerPct: 0.08 },
+        { from: [760, 540], to: [640, 410], label: '饮马祁连', color: '#EF4444', triggerPct: 0.34 },
+        { from: [760, 540], to: [1020, 270], label: '封狼居胥', color: '#FDE047', triggerPct: 0.58 },
+      ]
+    : [
+        { from: [560, 540], to: [960, 340], label: '铁骑长驱', color: '#EF4444', triggerPct: 0.1 },
+        { from: [560, 540], to: [1080, 740], label: '横扫天下', color: '#F59E0B', triggerPct: 0.42 },
+      ]
+  const routes = Array.isArray(stageSpec?.routes) && stageSpec.routes.length > 0 ? stageSpec.routes : defaultRoutes
+  const defaultStamps = bannerChar === '汉'
+    ? [
+        { x: 760, y: 540, label: '克', triggerPct: 0.28 },
+        { x: 1020, y: 270, label: '封', triggerPct: 0.66 },
+      ]
+    : [
+        { x: 960, y: 340, label: '破', triggerPct: 0.32 },
+        { x: 1080, y: 740, label: '定', triggerPct: 0.62 },
+      ]
+  const stamps = Array.isArray(stageSpec?.stamps) && stageSpec.stamps.length > 0 ? stageSpec.stamps : defaultStamps
 
   return (
     <g>
@@ -741,28 +890,35 @@ export const NarrativeDioramaStage: React.FC<NarrativeDioramaStageProps> = ({ sc
   const { pulse, strongPulse, isHitFrame } = computeBeatSignal(absTimeSec, beats)
 
   const uid = \`nd-\${idx}\`
+  const resolvedBannerChar = resolveBannerChar(scene, spec)
   const sunX = Number(spec.sunX) || 960
   const sunY = Number(spec.sunY) || (archetype === 'hero-numeral' ? 565 : 530)
-  const sunR = Number(spec.sunRadius) || (archetype === 'hero-numeral' ? 118 : 116)
+  const sunR = Number(spec.sunRadius) || (archetype === 'hero-numeral' ? 124 : 122)
 
   // Beat camera kick & cut shockwave shake
-  const cutShakeX = localFrame < 8 ? Math.sin(localFrame * 3.7) * (8 - localFrame) * 1.4 : 0
-  const cutShakeY = localFrame < 8 ? Math.cos(localFrame * 4.3) * (8 - localFrame) * 1.1 : 0
-  const actionShake = (/slash|oath|cavalry/i.test(archetype) && isHitFrame) ? 9 : 0
-  const camPanX = Math.sin(idx * 1.7 + progress * Math.PI) * 28
+  const cutShakeX = localFrame < 8 ? Math.sin(localFrame * 3.7) * (8 - localFrame) * 1.6 : 0
+  const cutShakeY = localFrame < 8 ? Math.cos(localFrame * 4.3) * (8 - localFrame) * 1.2 : 0
+  const actionShake = (/slash|oath|cavalry|duel/i.test(archetype) && isHitFrame) ? 11 : 0
+  const camPanX = Math.sin(idx * 1.7 + progress * Math.PI) * 30
   const camPanY = Math.cos(idx * 2.1 + progress * Math.PI) * 10
-  const camZoom = 1.02 + progress * 0.065 + pulse * 0.028 + strongPulse * 0.016
+  const camZoom = 1.02 + progress * 0.068 + pulse * 0.032 + strongPulse * 0.02
 
-  const flashAlpha = scene?.transitionKind === 'flash-cut' || scene?.transition === 'flash-cut' || /slash/i.test(archetype)
-    ? interpolate(localFrame, [0, 4], [0.46, 0], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })
-    : interpolate(localFrame, [0, 3], [0.16, 0], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })
+  const flashAlpha = scene?.transitionKind === 'flash-cut' || scene?.transition === 'flash-cut' || /slash|cavalry/i.test(archetype)
+    ? interpolate(localFrame, [0, 5], [0.52, 0], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })
+    : interpolate(localFrame, [0, 3], [0.2, 0], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })
 
   const heroItems = Array.isArray(spec.plaques) && spec.plaques.length > 0
     ? spec.plaques
     : Array.isArray(spec.slips) && spec.slips.length > 0
       ? spec.slips
-      : archetype === 'plaque-summary'
-        ? (Array.isArray(scene?.highlights) && scene.highlights.length > 0 ? scene.highlights : ['破釜沉舟', '巨鹿大捷', '西楚霸王', '鸿门风云', '垓下悲歌', '乌江绝唱'])
+      : (archetype === 'plaque-summary' || archetype === 'bamboo-slips' || archetype === 'scroll-calligraphy')
+        ? (Array.isArray(scene?.highlights) && scene.highlights.length > 0
+            ? scene.highlights
+            : resolvedBannerChar === '汉'
+              ? ['八百轻骑', '冠军封侯', '河西大捷', '饮马祁连', '封狼居胥', '匈奴未灭']
+              : resolvedBannerChar === '秦'
+                ? ['扫平六合', '书同文字', '车同轨道', '废分封制', '北筑长城', '千古一帝']
+                : ['破釜沉舟', '巨鹿大捷', '铁骑长驱', '逐鹿中原', '风云再起', '千古绝唱'])
         : []
 
   return (
@@ -776,7 +932,7 @@ export const NarrativeDioramaStage: React.FC<NarrativeDioramaStageProps> = ({ sc
     >
       {archetype === 'strategic-map' ? (
         <svg viewBox="0 0 1920 1080" preserveAspectRatio="xMidYMid slice" width="100%" height="100%" style={{ width: '100%', height: '100%', display: 'block' }}>
-          <StrategicMapStage stageSpec={spec} progress={progress} beatPulse={pulse} pal={pal} />
+          <StrategicMapStage stageSpec={spec} progress={progress} beatPulse={pulse} pal={pal} bannerChar={resolvedBannerChar} />
         </svg>
       ) : (
         <svg viewBox="0 0 1920 1080" preserveAspectRatio="xMidYMid slice" width="100%" height="100%" style={{ width: '100%', height: '100%', display: 'block' }}>
@@ -787,8 +943,8 @@ export const NarrativeDioramaStage: React.FC<NarrativeDioramaStageProps> = ({ sc
               <stop offset="100%" stopColor={pal.skyBot} />
             </linearGradient>
             <radialGradient id={\`sunGlow-\${uid}\`} cx="50%" cy="50%" r="50%">
-              <stop offset="0%" stopColor={pal.sunCore} stopOpacity={0.95} />
-              <stop offset="45%" stopColor={pal.sunRim} stopOpacity={0.55} />
+              <stop offset="0%" stopColor={pal.sunCore} stopOpacity={0.96} />
+              <stop offset="45%" stopColor={pal.sunRim} stopOpacity={0.62} />
               <stop offset="100%" stopColor={pal.sunRim} stopOpacity={0} />
             </radialGradient>
           </defs>
@@ -811,18 +967,18 @@ export const NarrativeDioramaStage: React.FC<NarrativeDioramaStageProps> = ({ sc
           {/* 2. Horizon Celestial Orb & Beat-Pulsing Radial God Rays */}
           {spec.celestial !== 'none' && archetype !== 'channel-end' ? (
             <g>
-              <g transform={\`translate(\${sunX}, \${sunY}) rotate(\${(localFrame * 0.08).toFixed(2)})\`} opacity={0.14 + pulse * 0.16}>
+              <g transform={\`translate(\${sunX}, \${sunY}) rotate(\${(localFrame * 0.1).toFixed(2)})\`} opacity={0.22 + pulse * 0.2}>
                 {RAY_ANGLES.map((ang, ri) => (
                   <polygon
                     key={ri}
-                    points="0,0 -34,-1280 34,-1280"
+                    points="0,0 -36,-1320 36,-1320"
                     transform={\`rotate(\${ang})\`}
                     fill={pal.sunCore}
                   />
                 ))}
               </g>
-              <circle cx={sunX} cy={sunY} r={sunR * (2.6 + pulse * 0.45)} fill={\`url(#sunGlow-\${uid})\`} />
-              <circle cx={sunX} cy={sunY} r={sunR * (1 + strongPulse * 0.06)} fill={pal.sunCore} opacity={0.96} />
+              <circle cx={sunX} cy={sunY} r={sunR * (2.75 + pulse * 0.52)} fill={\`url(#sunGlow-\${uid})\`} />
+              <circle cx={sunX} cy={sunY} r={sunR * (1 + strongPulse * 0.07)} fill={pal.sunCore} opacity={0.97} />
             </g>
           ) : null}
 
@@ -871,35 +1027,45 @@ export const NarrativeDioramaStage: React.FC<NarrativeDioramaStageProps> = ({ sc
           {setting === 'palace-stairs' ? (
             <PalaceStairsSetting pal={pal} progress={progress} showGuards={spec.showGuards !== false} />
           ) : setting === 'city-siege' ? (
-            <CityWallSetting pal={pal} frame={localFrame} bannerChar={spec.bannerChar || '楚'} />
+            <CityWallSetting pal={pal} frame={localFrame} bannerChar={resolvedBannerChar} />
           ) : setting === 'river-gorge' ? (
             <RiverGorgeSetting pal={pal} frame={localFrame} progress={progress} />
           ) : (
             <MountainCampSetting
               pal={pal}
               frame={localFrame}
-              bannerChar={spec.bannerChar || '楚'}
+              bannerChar={resolvedBannerChar}
               showBeacons={setting !== 'vast-plain'}
-              showArmy={archetype !== 'channel-end' && archetype !== 'scroll-calligraphy'}
+              showArmy={archetype !== 'channel-end' && archetype !== 'scroll-calligraphy' && archetype !== 'bamboo-slips'}
             />
           )}
 
           {/* 5. Archetype Action & Foreground Hero Silhouettes */}
           {archetype === 'hero-numeral' ? (
-            <HeroWarriorFigure x={960} y={830} scale={0.9} frame={localFrame} progress={progress} beatPulse={pulse} pal={pal} headwear="plume" weapon="halberd" />
-          ) : null}
-
-          {archetype === 'hero-stand' ? (
             <HeroWarriorFigure
-              x={Number(spec.heroX) || 540}
-              y={860}
-              scale={1.24}
+              x={960}
+              y={845}
+              scale={1.06}
               frame={localFrame}
               progress={progress}
               beatPulse={pulse}
               pal={pal}
-              headwear={spec.headwear || 'plume'}
-              weapon={spec.weapon || 'halberd'}
+              headwear={spec.headwear || (resolvedBannerChar === '秦' ? 'emperor' : 'plume')}
+              weapon={spec.weapon || (resolvedBannerChar === '汉' ? 'spear' : 'halberd')}
+            />
+          ) : null}
+
+          {archetype === 'hero-stand' ? (
+            <HeroWarriorFigure
+              x={Number(spec.heroX) || (idx % 2 === 0 ? 560 : 960)}
+              y={865}
+              scale={1.28}
+              frame={localFrame}
+              progress={progress}
+              beatPulse={pulse}
+              pal={pal}
+              headwear={spec.headwear || (resolvedBannerChar === '秦' ? 'emperor' : 'plume')}
+              weapon={spec.weapon || (resolvedBannerChar === '汉' ? 'spear' : 'halberd')}
             />
           ) : null}
 
@@ -923,54 +1089,73 @@ export const NarrativeDioramaStage: React.FC<NarrativeDioramaStageProps> = ({ sc
                 <line x1={40} y1={12} x2={52} y2={44} stroke={pal.silhouette} strokeWidth={12} />
                 <polyline points="-10,-52 8,-18 -6,6" fill="none" stroke={pal.sunCore} strokeWidth={4} />
               </g>
-              <HeroWarriorFigure x={620} y={845} scale={1.1} frame={localFrame} progress={progress} beatPulse={pulse} pal={pal} headwear="plume" weapon="raised-arm" />
+              <HeroWarriorFigure x={620} y={845} scale={1.14} frame={localFrame} progress={progress} beatPulse={pulse} pal={pal} headwear="plume" weapon="raised-arm" />
               <SlashBurstOverlay progress={progress} pal={pal} cx={880} cy={635} seed={3} />
             </g>
           ) : null}
 
           {archetype === 'cavalry-rush' ? (
             <g>
+              {/* Kinetic Motion Speedlines */}
+              {Array.from({ length: 14 }, (_, li) => {
+                const ly = 320 + li * 42
+                const lx = ((localFrame * 54 + li * 190) % 2100) - 240
+                return <line key={\`sl-\${li}\`} x1={lx} y1={ly} x2={lx + 240} y2={ly - 14} stroke={pal.sunCore} strokeWidth={2.5} opacity={0.28 + pulse * 0.25} />
+              })}
+              {/* Midground Charging Cavalry Squadron */}
               {[0, 1, 2, 3, 4].map((hi) => {
                 const dir = hi % 2 === 0 ? 1 : -1
-                const xPos = dir > 0 ? 180 + progress * 540 + hi * 290 : 1720 - progress * 520 - hi * 230
-                const bob = Math.sin(localFrame * 0.48 + hi * 1.3) * 14
+                const xPos = dir > 0 ? 160 + progress * 560 + hi * 290 : 1740 - progress * 540 - hi * 230
+                const bob = Math.sin(localFrame * 0.52 + hi * 1.3) * 16
                 return (
                   <g key={hi} transform={\`translate(\${xPos.toFixed(1)}, \${(785 + bob + hi * 10).toFixed(1)}) scale(\${dir}, 1)\`}>
-                    <path d="M-85,-32 Q-25,-66 48,-46 L86,-88 L112,-76 L92,-48 L64,12 L88,42 L68,46 L38,8 L-48,10 L-88,42 L-104,34 L-70,0 Z" fill={pal.silhouette} />
+                    <path d="M-85,-32 Q-25,-66 48,-46 L86,-88 L112,-76 L92,-48 L64,12 L88,42 L68,46 L38,8 L-48,10 L-88,42 L-104,34 L-70,0 Z" fill={pal.silhouette} stroke={pal.sunRim} strokeWidth={1.5} strokeOpacity={0.35} />
                     <circle cx={-12} cy={-96} r={14} fill={pal.silhouette} />
                     <path d="M-28,-82 L8,-82 L12,-34 L-32,-34 Z" fill={pal.silhouette} />
-                    <line x1={-25} y1={-62} x2={165} y2={-118} stroke={pal.silhouette} strokeWidth={5} />
-                    <polygon points="165,-118 142,-124 146,-106" fill={pal.crimson} />
+                    <path d="M-24,-78 Q-86,-96 -136,-54" fill="none" stroke={pal.crimson} strokeWidth={12} strokeLinecap="round" opacity={0.85} />
+                    <line x1={-25} y1={-62} x2={178} y2={-124} stroke={pal.silhouette} strokeWidth={5.5} />
+                    <polygon points="178,-124 152,-130 156,-110" fill={pal.sunCore} />
                   </g>
                 )
               })}
-              <SlashBurstOverlay progress={progress} pal={pal} cx={1040} cy={600} seed={idx + 2} />
+              {/* Foreground Towering Mounted Hero General */}
+              <g transform={\`translate(\${(520 + progress * 240).toFixed(1)}, \${(840 + Math.sin(localFrame * 0.45) * 14).toFixed(1)}) scale(1.42)\`}>
+                <path d="M-110,-36 Q-32,-82 62,-54 L112,-112 L144,-96 L116,-56 L80,16 L114,56 L86,62 L48,12 L-62,14 L-112,56 L-134,44 L-90,0 Z" fill={pal.silhouette} stroke={pal.sunRim} strokeWidth={2.2} strokeOpacity={0.55 + pulse * 0.35} />
+                <path d={\`M-26,-92 Q-118,\${(-120 + Math.sin(localFrame * 0.3) * 26).toFixed(1)} -194,-42 L-146,-18 Q-84,-64 -16,-54 Z\`} fill={pal.crimson} opacity={0.88} />
+                <circle cx={-14} cy={-122} r={18} fill={pal.silhouette} />
+                <path d="M-18,-138 Q-68,-178 -106,-152" fill="none" stroke={pal.silhouette} strokeWidth={6} strokeLinecap="round" />
+                <path d="M-36,-102 L14,-102 L18,-40 L-40,-40 Z" fill={pal.silhouette} stroke={pal.accent} strokeWidth={1.4} strokeOpacity={0.45} />
+                <line x1={-40} y1={-76} x2={235} y2={-168} stroke={pal.silhouette} strokeWidth={7} />
+                <polygon points="248,-172 214,-178 222,-154" fill="#FFFFFF" />
+                <path d="M214,-162 Q194,-138 176,-126" fill="none" stroke={pal.crimson} strokeWidth={8} strokeLinecap="round" />
+              </g>
+              <SlashBurstOverlay progress={progress} pal={pal} cx={1120} cy={560} seed={idx + 2} />
             </g>
           ) : null}
 
           {archetype === 'slash-climax' ? (
             <g>
-              <HeroWarriorFigure x={610} y={855} scale={1.18} frame={localFrame} progress={progress} beatPulse={pulse} pal={pal} headwear="plume" weapon="sword" />
-              {[0, 1, 2].map((ei) => {
-                const flyX = 1140 + ei * 180 + progress * (115 + ei * 45)
-                const flyY = 670 - Math.sin(progress * Math.PI) * 110 + ei * 32
-                const rot = progress * 52 + ei * 24
+              <HeroWarriorFigure x={590} y={855} scale={1.24} frame={localFrame} progress={progress} beatPulse={pulse} pal={pal} headwear={spec.headwear || 'plume'} weapon="sword" />
+              {[0, 1, 2, 3].map((ei) => {
+                const flyX = 1120 + ei * 165 + progress * (135 + ei * 52)
+                const flyY = 665 - Math.sin(progress * Math.PI) * 145 + ei * 28
+                const rot = progress * 68 + ei * 28
                 return (
                   <g key={ei} transform={\`translate(\${flyX.toFixed(1)}, \${flyY.toFixed(1)}) rotate(\${rot.toFixed(1)})\`}>
-                    <circle cx={0} cy={-55} r={13} fill={pal.silhouette} />
-                    <path d="M-16,-40 L16,-40 L22,25 L-22,25 Z" fill={pal.silhouette} />
+                    <circle cx={0} cy={-55} r={14} fill={pal.silhouette} />
+                    <path d="M-18,-40 L18,-40 L24,28 L-24,28 Z" fill={pal.silhouette} />
                   </g>
                 )
               })}
-              <SlashBurstOverlay progress={progress} pal={pal} cx={1020} cy={565} seed={idx + 7} />
+              <SlashBurstOverlay progress={progress} pal={pal} cx={1020} cy={555} seed={idx + 7} />
             </g>
           ) : null}
 
           {archetype === 'duel-confront' ? (
             <g>
-              <HeroWarriorFigure x={Math.round(480 + progress * 110)} y={855} scale={1.14} frame={localFrame} progress={progress} beatPulse={pulse} pal={pal} headwear="plume" weapon="sword" />
-              <HeroWarriorFigure x={Math.round(1440 - progress * 110)} y={855} scale={1.14} frame={localFrame} progress={progress} beatPulse={pulse} pal={pal} headwear="helmet" weapon="halberd" flip={true} />
-              <SlashBurstOverlay progress={progress} pal={pal} cx={960} cy={580} seed={9} />
+              <HeroWarriorFigure x={Math.round(470 + progress * 125)} y={855} scale={1.18} frame={localFrame} progress={progress} beatPulse={pulse} pal={pal} headwear="plume" weapon={resolvedBannerChar === '汉' ? 'spear' : 'sword'} />
+              <HeroWarriorFigure x={Math.round(1450 - progress * 125)} y={855} scale={1.18} frame={localFrame} progress={progress} beatPulse={pulse} pal={pal} headwear="helmet" weapon="halberd" flip={true} />
+              <SlashBurstOverlay progress={progress} pal={pal} cx={960} cy={575} seed={9} />
             </g>
           ) : null}
 
@@ -987,7 +1172,7 @@ export const NarrativeDioramaStage: React.FC<NarrativeDioramaStageProps> = ({ sc
                   opacity={0.75 + 0.2 * Math.sin(localFrame * 0.2 + li)}
                 />
               ))}
-              <HeroWarriorFigure x={720} y={855} scale={1.12} frame={localFrame} progress={progress} beatPulse={pulse} pal={pal} headwear="plume" weapon="halberd" />
+              <HeroWarriorFigure x={720} y={855} scale={1.14} frame={localFrame} progress={progress} beatPulse={pulse} pal={pal} headwear="plume" weapon={resolvedBannerChar === '汉' ? 'spear' : 'halberd'} />
               <g transform={\`translate(1150, 850) rotate(\${(Math.sin(localFrame * 0.08) * 6).toFixed(1)})\`}>
                 <ellipse cx={0} cy={-235} rx={15} ry={18} fill={pal.silhouette} />
                 <path d="M-24,-214 L24,-214 L48,10 L-42,10 Z" fill={pal.silhouette} />
@@ -997,8 +1182,8 @@ export const NarrativeDioramaStage: React.FC<NarrativeDioramaStageProps> = ({ sc
             </g>
           ) : null}
 
-          {archetype === 'scroll-calligraphy' ? (
-            <HeroWarriorFigure x={420} y={855} scale={1.15} frame={localFrame} progress={progress} beatPulse={pulse} pal={pal} headwear="plume" weapon="halberd" />
+          {(archetype === 'scroll-calligraphy' || archetype === 'bamboo-slips') ? (
+            <HeroWarriorFigure x={360} y={860} scale={1.16} frame={localFrame} progress={progress} beatPulse={pulse} pal={pal} headwear={spec.headwear || 'plume'} weapon={spec.weapon || (resolvedBannerChar === '汉' ? 'spear' : 'halberd')} />
           ) : null}
 
           {/* 6. Floating Embers Foreground */}
@@ -1010,7 +1195,7 @@ export const NarrativeDioramaStage: React.FC<NarrativeDioramaStageProps> = ({ sc
                 key={ei}
                 cx={ex}
                 cy={ey}
-                r={em.r * (1 + pulse * 0.35)}
+                r={em.r * (1 + pulse * 0.42)}
                 fill={ei % 3 === 0 ? pal.crimson : pal.sunCore}
                 opacity={em.alpha}
               />
@@ -1019,8 +1204,8 @@ export const NarrativeDioramaStage: React.FC<NarrativeDioramaStageProps> = ({ sc
         </svg>
       )}
 
-      {/* 7. Bamboo Slips / Commemorative Plaques Array Overlay */}
-      {(archetype === 'scroll-calligraphy' || archetype === 'plaque-summary') ? (
+      {/* 7. Tactile 3D-Shaded Bamboo Slips / Commemorative Plaques Array Overlay */}
+      {(archetype === 'scroll-calligraphy' || archetype === 'plaque-summary' || archetype === 'bamboo-slips') ? (
         <div
           style={{
             position: 'absolute',
@@ -1028,34 +1213,39 @@ export const NarrativeDioramaStage: React.FC<NarrativeDioramaStageProps> = ({ sc
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            gap: 28,
-            paddingBottom: 90,
+            gap: 24,
+            paddingBottom: 95,
             zIndex: 16,
             pointerEvents: 'none',
           }}
         >
           {heroItems.slice(0, 7).map((label: string, pi: number) => {
-            const sp = spring({ frame: Math.max(0, localFrame - pi * 4), fps, config: { damping: 14, stiffness: 155 } })
+            const sp = spring({ frame: Math.max(0, localFrame - pi * 3), fps, config: { damping: 13, stiffness: 165 } })
             const isActive = Math.floor(progress * Math.min(7, heroItems.length)) === pi
+            const tiltDeg = (pi - Math.floor(Math.min(7, heroItems.length) / 2)) * 1.4
             return (
               <div
                 key={pi}
                 style={{
-                  width: 112,
-                  height: isActive ? 540 : 495,
-                  borderRadius: 12,
+                  position: 'relative',
+                  width: 116,
+                  height: isActive ? 548 : 504,
+                  borderRadius: 10,
                   background: isActive
-                    ? \`linear-gradient(180deg, #E8C77B 0%, #B88B3A 100%)\`
-                    : \`linear-gradient(180deg, #272017 0%, #120E0A 100%)\`,
-                  border: \`2px solid \${isActive ? '#FFF7DC' : pal.accent + '66'}\`,
-                  boxShadow: isActive ? \`0 24px 64px rgba(0,0,0,0.85), 0 0 36px \${pal.accent}55\` : '0 18px 42px rgba(0,0,0,0.72)',
+                    ? \`linear-gradient(90deg, #C79B46 0%, #F4DA92 48%, #B28231 100%)\`
+                    : \`linear-gradient(90deg, #2D2216 0%, #443322 50%, #1C140C 100%)\`,
+                  border: \`2px solid \${isActive ? '#FFF9E6' : pal.accent + '77'}\`,
+                  boxShadow: isActive ? \`0 28px 68px rgba(0,0,0,0.88), 0 0 42px \${pal.accent}66\` : '0 18px 42px rgba(0,0,0,0.75)',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                   opacity: interpolate(sp, [0, 1], [0, 1]),
-                  transform: \`translateY(\${interpolate(sp, [0, 1], [60, 0]).toFixed(1)}px) scale(\${isActive ? 1.04 : 1})\`,
+                  transform: \`translateY(\${interpolate(sp, [0, 1], [-80, 0]).toFixed(1)}px) rotate(\${tiltDeg.toFixed(1)}deg) scale(\${isActive ? 1.05 : 1})\`,
                 }}
               >
+                {/* Dual Horizontal Hemp Bamboo Binding Cords */}
+                <div style={{ position: 'absolute', top: 56, left: -14, right: -14, height: 6, background: 'rgba(138, 72, 28, 0.85)', boxShadow: '0 2px 4px rgba(0,0,0,0.6)' }} />
+                <div style={{ position: 'absolute', bottom: 56, left: -14, right: -14, height: 6, background: 'rgba(138, 72, 28, 0.85)', boxShadow: '0 2px 4px rgba(0,0,0,0.6)' }} />
                 <span
                   style={{
                     writingMode: 'vertical-rl',
@@ -1063,11 +1253,34 @@ export const NarrativeDioramaStage: React.FC<NarrativeDioramaStageProps> = ({ sc
                     fontSize: 42,
                     fontWeight: 900,
                     letterSpacing: 8,
-                    color: isActive ? '#3D0F0B' : '#F3DFAC',
+                    color: isActive ? '#3D0F0B' : '#F6E2B0',
+                    textShadow: isActive ? '0 1px 0 rgba(255,255,255,0.45)' : '0 3px 10px rgba(0,0,0,0.85)',
                   }}
                 >
                   {String(label).slice(0, 6)}
                 </span>
+                {isActive ? (
+                  <div
+                    style={{
+                      position: 'absolute',
+                      bottom: 14,
+                      width: 26,
+                      height: 26,
+                      borderRadius: 4,
+                      background: '#B91C1C',
+                      border: '1.5px solid #FDE68A',
+                      color: '#FFFBEB',
+                      fontFamily: FONT_SERIF,
+                      fontSize: 15,
+                      fontWeight: 900,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    {resolvedBannerChar}
+                  </div>
+                ) : null}
               </div>
             )
           })}

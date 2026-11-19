@@ -492,6 +492,6 @@ export function buildComplianceNoticeText(scriptData = {}) {
   return {
     badgeText: 'AI 辅助创作',
     endNoticeTitle: '内容生成合规声明 · AI Synthesis Disclosure',
-    endNoticeBody: `本视频由 DeepSeek Harness 创作：${visualPart} · ${audioPart}${voicePart}`,
+    endNoticeBody: `本视频由 DSH Video Workbench (by Merziller) 创作：${visualPart} · ${audioPart}${voicePart}`,
   }
 }

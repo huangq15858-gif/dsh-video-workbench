@@ -170,6 +170,7 @@ function spawnServer(engineId = 'indextts25') {
       cwd: root,
       env: {
         ...process.env,
+        PYTHONUTF8: '1',
         PYTHONIOENCODING: 'utf-8',
         PATH: [...pyPaths, process.env.PATH || ''].join(';'),
       },
@@ -193,6 +194,7 @@ function spawnServer(engineId = 'indextts25') {
   const pyPaths = collectPythonPathDirs(python)
   const env = {
     ...process.env,
+    PYTHONUTF8: '1',
     PYTHONIOENCODING: 'utf-8',
     PYTHONHOME: '',
     PYTHONPATH: '',

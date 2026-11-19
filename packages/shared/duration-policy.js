@@ -160,11 +160,13 @@ export function resolveTargetDurationPolicy({
   narrationMode = 'tts',
   hasVisualAssets = false,
   bgmDurationSec = 0,
+  referenceShotCount = 0,
 } = {}) {
   const normMode = String(durationMode || 'auto').trim().toLowerCase() === 'custom' ? 'custom' : 'auto'
   const explicitSec = clampDurationSec(targetDurationSec)
   const textParsed = parseDurationFromText(text)
   const isSubtitleMv = narrationMode === 'subtitle-mv'
+  const isDynamicPacing = pacingProfile?.id === 'dynamic'
 
   let mode = 'auto'
   let enforced = false
@@ -202,21 +204,29 @@ export function resolveTargetDurationPolicy({
     maxSec = Math.min(360, Math.round(targetSec * 1.5))
   }
 
-  const shotsPerMin = pacingProfile?.shotsPerMin || (isSubtitleMv ? 22 : 12)
+  const refShots = Number(referenceShotCount) > 6 ? Math.min(72, Math.round(Number(referenceShotCount))) : 0
+  const shotsPerMin = isSubtitleMv ? 24 : (pacingProfile?.shotsPerMin || (isDynamicPacing ? 22 : 12))
   const avgSecPerShot = Math.max(1.8, Math.min(8.5, 60 / Math.max(6, shotsPerMin)))
-  const rawShots = Math.max(6, Math.round(targetSec / avgSecPerShot))
-  const hardMaxShots = Math.max(pacingProfile?.maxShots || 36, Math.min(72, Math.ceil(targetSec / 2.2) + 8))
-  const targetShotsMin = enforced
-    ? Math.max(6, Math.min(hardMaxShots - 4, Math.round(minSec / Math.max(2.6, avgSecPerShot * 1.25))))
+  const rawShots = refShots || Math.max(6, Math.round(targetSec / avgSecPerShot))
+  const hardMaxShots = Math.max(
+    pacingProfile?.maxShots || (isSubtitleMv || isDynamicPacing ? 64 : 36),
+    Math.min(80, Math.ceil(targetSec / (isSubtitleMv ? 1.85 : 2.2)) + 8),
+  )
+  const computedMinShots = enforced || isSubtitleMv || isDynamicPacing
+    ? Math.max(
+        isSubtitleMv && targetSec >= 105 ? 34 : (isDynamicPacing && targetSec >= 105 ? 30 : 6),
+        Math.min(hardMaxShots - 4, refShots ? Math.round(refShots * 0.85) : Math.round((enforced ? minSec : targetSec * 0.88) / Math.max(2.2, avgSecPerShot * (isSubtitleMv ? 1.08 : 1.2)))),
+      )
     : Math.max(pacingProfile?.minShots || 8, Math.min(hardMaxShots - 4, rawShots - 2))
-  const targetShotsMax = Math.min(hardMaxShots, Math.max(targetShotsMin + 4, rawShots + (enforced ? 6 : 4)))
+  const targetShotsMin = Math.min(hardMaxShots - 4, computedMinShots)
+  const targetShotsMax = Math.min(hardMaxShots, Math.max(targetShotsMin + 6, rawShots + (enforced || isSubtitleMv ? 8 : 4)))
 
   // Spoken Chinese budget: ~4.05 spoken chars/sec + ~0.65s inter-scene breathing/SFX cushion
   const speakingSecBudget = Math.max(8, targetSec - targetShotsMin * 0.65)
   const requiredCharsMin = isSubtitleMv ? 0 : Math.round(speakingSecBudget * 3.7)
   const requiredCharsMax = isSubtitleMv ? 0 : Math.round(speakingSecBudget * 4.55)
-  const outlineCountMin = Math.max(4, Math.min(18, Math.round(targetSec / 18)))
-  const outlineCountMax = Math.min(24, outlineCountMin + 4)
+  const outlineCountMin = Math.max(4, Math.min(20, Math.round(targetSec / (isSubtitleMv ? 12 : 18))))
+  const outlineCountMax = Math.min(28, outlineCountMin + 5)
 
   const label = enforced
     ? isAtLeast
@@ -224,9 +234,9 @@ export function resolveTargetDurationPolicy({
       : formatDurationLabel(targetSec)
     : 'AI 自由匹配时长'
 
-  const promptDirective = enforced
+  const promptDirective = enforced || isSubtitleMv
     ? isSubtitleMv
-      ? `【目标时长硬约束】：本片用户明确要求时长为 **${label}**！请至少规划 **${targetShotsMin}~${targetShotsMax} 个分镜**，各镜 durationSec 之和必须在 **${minSec}~${maxSec} 秒** 之间，绝不可缩水成 40~60 秒短片！`
+      ? `【纯音乐高燃卡点分镜密度硬约束】：本片为免配音纯音乐卡点 MV（目标时长 ${enforced ? label : `约 ${formatDurationLabel(targetSec)}`}）！必须规划 **${targetShotsMin}~${targetShotsMax} 个高密度快切分镜**（参考爆款历史燃剪 34~52 镜标准：常规镜 2~4 拍约 1.5~3.2s，高潮突降点 drops 与战局转折穿插 0.5 拍/1 拍爆燃闪切），各镜 durationSec 之和落在 **${minSec}~${maxSec} 秒**，严禁只拆十几二十个缓慢拖沓的镜头！`
       : `【目标时长硬约束（必须达标，严禁缩水！）】：本片目标总时长为 **${label}**（硬底线不得低于 **${minSec} 秒**）！按正常中文解说语速（每秒约 4.1 字 + 幕间呼吸停顿）换算，全片必须规划 **${targetShotsMin}~${targetShotsMax} 个分镜**，全部镜头 \`narration\` 旁白总字数必须达到 **${requiredCharsMin}~${requiredCharsMax} 个汉字**（平均每镜约 ${Math.max(16, Math.round(requiredCharsMin / Math.max(1, targetShotsMax)))}~${Math.max(28, Math.round(requiredCharsMax / Math.max(1, targetShotsMin)))} 字、单镜 durationSec 合计落在 **${minSec}~${maxSec} 秒**），讲透完整内容与细节，绝不允许只写几百字导致成片缩水成 50 秒！`
     : '【时长策略：AI 自由匹配】：根据题材深度、素材丰富度与叙事节奏自由规划最舒适的完整时长（不强行压缩、也不注水凑数）。'
 

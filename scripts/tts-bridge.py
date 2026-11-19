@@ -16,8 +16,17 @@ import struct
 import sys
 import tempfile
 import traceback
+import urllib.error
 import urllib.request
 import wave
+
+# Ensure UTF-8 stdio on Windows Chinese locale so JSON errors never turn into GBK mojibake
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        if hasattr(_stream, "reconfigure"):
+            _stream.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
 
 
 def stage_ascii_path(src_path: str, prefix: str = "ref", max_seconds: float = 9.0) -> str:
@@ -126,7 +135,7 @@ def generate_fallback_speech_like_wav(output_path: str, text: str, emotion: str 
     }
 
 
-def try_http_tts(endpoint: str, payload: dict, output_path: str, timeout: float = 15.0, engine: str = "indextts25") -> bool:
+def try_http_tts(endpoint: str, payload: dict, output_path: str, timeout: float = 15.0, engine: str = "indextts25", error_bucket: list = None) -> bool:
     """Attempt HTTP synthesis against IndexTTS-2.5/2 server (scripts/tts-server.py) or GPT-SoVITS api_v2/api_v1."""
     if not endpoint:
         return False
@@ -191,8 +200,24 @@ def try_http_tts(endpoint: str, payload: dict, output_path: str, timeout: float 
                             shutil.copy2(audio_path, output_path)
                         return True
                     if parsed.get("ok") is False:
-                        sys.stderr.write(f"[tts-bridge] server error: {parsed.get('error')}\n")
-        except Exception:
+                        err_msg = str(parsed.get("error") or "unknown error")
+                        if error_bucket is not None:
+                            error_bucket.append(err_msg)
+                        sys.stderr.write(f"[tts-bridge] server error: {err_msg}\n")
+        except urllib.error.HTTPError as he:
+            try:
+                raw_err = he.read().decode("utf-8", errors="replace")
+                parsed_err = json.loads(raw_err) if raw_err.strip().startswith("{") else {}
+                detail = parsed_err.get("error") or parsed_err.get("message") or raw_err.strip() or f"HTTP {he.code}"
+            except Exception:
+                detail = f"HTTP {he.code}"
+            if he.code != 404 and error_bucket is not None:
+                error_bucket.append(f"{path_suffix} -> {detail}")
+            sys.stderr.write(f"[tts-bridge] HTTP {he.code} on {path_suffix}: {detail}\n")
+            continue
+        except Exception as exc:
+            if error_bucket is not None:
+                error_bucket.append(str(exc))
             continue
     return False
 
@@ -321,6 +346,7 @@ def main():
         spd_factor = max(0.65, min(1.5, float(args.speed))) if str(args.speed or "").strip() else round(1.0 / dur_factor, 3)
 
         # 1. Try HTTP endpoint first (non-blocking fast path if IndexTTS-2.5 / GPT-SoVITS server is running)
+        http_errors = []
         if args.endpoint:
             payload = {
                 "text": args.text,
@@ -337,7 +363,7 @@ def main():
                 "fallback_ref": args.fallback_ref,
                 "output_path": out_abs,
             }
-            if try_http_tts(args.endpoint, payload, out_abs, timeout=float(args.http_timeout), engine=args.engine):
+            if try_http_tts(args.endpoint, payload, out_abs, timeout=float(args.http_timeout), engine=args.engine, error_bucket=http_errors):
                 print(json.dumps({
                     "ok": True,
                     "provider": f"{args.engine}-http",
@@ -371,12 +397,13 @@ def main():
             res["placeholder"] = True
             print(json.dumps(res, ensure_ascii=False))
             return
+        detail_suffix = f" [底层详情: {http_errors[0]}]" if http_errors else ""
         if args.engine == "gptvoice":
             raise RuntimeError(
-                f"GPT-SoVITS 服务未连接 ({args.endpoint or 'http://127.0.0.1:9881'})：请确认已启动 GPT-SoVITS api_v2.py 并检查参考音频/文本参数，或切换到其他配音引擎。"
+                f"GPT-SoVITS 服务未连接或合成失败 ({args.endpoint or 'http://127.0.0.1:9881'}){detail_suffix}：请确认已启动 GPT-SoVITS api_v2.py 且存在有效参考音频，或点击「一键安装配音模型 / 切换 Windows 原生语音」。"
             )
         raise RuntimeError(
-            "本地 TTS 引擎不可用：IndexTTS-2.5 常驻服务未就绪（可在「配音引擎中心」切换 GPT-SoVITS 或导入低配置/纯CPU配音模型）。"
+            f"本地 TTS 引擎合成失败{detail_suffix}（请确认 IndexTTS-2.5 常驻服务已就绪且 voices/ 目录含参考音色 WAV，或直接切换 Windows 原生语音 / GPT-SoVITS / 一键安装依赖包）。"
         )
     finally:
         for p in (staged_ref, staged_emo):

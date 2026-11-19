@@ -1,9 +1,20 @@
 {
   "name": "dsh-video-workbench",
-  "version": "0.3.9",
-  "description": "DeepSeek Harness 多智能体双引擎视频工作台：Opus 5.5 级无限制自由编程 (Freeform Three.js 3D + 动态 SVG + HUD + 节拍弹簧物理)、内置预设保底、48kHz 踩点混音与多引擎配音。",
+  "version": "0.4.0",
+  "description": "全智能体通用双引擎 AI 视频工作台 (DSH / Claude Code / Codex / WorkBuddy / Cursor / 独立网页)：Remotion 4.x + Three.js 3D & HTML5 双引擎、参考视频拆解同款复刻 (MOTION.md)、高燃历史剪影卡点动画、可选本地 TTS 一键安装包 (IndexTTS-2.5 / GPT-SoVITS / Edge-TTS / Windows原生)、低配电脑保护与 48kHz 踩点混音。原创作者: Merziller (QQ: 1411574209 | 微信: Merziller | k26789228@gmail.com)",
   "license": "MIT",
-  "author": "Merziller (QQ: 1411574209)",
+  "author": {
+    "name": "Merziller",
+    "email": "k26789228@gmail.com",
+    "url": "https://github.com/Merziller/dsh-video-workbench"
+  },
+  "contact": {
+    "author": "Merziller",
+    "qq": "1411574209",
+    "wechat": "Merziller",
+    "email": "k26789228@gmail.com",
+    "github": "https://github.com/Merziller/dsh-video-workbench"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Merziller/dsh-video-workbench.git"
@@ -17,8 +28,14 @@
     "node": ">=20.0.0"
   },
   "main": "./index.js",
+  "bin": {
+    "dsh-video-workbench": "./bin/dsh-video-cli.mjs",
+    "dsh-video-mcp": "./bin/dsh-video-mcp.mjs"
+  },
   "exports": {
     ".": "./index.js",
+    "./mcp": "./bin/dsh-video-mcp.mjs",
+    "./cli": "./bin/dsh-video-cli.mjs",
     "./client": "./packages/dsh-web-video-workbench/lib/client.js",
     "./cordis.patch.yml": "./cordis.patch.yml",
     "./package.json": "./package.json"
@@ -26,6 +43,7 @@
   "files": [
     "index.js",
     "cordis.patch.yml",
+    "bin",
     "packages/shared",
     "packages/dsh-tool-local-tts",
     "packages/dsh-tool-avatar",
@@ -33,13 +51,23 @@
     "packages/dsh-tool-media",
     "packages/dsh-preset-video",
     "packages/dsh-web-video-workbench",
+    "scripts/dsh-runner.mjs",
+    "scripts/install-profile.mjs",
+    "scripts/install-tts-engine.mjs",
+    "scripts/install-tts-engine.ps1",
     "scripts/tts-bridge.py",
     "scripts/tts-server.py",
     "voice-packs/README.md",
     "voice-packs/catalog.example.json",
+    ".mcp.json",
+    ".claude-plugin",
+    "SKILL.md",
+    "AGENTS.md",
+    "docs/install.md",
     ".env.example",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "NOTICE"
   ],
   "dsh": {
     "bundle": {
@@ -51,6 +79,10 @@
     }
   },
   "scripts": {
+    "studio": "node ./bin/dsh-video-cli.mjs studio --open",
+    "mcp": "node ./bin/dsh-video-mcp.mjs",
+    "doctor": "node ./bin/dsh-video-cli.mjs doctor",
+    "install:tts": "node ./scripts/install-tts-engine.mjs",
     "dsh": "node ./scripts/dsh-runner.mjs",
     "dsh:video": "node ./scripts/dsh-runner.mjs video",
     "setup:profile": "node ./scripts/install-profile.mjs",
@@ -77,11 +109,18 @@
     "dsh",
     "dsh-plugin",
     "deepseek-harness",
+    "mcp",
+    "claude-code",
+    "codex",
+    "workbuddy",
+    "cursor",
+    "agent-skill",
+    "motion-md",
+    "reference-remake",
     "cordis",
     "remotion",
     "threejs",
     "vibecoding",
-    "gsap",
     "ffmpeg",
     "video",
     "indextts",

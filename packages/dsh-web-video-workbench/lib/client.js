@@ -1,8 +1,10 @@
 /* eslint-disable no-undef */
 /**
- * DSH Video Workbench Frontend Client (v6 — Kinetic War Room & Studio Redesign)
- * Pure ES Module loaded dynamically inside DSH Web UI via window.__ModuleLoader__.
- * Zero build/JSX required; zero DSH core mutation.
+ * DSH Video Workbench Frontend Client (v0.4.0 — Universal Multi-Agent & Reference Remake Studio)
+ * Copyright (c) 2026 Merziller
+ * Author: Merziller | QQ: 1411574209 | WeChat: Merziller | Email: k26789228@gmail.com
+ * Official Repo: https://github.com/Merziller/dsh-video-workbench (MIT License)
+ * Pure ES Module loaded dynamically inside DSH Web UI or Standalone Browser Studio via window.__ModuleLoader__.
  */
 window.__ModuleLoader__?.load({
   id: 'dsh-video-workbench',
@@ -1415,6 +1417,13 @@ window.__ModuleLoader__?.load({
       const [toast, setToast] = useState(null)
       const [showRawError, setShowRawError] = useState(false)
       const [assetVersion, setAssetVersion] = useState(1)
+      const [ttsInstallCatalog, setTtsInstallCatalog] = useState(null)
+      const [ttsInstallDir, setTtsInstallDir] = useState('')
+      const [ttsInstallMirror, setTtsInstallMirror] = useState('cn')
+      const [ttsInstallingId, setTtsInstallingId] = useState('')
+      const [ttsInstallLogs, setTtsInstallLogs] = useState([])
+      const [refAnalyzing, setRefAnalyzing] = useState(false)
+      const [refExtractAudio, setRefExtractAudio] = useState(false)
 
       // DOM & Stream Refs
       const initialLoadedRef = useRef(false)
@@ -1427,6 +1436,7 @@ window.__ModuleLoader__?.load({
       const fileInputRef = useRef(null)
       const folderInputRef = useRef(null)
       const bgmInputRef = useRef(null)
+      const refVideoInputRef = useRef(null)
       const teleImportRef = useRef(null)
       const cloneFileInputRef = useRef(null)
       const skinFileInputRef = useRef(null)
@@ -1630,6 +1640,7 @@ window.__ModuleLoader__?.load({
             if (data.hardwarePreferences) setHardwarePreferences(data.hardwarePreferences)
             if (data.hardwarePolicy) setHardwarePolicy(data.hardwarePolicy)
             if (data.ttsConfig) syncTtsFormFromSummary(data.ttsConfig)
+            if (data.ttsInstallCatalog) setTtsInstallCatalog(data.ttsInstallCatalog)
             if (data.llmConfig) syncLlmFormFromSummary(data.llmConfig)
             if (Array.isArray(data.avatarTemplates)) setAvatarTemplates(data.avatarTemplates)
             if (data.avatarProvider) {
@@ -2420,6 +2431,12 @@ window.__ModuleLoader__?.load({
           const resolvedDurSec = Number(d.targetDurationSec) >= 10
             ? Math.round(Number(d.targetDurationSec))
             : (resolvedDurMode === 'custom' ? Math.max(15, Math.min(600, Math.round(Number(directorForm.targetDurationSec) || 120))) : 0)
+          const resolvedNarrMode = ['subtitle-mv', 'tts-beat-sync', 'tts'].includes(String(d.suggestedNarrationMode || ''))
+            ? d.suggestedNarrationMode
+            : directorForm.narrationMode
+          const resolvedPacingMode = ['dynamic', 'balanced', 'calm', 'auto'].includes(String(d.suggestedPacingMode || '')) && d.suggestedPacingMode !== 'auto'
+            ? d.suggestedPacingMode
+            : directorForm.pacingMode
           setDirectorForm((p) => ({
             ...p,
             topic: d.polishedTopic,
@@ -2428,6 +2445,8 @@ window.__ModuleLoader__?.load({
             genreLabel: d.genreLabel || p.genreLabel,
             durationMode: resolvedDurMode,
             targetDurationSec: resolvedDurSec || p.targetDurationSec || 120,
+            narrationMode: resolvedNarrMode,
+            pacingMode: resolvedPacingMode,
             directorNotes: d.directorNotes || '',
             contentOutline: Array.isArray(d.contentOutline) ? d.contentOutline : [],
             style: d.suggestedStyle || p.style,
@@ -2448,6 +2467,8 @@ window.__ModuleLoader__?.load({
                     genreLabel: d.genreLabel || '',
                     durationMode: resolvedDurMode,
                     targetDurationSec: resolvedDurSec,
+                    narrationMode: resolvedNarrMode,
+                    pacingMode: resolvedPacingMode,
                     directorNotes: d.directorNotes || '',
                     contentOutline: Array.isArray(d.contentOutline) ? d.contentOutline : [],
                     goal: d.polishedTopic,
@@ -2460,7 +2481,7 @@ window.__ModuleLoader__?.load({
           }
           notify(
             resolvedDurSec >= 10
-              ? `✨ 已由 ${d.model || 'AI 大模型'} 按目标时长 ${d.durationLabel || `${resolvedDurSec}秒`} 润色生成专业导演指令！`
+              ? `✨ 已由 ${d.model || 'AI 大模型'} 按目标时长 ${d.durationLabel || `${resolvedDurSec}秒`} 润色生成专业导演指令${resolvedNarrMode === 'subtitle-mv' ? '（已自动切换为纯音乐卡点免TTS）' : ''}！`
               : `✨ 已由 ${d.model || 'AI 大模型'} 润色生成专业导演指令并覆盖替换！`,
             'success',
           )
@@ -2468,6 +2489,140 @@ window.__ModuleLoader__?.load({
           notify(`AI 润色请求异常: ${err.message}`, 'error')
         } finally {
           setPolishingTopic(false)
+        }
+      }
+
+      const handleUploadReferenceVideo = async (file) => {
+        if (!file || !activeProjectDir) {
+          notify('请先新建或选择一个视频工程后再上传参考视频', 'info')
+          return
+        }
+        setRefAnalyzing(true)
+        setBusyLabel(`🎯 正在上传并拆解参考视频「${file.name}」的镜头节奏、节拍与视觉基因...`)
+        setBusyProgress(15)
+        try {
+          const uploadUrl = `/api/video-workbench/reference/upload?projectDir=${encodeURIComponent(activeProjectDir)}&fileName=${encodeURIComponent(file.name)}&extractAudioAsBgm=${refExtractAudio ? '1' : '0'}&async=1`
+          const res = await connFetch(uploadUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/octet-stream' },
+            body: file,
+          })
+          const initD = await res.json()
+          if (!initD.ok) {
+            notify(`参考视频上传拆解失败: ${initD.error || '请求失败'}`, 'error')
+            return
+          }
+          const finalD = initD.jobId ? await pollBackgroundJob(initD.jobId) : initD
+          if (!finalD?.ok || !finalD?.referenceStyle) {
+            notify(`参考视频拆解异常: ${finalD?.error || '未返回风格基因'}`, 'error')
+            return
+          }
+          const rs = finalD.referenceStyle
+          setAssetVersion((v) => v + 1)
+          await loadState(activeProjectDir, true)
+          notify(
+            `🎯 参考视频拆解完成！实测 ${rs.shotCount || 0} 镜 · ${rs.bpm || '?'} BPM · 已生成同款复刻基因与 MOTION.md，现在直接写你的新主题即可一键复刻同款！`,
+            'success',
+          )
+        } catch (err) {
+          notify(`参考视频拆解异常: ${err.message}`, 'error')
+        } finally {
+          setRefAnalyzing(false)
+          setBusyLabel('')
+          setBusyProgress(0)
+        }
+      }
+
+      const handleClearReferenceVideo = async () => {
+        if (!activeProjectDir) return
+        try {
+          await connFetch('/api/video-workbench/reference/clear', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ projectDir: activeProjectDir }),
+          })
+          await loadState(activeProjectDir, true)
+          notify('已清除当前工程绑定的参考视频基因', 'info')
+        } catch (err) {
+          notify(`清除失败: ${err.message}`, 'error')
+        }
+      }
+
+      const handleExportMotionMd = async () => {
+        if (!activeProjectDir) return
+        try {
+          const res = await connFetch('/api/video-workbench/motion-md', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ projectDir: activeProjectDir }),
+          })
+          const d = await res.json()
+          if (d.ok) {
+            notify(`✓ 已导出可跨智能体复用的分镜蓝图：${d.relPath || 'MOTION.md'}`, 'success')
+          } else {
+            notify(`导出失败: ${d.error}`, 'error')
+          }
+        } catch (err) {
+          notify(`导出异常: ${err.message}`, 'error')
+        }
+      }
+
+      const handleRepairTtsVoices = async () => {
+        try {
+          const res = await connFetch('/api/video-workbench/tts/repair-voices', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              idxRoot: builtinTtsForm.indexttsRootDir || '',
+              gptRoot: builtinTtsForm.gptvoiceRootDir || '',
+            }),
+          })
+          const d = await res.json()
+          if (d.ok) {
+            await loadState(activeProjectDir, false)
+            notify(`✓ voices/ 目录及默认参考音色已就绪（当前可用音色 ${d.availableCount || 0} 个），可直接点击试听测试！`, 'success')
+          } else {
+            notify(`修复失败: ${d.error}`, 'error')
+          }
+        } catch (err) {
+          notify(`修复异常: ${err.message}`, 'error')
+        }
+      }
+
+      const handleInstallTtsPackage = async (engineId) => {
+        if (ttsInstallingId) return
+        setTtsInstallingId(engineId)
+        setTtsInstallLogs([`正在启动 ${engineId} 一键安装（${ttsInstallMirror === 'cn' ? '国内加速镜像' : '官方源'}）...`])
+        try {
+          const res = await connFetch('/api/video-workbench/tts/install', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              engineId,
+              installDir: ttsInstallDir.trim() || '',
+              mirror: ttsInstallMirror,
+              autoActivate: true,
+              async: true,
+            }),
+          })
+          const initD = await res.json()
+          if (!initD.ok || !initD.jobId) {
+            notify(`启动安装失败: ${initD.error || '未知错误'}`, 'error')
+            return
+          }
+          const finalD = await pollBackgroundJob(initD.jobId, { silentBusy: true })
+          if (finalD?.logs) setTtsInstallLogs(finalD.logs.slice(-18))
+          if (finalD?.ok) {
+            await loadState(activeProjectDir, false)
+            notify(`✅ ${engineId} 依赖包安装完成并已自动接入插件（含 voices/ 目录与默认参考音色）！`, 'success')
+          } else {
+            notify(`安装未完成: ${finalD?.error || '请查看安装日志'}`, 'error')
+          }
+        } catch (err) {
+          notify(`安装异常: ${err.message}`, 'error')
+          setTtsInstallLogs((prev) => [...prev, `错误: ${err.message}`])
+        } finally {
+          setTtsInstallingId('')
         }
       }
 
@@ -4180,6 +4335,15 @@ window.__ModuleLoader__?.load({
             ev.target.value = ''
           },
         }),
+        h('input', {
+          ref: refVideoInputRef,
+          type: 'file',
+          accept: 'video/*,.mp4,.mov,.webm,.mkv,.avi',
+          onChange: (ev) => {
+            if (ev.target.files?.[0]) handleUploadReferenceVideo(ev.target.files[0])
+            ev.target.value = ''
+          },
+        }),
       )
 
       // =======================================================================
@@ -4494,18 +4658,18 @@ window.__ModuleLoader__?.load({
                 'div',
                 {
                   style: {
-                    padding: '10px 18px',
+                    padding: '11px 16px',
                     borderTop: `1px solid ${T.borderSubtle}`,
-                    fontSize: '12px',
+                    fontSize: '11.5px',
                     color: T.textMuted,
                     display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    gap: '8px',
+                    flexDirection: 'column',
+                    gap: '3px',
                   },
                 },
-                h('span', null, '作者 Merziller · 交流/反馈'),
-                h('span', { style: { fontFamily: 'var(--dsh-font-mono)', fontWeight: 700, color: T.textSecondary, userSelect: 'text' } }, 'QQ 1411574209'),
+                h('div', { style: { fontWeight: 800, color: T.textSecondary } }, '© 2026 Merziller · 开源免费（MIT · 须保留署名）'),
+                h('div', { style: { fontFamily: 'var(--dsh-font-mono)', userSelect: 'text', lineHeight: 1.5 } }, 'QQ: 1411574209 · 微信: Merziller'),
+                h('div', { style: { fontFamily: 'var(--dsh-font-mono)', userSelect: 'text', color: T.accentBlue } }, 'k26789228@gmail.com'),
               ),
             ),
           )
@@ -5101,6 +5265,109 @@ window.__ModuleLoader__?.load({
                 h(Icon, { name: 'camera', size: 15, color: T.accentBlue }),
                 '打开提词器自拍',
               ),
+            ),
+            // Reference Video Deep Reverse-Engineering & Same-Style Remake Card
+            h(
+              'div',
+              {
+                style: {
+                  padding: '10px 12px',
+                  borderRadius: '11px',
+                  background: script?.referenceStyle ? T.accentVioletBg : T.bgElevated,
+                  border: `1px solid ${script?.referenceStyle ? T.accentViolet : T.borderSubtle}`,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '7px',
+                },
+              },
+              h(
+                'div',
+                { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' } },
+                h(
+                  'span',
+                  { style: { fontSize: '12.5px', fontWeight: 800, color: script?.referenceStyle ? T.accentViolet : T.textPrimary } },
+                  script?.referenceStyle ? `🎯 已锁定同款基因 · ${script.referenceStyle.shotCount || 0} 镜` : '🎯 参考视频拆解 · 复刻同款',
+                ),
+                h(
+                  'div',
+                  { style: { display: 'flex', alignItems: 'center', gap: '5px' } },
+                  h(
+                    'button',
+                    {
+                      type: 'button',
+                      className: 'dsh-vw-btn',
+                      disabled: Boolean(busyLabel) || refAnalyzing,
+                      onClick: () => refVideoInputRef.current?.click(),
+                      style: { ...ghostBtnStyle, padding: '4px 9px', fontSize: '11.5px', borderColor: T.accentViolet, color: T.accentViolet },
+                    },
+                    refAnalyzing ? '拆解中...' : script?.referenceStyle ? '换参考片' : '上传参考视频',
+                  ),
+                  script?.referenceStyle
+                    ? h(
+                        'button',
+                        {
+                          type: 'button',
+                          className: 'dsh-vw-btn',
+                          onClick: handleClearReferenceVideo,
+                          style: { ...ghostBtnStyle, padding: '4px 7px', fontSize: '11px', color: T.textMuted },
+                        },
+                        '清除',
+                      )
+                    : null,
+                ),
+              ),
+              script?.referenceStyle
+                ? h(
+                    'div',
+                    { style: { display: 'flex', flexDirection: 'column', gap: '6px' } },
+                    script.referenceStyle.sheetRelPath
+                      ? h('img', {
+                          src: `/api/video-workbench/asset?projectDir=${encodeURIComponent(activeProjectDir)}&rel=${encodeURIComponent(script.referenceStyle.sheetRelPath)}&v=${assetVersion}`,
+                          alt: '参考视频 3x3 关键帧',
+                          style: { width: '100%', height: '74px', objectFit: 'cover', borderRadius: '7px', border: `1px solid ${T.borderSubtle}` },
+                        })
+                      : null,
+                    h(
+                      'div',
+                      { style: { fontSize: '11.5px', color: T.textSecondary, lineHeight: 1.45 } },
+                      `${script.referenceStyle.genreLabel || '同款复刻'} · ${script.referenceStyle.shotCount || 0} 镜（均 ${script.referenceStyle.avgShotSec || 0}s）· ${script.referenceStyle.bpm || '?'} BPM · ${script.referenceStyle.narrationMode === 'subtitle-mv' ? '纯音乐卡点' : script.referenceStyle.narrationMode || 'tts'}`,
+                    ),
+                    h(
+                      'div',
+                      { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px' } },
+                      h(
+                        'div',
+                        { style: { display: 'flex', gap: '4px', alignItems: 'center' } },
+                        Object.values(script.referenceStyle.colorPalette || {})
+                          .filter((c) => typeof c === 'string' && c.startsWith('#'))
+                          .slice(0, 4)
+                          .map((hex, ci) =>
+                            h('span', { key: ci, title: hex, style: { width: '14px', height: '14px', borderRadius: '4px', background: hex, border: '1px solid rgba(255,255,255,0.28)', display: 'inline-block' } }),
+                          ),
+                      ),
+                      h(
+                        'button',
+                        {
+                          type: 'button',
+                          className: 'dsh-vw-btn',
+                          onClick: handleExportMotionMd,
+                          style: { ...ghostBtnStyle, padding: '3px 8px', fontSize: '11px', color: T.accentBlue, borderColor: T.accentBlueBorder },
+                        },
+                        '导出 MOTION.md',
+                      ),
+                    ),
+                  )
+                : h(
+                    'div',
+                    { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', fontSize: '11.5px', color: T.textMuted } },
+                    h('span', null, '上传任意爆款参考片，AI 自动拆解镜头数/节拍/人物特效并复刻同款'),
+                    h(
+                      'label',
+                      { style: { display: 'inline-flex', alignItems: 'center', gap: '4px', whiteSpace: 'nowrap', cursor: 'pointer', color: T.textSecondary } },
+                      h('input', { type: 'checkbox', checked: refExtractAudio, onChange: (ev) => setRefExtractAudio(ev.target.checked) }),
+                      '提BGM',
+                    ),
+                  ),
             ),
             h(
               'div',
@@ -7509,7 +7776,8 @@ window.__ModuleLoader__?.load({
                   fullWidth: true,
                   options: [
                     { id: 'engines', label: '🎛 选择与配置引擎' },
-                    { id: 'add', label: '➕ 添加自定义配音模型' },
+                    { id: 'install', label: '📦 一键安装依赖包' },
+                    { id: 'add', label: '➕ 添加自定义模型' },
                     { id: 'import', label: '📤 JSON 导入导出' },
                   ],
                 }),
@@ -7595,12 +7863,85 @@ window.__ModuleLoader__?.load({
                       ),
                       h(
                         'div',
-                        { style: { display: 'flex', justifyContent: 'flex-end', gap: '9px' } },
-                        h('button', { type: 'button', className: 'dsh-vw-btn', disabled: ttsTesting, onClick: () => handleTestTtsEngine(ttsConfig?.activeEngineId), style: { ...ghostBtnStyle, borderColor: T.accentBlueBorder, color: T.accentBlue } }, ttsTesting ? '正在合成测试音频...' : `🔊 试听测试 (${activeTtsLabel})`),
-                        h('button', { type: 'button', className: 'dsh-vw-btn', onClick: handleSaveBuiltinTts, style: goldBtnStyle }, '保存本地接口设置'),
+                        { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '9px', flexWrap: 'wrap' } },
+                        h('button', { type: 'button', className: 'dsh-vw-btn', onClick: handleRepairTtsVoices, style: { ...ghostBtnStyle, fontSize: '12px', color: T.accentGreen, borderColor: 'rgba(52,211,153,0.4)' } }, '🔧 自动补齐 voices/ 与默认音色'),
+                        h(
+                          'div',
+                          { style: { display: 'flex', gap: '9px' } },
+                          h('button', { type: 'button', className: 'dsh-vw-btn', disabled: ttsTesting, onClick: () => handleTestTtsEngine(ttsConfig?.activeEngineId), style: { ...ghostBtnStyle, borderColor: T.accentBlueBorder, color: T.accentBlue } }, ttsTesting ? '正在合成测试音频...' : `🔊 试听测试 (${activeTtsLabel})`),
+                          h('button', { type: 'button', className: 'dsh-vw-btn', onClick: handleSaveBuiltinTts, style: goldBtnStyle }, '保存本地接口设置'),
+                        ),
                       ),
                     ),
                   )
+                : ttsModalTab === 'install'
+                  ? h(
+                      'div',
+                      { style: { display: 'flex', flexDirection: 'column', gap: '12px', flexShrink: 0 } },
+                      h(
+                        'div',
+                        { style: { padding: '11px 13px', borderRadius: '10px', background: T.accentBlueBg, border: `1px solid ${T.accentBlueBorder}`, fontSize: '12.5px', color: T.textSecondary, lineHeight: 1.55 } },
+                        '💡 全部本地配音模型均为【自由可选】安装：不安装也可直接使用零显卡「Windows 系统原生中文语音」或「纯音乐卡点 (免 TTS)」。安装后插件将自动创建 voices/ 目录、生成默认参考音色 WAV 并自动完成接入，小白零折腾！',
+                      ),
+                      h(
+                        'div',
+                        { style: { display: 'grid', gridTemplateColumns: '1.6fr 1fr', gap: '9px' } },
+                        h('input', { value: ttsInstallDir, onChange: (ev) => setTtsInstallDir(ev.target.value), placeholder: `可选安装路径（留空默认 ${ttsInstallCatalog?.baseDir || './tts-engines'}）`, style: inputStyle }),
+                        h(CinemaSelect, {
+                          compact: true,
+                          value: ttsInstallMirror,
+                          onChange: setTtsInstallMirror,
+                          T,
+                          options: [
+                            { value: 'cn', label: '🇨🇳 国内高速镜像 (HF-Mirror + 清华源)' },
+                            { value: 'global', label: '🌐 官方全球源 (HuggingFace + PyPI)' },
+                          ],
+                        }),
+                      ),
+                      h(
+                        'div',
+                        { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' } },
+                        (ttsInstallCatalog?.packages || [
+                          { id: 'edge-tts', name: 'Edge-TTS 神经网络语音', shortName: 'Edge-TTS', vramRequired: '0 GB 纯 CPU', diskRequired: '~30 MB', etaLabel: '约 15 秒', recommendedFor: '无独显/轻薄本首选，免下载大模型' },
+                          { id: 'indextts25', name: 'IndexTTS-2.5 旗舰情感克隆', shortName: 'IndexTTS-2.5', vramRequired: '8 GB+ NVIDIA 显存', diskRequired: '~9 GB', etaLabel: '约 5~15 分钟', recommendedFor: '最高保真情感克隆与 8 维情绪向量' },
+                          { id: 'gptvoice', name: 'GPT-SoVITS 低显存轻量配音', shortName: 'GPT-SoVITS', vramRequired: '4 GB+ NVIDIA 显存', diskRequired: '~6 GB', etaLabel: '约 5~12 分钟', recommendedFor: '4~6GB 中低配独显快速语音克隆' },
+                          { id: 'indextts2', name: 'IndexTTS-2 经典版本', shortName: 'IndexTTS-2', vramRequired: '6~8 GB 显存', diskRequired: '~7 GB', etaLabel: '约 5~12 分钟', recommendedFor: '经典 IndexTTS-2 兼容环境' },
+                        ]).map((pkg) =>
+                          h(
+                            'div',
+                            { key: pkg.id, style: { padding: '12px', borderRadius: '11px', background: T.bgElevated, border: `1px solid ${pkg.installed ? T.accentGreen : T.borderSubtle}`, display: 'flex', flexDirection: 'column', gap: '6px' } },
+                            h(
+                              'div',
+                              { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '6px' } },
+                              h('strong', { style: { fontSize: '13.5px', color: T.textPrimary } }, pkg.shortName || pkg.name),
+                              pkg.installed
+                                ? h('span', { style: { padding: '1px 7px', borderRadius: '999px', background: T.accentGreenBg, color: T.accentGreen, fontSize: '11px', fontWeight: 700 } }, '✓ 已安装')
+                                : h('span', { style: { padding: '1px 7px', borderRadius: '999px', background: T.accentGoldBg, color: T.accentGold, fontSize: '11px', fontWeight: 700 } }, pkg.etaLabel || '可选安装'),
+                            ),
+                            h('div', { style: { fontSize: '11.5px', color: T.accentBlue, fontWeight: 600 } }, `${pkg.vramRequired} · 占用 ${pkg.diskRequired}`),
+                            h('div', { style: { fontSize: '11.5px', color: T.textMuted, lineHeight: 1.45, flex: 1 } }, pkg.recommendedFor),
+                            h(
+                              'button',
+                              {
+                                type: 'button',
+                                className: 'dsh-vw-btn',
+                                disabled: Boolean(ttsInstallingId),
+                                onClick: () => handleInstallTtsPackage(pkg.id),
+                                style: { ...(pkg.id === 'edge-tts' ? blueBtnStyle : goldBtnStyle), padding: '6px 10px', fontSize: '12px', justifyContent: 'center', marginTop: '4px' },
+                              },
+                              ttsInstallingId === pkg.id ? '正在自动安装并配置...' : pkg.installed ? '🔄 补齐 voices 并重新接入' : `⬇ 一键安装 ${pkg.shortName || pkg.id} 并接入`,
+                            ),
+                          ),
+                        ),
+                      ),
+                      ttsInstallLogs.length > 0
+                        ? h(
+                            'pre',
+                            { className: 'dsh-vw-scroll', style: { margin: 0, padding: '10px 12px', borderRadius: '9px', background: T.bgInput, border: `1px solid ${T.borderSubtle}`, fontSize: '11.5px', fontFamily: 'Consolas, monospace', color: T.textSecondary, maxHeight: '130px', overflowY: 'auto', whiteSpace: 'pre-wrap' } },
+                            ttsInstallLogs.join('\n'),
+                          )
+                        : null,
+                    )
                 : ttsModalTab === 'add'
                   ? h(
                       'div',
@@ -8062,6 +8403,13 @@ window.__ModuleLoader__?.load({
                     h('div', { style: { color: T.textMuted, marginTop: '3px' } }, `推荐导出：${req.recommendedRender}`),
                   ),
                 ),
+              ),
+              h(
+                'div',
+                { style: { padding: '11px 14px', borderRadius: '11px', background: T.bgElevated, border: `1px solid ${T.accentGoldBorder}`, display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '12px' } },
+                h('div', { style: { fontWeight: 800, color: T.accentGold } }, '🛡 原创作者署名与开源版权声明（DSH / Claude Code / Codex / WorkBuddy / 独立网页通用）'),
+                h('div', { style: { color: T.textSecondary, lineHeight: 1.55, userSelect: 'text' } }, '作者：Merziller · QQ：1411574209 · 微信：Merziller · Gmail：k26789228@gmail.com'),
+                h('div', { style: { color: T.textMuted, fontSize: '11.5px', userSelect: 'text' } }, '官方仓库：https://github.com/Merziller/dsh-video-workbench（MIT 开源免费，禁止抹除作者信息冒充原创）'),
               ),
             ),
           )

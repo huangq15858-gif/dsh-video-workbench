@@ -1,0 +1,29 @@
+{
+  "name": "dsh-video-workbench",
+  "version": "0.4.0",
+  "description": "Universal Multi-Agent Dual-Engine AI Video Studio (Remotion 4.x + Three.js 3D & HyperFrames HTML5) with Reference Video Remake (MOTION.md), BGM Beat-Sync, Optional Local TTS Cloning (IndexTTS-2.5 / GPT-SoVITS / Edge-TTS / Windows SAPI), and Low-Spec Hardware Protection.",
+  "author": {
+    "name": "Merziller",
+    "email": "k26789228@gmail.com",
+    "url": "https://github.com/Merziller/dsh-video-workbench"
+  },
+  "contact": {
+    "qq": "1411574209",
+    "wechat": "Merziller",
+    "email": "k26789228@gmail.com"
+  },
+  "repository": "https://github.com/Merziller/dsh-video-workbench",
+  "license": "MIT",
+  "keywords": [
+    "video",
+    "remotion",
+    "threejs",
+    "motion-graphics",
+    "beat-sync",
+    "reference-remake",
+    "tts",
+    "mcp"
+  ],
+  "skills": "./",
+  "mcpServers": "./.mcp.json"
+}

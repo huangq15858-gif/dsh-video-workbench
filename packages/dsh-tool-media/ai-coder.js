@@ -475,6 +475,8 @@ export async function authorBatchedRemotionScenes({
         contentOutline: Array.isArray(lockedScript.contentOutline) ? lockedScript.contentOutline : [],
         bgmMeta: lockedScript.bgm,
         assetCatalog: buildBatchAssetCatalog(item.batchScenes),
+        narrationMode: lockedScript.narrationMode || 'tts',
+        referenceStyle: lockedScript.referenceStyle || null,
       })
       item.systemPrompt = pkg.system
       onProgress?.(
@@ -492,7 +494,7 @@ export async function authorBatchedRemotionScenes({
             messages: [{ role: 'user', content: pkg.user }],
             temperature: attempt === 1 ? 0.35 : 0.25,
             maxTokens: item.batchScenes.length >= 5 ? 16000 : 14000,
-            timeoutMs: 300_000,
+            timeoutMs: 600_000,
             signal,
           })
           extracted = extractTsxFromReply(res?.text, item.filePath, item.exportName)
@@ -509,6 +511,57 @@ export async function authorBatchedRemotionScenes({
         if (attempt < 2) {
           await new Promise((r) => setTimeout(r, 1500))
         }
+      }
+      // Auto-split recovery: if a 4+ scene batch failed or timed out, retry in two lighter half-chunks
+      if (!extracted && item.batchScenes.length >= 4 && !signal?.aborted) {
+        try {
+          const mid = Math.ceil(item.batchScenes.length / 2)
+          const halves = [item.batchScenes.slice(0, mid), item.batchScenes.slice(mid)]
+          const subParts = []
+          for (let hi = 0; hi < halves.length; hi++) {
+            const subExport = `${item.exportName}_PART_${hi + 1}`
+            const subFile = `src/scenes/Batch${item.pad}_p${hi + 1}.tsx`
+            const subPkg = buildBatchedRemotionScenesPrompt({
+              batchIndex: item.bi,
+              totalBatches: batchInfos.length,
+              batchScenes: halves[hi],
+              totalScenes: scenes.length,
+              width: lockedScript.width || 1920,
+              height: lockedScript.height || 1080,
+              fps: lockedScript.fps || 30,
+              aspectRatio: lockedScript.aspectRatio || '16:9',
+              theme: resolvePalette(lockedScript),
+              topic: lockedScript.displayTitle || lockedScript.topic || lockedScript.title || '',
+              style: lockedScript.style || 'cinematic',
+              genre: lockedScript.genre || '',
+              genreLabel: lockedScript.genreLabel || '',
+              directorNotes: lockedScript.directorNotes || '',
+              contentOutline: Array.isArray(lockedScript.contentOutline) ? lockedScript.contentOutline : [],
+              bgmMeta: lockedScript.bgm,
+              assetCatalog: buildBatchAssetCatalog(halves[hi]),
+              narrationMode: lockedScript.narrationMode || 'tts',
+              referenceStyle: lockedScript.referenceStyle || null,
+            })
+            const subRes = await invokeLlm({
+              system: subPkg.system.replaceAll(item.exportName, subExport).replaceAll(item.filePath, subFile),
+              messages: [{ role: 'user', content: subPkg.user.replaceAll(item.filePath, subFile) }],
+              temperature: 0.28,
+              maxTokens: 10000,
+              timeoutMs: 360_000,
+              signal,
+            })
+            const subCode = extractTsxFromReply(subRes?.text, subFile, subExport)
+            if (subCode) {
+              const cleanSub = subCode.replace(/staticFile\(\s*(['"`])(?:\.?[\\/]+)*public\//gi, 'staticFile($1')
+              writeFileSync(join(absDir, subFile), cleanSub, 'utf8')
+              subParts.push({ subExport, relImport: `./Batch${item.pad}_p${hi + 1}` })
+            }
+          }
+          if (subParts.length > 0) {
+            extracted = `import React from 'react';\n${subParts.map((p) => `import { ${p.subExport} } from '${p.relImport}';`).join('\n')}\nexport const ${item.exportName}: Record<string, React.FC<any>> = {\n${subParts.map((p) => `  ...${p.subExport},`).join('\n')}\n};\n`
+            lastBatchErr = ''
+          }
+        } catch {}
       }
       if (extracted) {
         item.code = extracted
@@ -665,8 +718,8 @@ export async function authorBatchedRemotionScenes({
           system: info.systemPrompt,
           messages: [{ role: 'user', content: repairPrompt }],
           temperature: 0.2,
-          maxTokens: 9000,
-          timeoutMs: 180_000,
+          maxTokens: 10000,
+          timeoutMs: 360_000,
           signal,
         })
         const fixedCode = extractTsxFromReply(fixRes?.text, info.filePath, info.exportName)
@@ -775,7 +828,9 @@ export async function runAiStudioPipeline(options = {}) {
   const resolvedPlatform = targetPlatform || existingScript?.targetPlatform || 'universal'
   const intentForBgm = `${coreTopic} ${directorNotes || ''} ${userPrompt || ''}`
   const wantsUploadedBgmCoder = /(?:上传|自带|导入|个人|我的|现有|本机).{0,10}(?:bgm|配乐|音乐|背景音|歌曲)|(?:bgm|配乐|背景音).{0,12}(?:节拍|卡点|踩拍|踩死|突降|高潮|同步)/i.test(intentForBgm)
-  const wantsBeatSyncCoder = /(?:踩死|踩准|踩拍|卡点|高潮突降|重拍切镜|同步节拍|节拍同步|beat[- ]?sync)/i.test(intentForBgm)
+  const wantsBeatSyncCoder = /(?:踩死|踩准|踩拍|踩点|卡点|卡拍|高潮突降|主高潮|突降|重拍|切镜|同步节拍|节拍同步|beat[- ]?sync)/i.test(intentForBgm)
+  const wantsPureMusicCoder = /(?:纯音乐|免配音|无配音|无旁白|不要配音|不用配音|去掉配音|无需配音|纯卡点|卡点\s*MV|无解说|免\s*TTS)/i.test(intentForBgm)
+  const refStyleCoder = options.referenceStyle || existingScript?.referenceStyle || null
   let resolvedBgmMode = bgmMode || existingScript?.audioSpec?.bgmMode || (importedMusic.length > 0 ? 'uploaded' : 'llm-coded')
   if (
     importedMusic.length > 0 &&
@@ -786,10 +841,15 @@ export async function runAiStudioPipeline(options = {}) {
   const resolvedCreationMode = creationMode === 'schema-plan' ? 'schema-plan' : 'ai-coded'
   let resolvedNarrationMode =
     narrationMode || existingScript?.narrationMode || (visuals.length === 0 && resolvedBgmMode === 'uploaded' ? 'subtitle-mv' : 'tts')
-  if (wantsBeatSyncCoder && resolvedBgmMode === 'uploaded' && resolvedNarrationMode === 'tts') {
+  if (wantsPureMusicCoder || (refStyleCoder?.narrationMode === 'subtitle-mv' && !/(?:需要配音|真人配音|口播解说)/.test(intentForBgm))) {
+    resolvedNarrationMode = 'subtitle-mv'
+  } else if (wantsBeatSyncCoder && resolvedBgmMode === 'uploaded' && resolvedNarrationMode === 'tts') {
     resolvedNarrationMode = 'tts-beat-sync'
   }
-  const enableBeatSync = beatSync !== undefined ? Boolean(beatSync) : (wantsBeatSyncCoder || resolvedBgmMode === 'uploaded' || resolvedNarrationMode !== 'tts')
+  const enableBeatSync =
+    beatSync !== undefined
+      ? Boolean(beatSync)
+      : (wantsBeatSyncCoder || wantsPureMusicCoder || resolvedBgmMode === 'uploaded' || resolvedNarrationMode !== 'tts' || resolvedGenre === 'history-theater' || resolvedGenre === 'mv-lyric')
 
   let analyzedBgmMeta = existingScript?.bgm?.analyzed ? existingScript.bgm : null
   const pickedUploadBgm = uploadedBgmPath || existingScript?.bgm?.uploadedPath || importedMusic[0]?.path || ''

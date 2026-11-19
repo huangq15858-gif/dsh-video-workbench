@@ -23,6 +23,133 @@ import {
   runCommandRedirected,
   writeScriptJson,
 } from '../shared/index.js'
+import { resolveTtsEngineSpec } from './tts-config.js'
+
+function resolveConfiguredTtsRoots() {
+  loadEnv()
+  let idxRoot = resolveEnvPath('INDEXTTS_ROOT', '')
+  let gptRoot = resolveEnvPath('GPTVOICE_ROOT', '')
+  try {
+    const idxSpec = resolveTtsEngineSpec('indextts25')
+    const idx2Spec = resolveTtsEngineSpec('indextts2')
+    const gptSpec = resolveTtsEngineSpec('gptvoice')
+    if (idxSpec?.rootDir && existsSync(idxSpec.rootDir)) idxRoot = idxSpec.rootDir
+    else if (idx2Spec?.rootDir && existsSync(idx2Spec.rootDir)) idxRoot = idx2Spec.rootDir
+    if (gptSpec?.rootDir && existsSync(gptSpec.rootDir)) gptRoot = gptSpec.rootDir
+  } catch {}
+  return { idxRoot, gptRoot }
+}
+
+/**
+ * Guarantee `<idxRoot>/voices/` exists and at least one real 24kHz WAV reference speaker prompt
+ * is available on disk so brand-new IndexTTS-2.5 / IndexTTS-2 / GPT-SoVITS installs NEVER fail
+ * on first click due to missing `voices/` directory or empty speaker references.
+ */
+export async function ensureDefaultReferenceVoices({ idxRoot: explicitIdxRoot = '', gptRoot: explicitGptRoot = '' } = {}) {
+  const roots = resolveConfiguredTtsRoots()
+  const idxRoot = explicitIdxRoot || roots.idxRoot
+  const gptRoot = explicitGptRoot || roots.gptRoot
+  const created = []
+
+  if (idxRoot && existsSync(idxRoot)) {
+    const voicesDir = join(idxRoot, 'voices')
+    if (!existsSync(voicesDir)) {
+      try {
+        mkdirSync(voicesDir, { recursive: true })
+      } catch {}
+    }
+  }
+
+  const packsBuiltinDir = join(getVoicePacksDir(), 'builtin')
+  mkdirSync(packsBuiltinDir, { recursive: true })
+
+  // Check if any usable WAV already exists in builtin/ or idxRoot/voices or idxRoot/examples
+  const probeDirs = [
+    packsBuiltinDir,
+    ...(idxRoot && existsSync(idxRoot) ? [join(idxRoot, 'voices'), join(idxRoot, 'examples'), join(idxRoot, 'prompts')] : []),
+    ...(gptRoot && existsSync(gptRoot) ? [join(gptRoot, 'voices'), join(gptRoot, 'reference_audio')] : []),
+  ].filter((d) => d && existsSync(d))
+
+  const existingWavs = []
+  for (const d of probeDirs) {
+    try {
+      for (const fn of readdirSync(d)) {
+        if (/\.(wav|mp3|flac)$/i.test(fn)) {
+          const full = join(d, fn)
+          if (statSync(full).size >= 4096) existingWavs.push(full)
+        }
+      }
+    } catch {}
+  }
+
+  if (existingWavs.length > 0) {
+    // Ensure <idxRoot>/voices has at least one wav if empty
+    if (idxRoot && existsSync(join(idxRoot, 'voices'))) {
+      try {
+        const hasAnyInVoices = readdirSync(join(idxRoot, 'voices')).some((f) => /\.(wav|mp3|flac)$/i.test(f))
+        if (!hasAnyInVoices) {
+          const dst = join(idxRoot, 'voices', basename(existingWavs[0]))
+          copyFileSync(existingWavs[0], dst)
+          created.push(dst)
+        }
+      } catch {}
+    }
+    return { ok: true, refPath: existingWavs[0], created, existingCount: existingWavs.length }
+  }
+
+  // Synthesize crisp 24kHz default Chinese reference speaker WAV via Windows SAPI (zero GPU, built into Windows 10/11)
+  const targetRefWav = join(packsBuiltinDir, '女主播-默认参考音色.wav')
+  const promptText = '大家好，欢迎使用视频创作工作台，这是一段清晰纯净的默认中文播报参考音色。'
+  if (process.platform === 'win32') {
+    const { ffmpeg } = resolveBinaries()
+    const rawTmp = join(packsBuiltinDir, `_sapi_seed_${Date.now()}.wav`)
+    const b64Text = Buffer.from(promptText, 'utf8').toString('base64')
+    const b64Out = Buffer.from(rawTmp, 'utf8').toString('base64')
+    const psScript = [
+      'Add-Type -AssemblyName System.Speech',
+      '$synth = New-Object System.Speech.Synthesis.SpeechSynthesizer',
+      `$text = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String('${b64Text}'))`,
+      `$out = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String('${b64Out}'))`,
+      '$zh = $synth.GetInstalledVoices() | Where-Object { $_.Enabled -and $_.VoiceInfo.Culture.Name -like "zh*" }',
+      'if ($zh) { $synth.SelectVoice(($zh | Select-Object -First 1).VoiceInfo.Name) }',
+      '$synth.Rate = 0',
+      '$synth.SetOutputToWaveFile($out)',
+      '$synth.Speak($text)',
+      '$synth.Dispose()',
+    ].join('; ')
+    try {
+      const r = await runCommandRedirected(
+        'powershell.exe',
+        ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', psScript],
+        { timeoutMs: 25_000 },
+      )
+      if (r.code === 0 && existsSync(rawTmp) && statSync(rawTmp).size > 2000) {
+        const conv = await runCommandRedirected(
+          ffmpeg,
+          ['-y', '-i', rawTmp, '-ar', '24000', '-ac', '1', '-c:a', 'pcm_s16le', targetRefWav],
+          { timeoutMs: 25_000 },
+        )
+        try { rmSync(rawTmp, { force: true }) } catch {}
+        if (conv.code === 0 && existsSync(targetRefWav)) {
+          created.push(targetRefWav)
+          if (idxRoot && existsSync(idxRoot)) {
+            const idxVoices = join(idxRoot, 'voices')
+            mkdirSync(idxVoices, { recursive: true })
+            const mirrored = join(idxVoices, '女主播-默认参考音色.wav')
+            if (!existsSync(mirrored)) {
+              copyFileSync(targetRefWav, mirrored)
+              created.push(mirrored)
+            }
+          }
+          return { ok: true, refPath: targetRefWav, promptText, created, existingCount: 1 }
+        }
+      }
+    } catch {}
+    try { rmSync(rawTmp, { force: true }) } catch {}
+  }
+
+  return { ok: false, refPath: '', created, existingCount: 0 }
+}
 
 const VOICE_FILENAME_PRESETS = {
   '女主播': {
@@ -465,7 +592,7 @@ export function getVoiceCatalog() {
   const packsDir = getVoicePacksDir()
   const catalogPath = join(packsDir, 'catalog.json')
   const examplePath = join(packsDir, 'catalog.example.json')
-  const idxRoot = resolveEnvPath('INDEXTTS_ROOT', '')
+  const { idxRoot, gptRoot } = resolveConfiguredTtsRoots()
   const hasInferV25 = Boolean(idxRoot && existsSync(join(idxRoot, 'indextts', 'infer_v2_5.py')))
   const supportsLegacyPt =
     String(process.env.DEFAULT_TTS_ENGINE || 'indextts25').trim().toLowerCase() === 'indextts2' && !hasInferV25
@@ -530,9 +657,26 @@ export function getVoiceCatalog() {
   }
 
   const scanDirs = new Set()
-  if (idxRoot && existsSync(join(idxRoot, 'voices'))) {
-    scanDirs.add(join(idxRoot, 'voices'))
+  if (idxRoot && existsSync(idxRoot)) {
+    const idxVoicesDir = join(idxRoot, 'voices')
+    if (!existsSync(idxVoicesDir)) {
+      try { mkdirSync(idxVoicesDir, { recursive: true }) } catch {}
+    }
+    for (const sub of ['voices', 'examples', 'prompts', 'reference_audio', 'assets']) {
+      const cand = join(idxRoot, sub)
+      if (existsSync(cand)) scanDirs.add(cand)
+    }
   }
+  if (gptRoot && existsSync(gptRoot)) {
+    for (const sub of ['voices', 'reference_audio', 'examples', 'prompts']) {
+      const cand = join(gptRoot, sub)
+      if (existsSync(cand)) scanDirs.add(cand)
+    }
+  }
+  const builtinPacksDir = join(packsDir, 'builtin')
+  if (existsSync(builtinPacksDir)) scanDirs.add(builtinPacksDir)
+  const importedPacksDir = join(packsDir, 'imported')
+  if (existsSync(importedPacksDir)) scanDirs.add(importedPacksDir)
   const extraRaw = process.env.EXTRA_VOICE_SCAN_DIRS || ''
   for (const part of extraRaw.split(';').map((s) => s.trim()).filter(Boolean)) {
     const abs = isAbsolute(part) ? part : resolve(REPO_ROOT, part)

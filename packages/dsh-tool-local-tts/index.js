@@ -18,6 +18,7 @@ import {
 import {
   castVoicesWithLlm,
   cloneRecordedVoice,
+  ensureDefaultReferenceVoices,
   findBestAvailableWavVoice,
   getVoiceCatalog,
   importVoicePack,
@@ -26,6 +27,11 @@ import {
   syncVoiceLibraryJson,
 } from './voice-manager.js'
 import { ensureTtsServer, getTtsServerHealth } from './tts-server-manager.js'
+import {
+  getTtsInstallerCatalog,
+  installTtsEngine,
+  TTS_INSTALLER_PACKAGES,
+} from './tts-installer.js'
 import {
   addOrUpdateCustomTtsEngine,
   BUILTIN_TTS_ENGINES,
@@ -42,6 +48,7 @@ import {
 export {
   castVoicesWithLlm,
   cloneRecordedVoice,
+  ensureDefaultReferenceVoices,
   getVoiceCatalog,
   importVoicePack,
   matchAllScenesInScript,
@@ -49,6 +56,9 @@ export {
   syncVoiceLibraryJson,
   ensureTtsServer,
   getTtsServerHealth,
+  getTtsInstallerCatalog,
+  installTtsEngine,
+  TTS_INSTALLER_PACKAGES,
   loadTtsConfig,
   saveTtsConfig,
   setActiveTtsEngine,
@@ -453,6 +463,19 @@ export async function executeGenerateSpeech(args = {}) {
         ? engineSpec.rootDir || resolveEnvPath('GPTVOICE_ROOT', '')
         : engineSpec.rootDir || resolveEnvPath('INDEXTTS_ROOT', '')
 
+    // Zero-friction fresh-install guard: auto-create <engineRoot>/voices/ and seed a default speaker WAV if none exist
+    if (!refAudio || !existsSync(refAudio)) {
+      try {
+        const seeded = await ensureDefaultReferenceVoices({
+          idxRoot: engineSpec.kind === 'gptvoice' ? '' : engineRoot,
+          gptRoot: engineSpec.kind === 'gptvoice' ? engineRoot : '',
+        })
+        if (seeded?.refPath && existsSync(seeded.refPath)) {
+          refAudio = seeded.refPath
+        }
+      } catch {}
+    }
+
     // Ensure / reuse persistent server for IndexTTS-2.5/2 (or check/start GPT-SoVITS if root configured)
     if (engineSpec.kind !== 'gptvoice' && !allowPlaceholder) {
       await ensureTtsServer({ engineId: engineSpec.id })
@@ -485,7 +508,7 @@ export async function executeGenerateSpeech(args = {}) {
       '--prompt-text', resolvedPromptText,
       '--endpoint', endpoint,
       '--engine-root', engineRoot,
-      '--fallback-ref', fallbackRef || '',
+      '--fallback-ref', fallbackRef || refAudio || '',
     ]
     if (allowDirectPython) {
       bridgeArgs.push('--allow-direct-python')
@@ -494,7 +517,10 @@ export async function executeGenerateSpeech(args = {}) {
       bridgeArgs.push('--allow-placeholder')
     }
 
-    const synthResult = await runCommandRedirected(pythonBin, bridgeArgs, { timeoutMs: 420_000 })
+    const synthResult = await runCommandRedirected(pythonBin, bridgeArgs, {
+      timeoutMs: 420_000,
+      env: { ...process.env, PYTHONUTF8: '1', PYTHONIOENCODING: 'utf-8' },
+    })
     if (synthResult.code !== 0 || !existsSync(absOutputPath)) {
       let msg = synthResult.stderr || synthResult.stdout
       try {
