@@ -2085,7 +2085,129 @@ export const BATCH_01_SCENES: Record<string, React.FC<CustomSceneProps>> = {
     throw new Error(`Freeform fallback SceneStage safety failed: lint=${JSON.stringify(ffLint.errors)}, tsc=${JSON.stringify(ffTsc.errors)}`)
   }
   console.log(
-    `[17/17] v0.3.5 Open Genre Pass-Through (genreLabel='${customGenreSel.label}') & Freeform-Stage Zero-Cage Verified (Tier1+Tier2 + TSX Fallback tsc/lint PASS)!`,
+    `[17/18] v0.3.5 Open Genre Pass-Through (genreLabel='${customGenreSel.label}') & Freeform-Stage Zero-Cage Verified (Tier1+Tier2 + TSX Fallback tsc/lint PASS)!`,
+  )
+
+  // 18. v0.3.6 Pixel-Exact FocusShot Coordinate Engine, Multimodal Vision Grounding (4 Wire Protocols), Sidecar Anchors & Anti-PPT Video Preservation
+  const { callLlmChat: callVisionLlm } = await import('../packages/dsh-tool-media/llm-client.js')
+  const { groundVisualAssets: groundTestAssets, buildMediaDimsMap: buildTestDimsMap } = await import('../packages/dsh-tool-media/vision-grounding.js')
+
+  // 18a. Verify multimodal image payload encoding across ALL 4 wire protocols
+  const capturedPayloads = {}
+  const testTinyPngB64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg=='
+  for (const proto of ['openai-completions', 'openai-responses', 'anthropic-messages', 'gemini-native']) {
+    await callVisionLlm({
+      overrideConfig: {
+        mode: 'custom',
+        provider: 'custom',
+        format: proto,
+        baseUrl: proto === 'gemini-native' ? 'https://mock-vision.invalid/v1beta' : 'https://mock-vision.invalid/v1',
+        apiKey: 'mock-vision-key',
+        model: 'mock-vision-v1',
+      },
+      messages: [
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: 'locate button' },
+            { type: 'image', mimeType: 'image/png', base64: testTinyPngB64 },
+          ],
+        },
+      ],
+      fetchImpl: async (_url, init) => {
+        capturedPayloads[proto] = JSON.parse(init.body)
+        if (proto === 'anthropic-messages') {
+          return new Response(JSON.stringify({ content: [{ type: 'text', text: '{"ok":true}' }] }), { status: 200 })
+        }
+        if (proto === 'openai-responses') {
+          return new Response(JSON.stringify({ output_text: '{"ok":true}' }), { status: 200 })
+        }
+        if (proto === 'gemini-native') {
+          return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: '{"ok":true}' }] } }] }), { status: 200 })
+        }
+        return new Response(JSON.stringify({ choices: [{ message: { content: '{"ok":true}' } }] }), { status: 200 })
+      },
+    })
+  }
+  const mmOpenAiChat = capturedPayloads['openai-completions']?.messages?.find((m) => m.role === 'user')?.content
+  const mmOpenAiResp = capturedPayloads['openai-responses']?.input?.[0]?.content
+  const mmAnthropic = capturedPayloads['anthropic-messages']?.messages?.[0]?.content
+  const mmGemini = capturedPayloads['gemini-native']?.contents?.[0]?.parts
+  if (
+    !Array.isArray(mmOpenAiChat) || !mmOpenAiChat.some((p) => p.type === 'image_url' && p.image_url?.url?.includes(testTinyPngB64)) ||
+    !Array.isArray(mmOpenAiResp) || !mmOpenAiResp.some((p) => p.type === 'input_image' && p.image_url?.includes(testTinyPngB64)) ||
+    !Array.isArray(mmAnthropic) || !mmAnthropic.some((p) => p.type === 'image' && p.source?.data === testTinyPngB64) ||
+    !Array.isArray(mmGemini) || !mmGemini.some((p) => p.inlineData?.data === testTinyPngB64)
+  ) {
+    throw new Error(`Multimodal vision encoding failed across 4 protocols: ${JSON.stringify(capturedPayloads)}`)
+  }
+
+  // 18b. Sidecar DOM *.anchors.json + Vision LLM fallback + Top-bar fy=0.032 NOT clamped + Video clips NEVER receive fake cursors
+  const tmpV036Proj = join(REPO_ROOT, '.tmp', 'v036-ui-grounding')
+  rmSync(tmpV036Proj, { recursive: true, force: true })
+  mkdirSync(join(tmpV036Proj, 'uploads'), { recursive: true })
+  const rawPngShot = join(tmpV036Proj, 'uploads', '01a-ui-topbar-shot.png')
+  const rawMp4Rec = join(tmpV036Proj, 'uploads', '02-ui-demo-recording.mp4')
+  await runCommandRedirected(bins.ffmpeg, ['-y', '-f', 'lavfi', '-i', 'color=c=0xF8FAFC:s=1920x1080', '-frames:v', '1', rawPngShot], { timeoutMs: 15_000 })
+  await runCommandRedirected(bins.ffmpeg, ['-y', '-f', 'lavfi', '-i', 'color=c=0xF1F5F9:s=1920x1080:r=30', '-t', '1.5', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', rawMp4Rec], { timeoutMs: 20_000 })
+  writeFileSync(
+    join(tmpV036Proj, 'uploads', '01a-ui-topbar-shot.anchors.json'),
+    JSON.stringify({
+      visualSummary: '亮色工作台顶栏与工程切换入口',
+      uiAnchors: [{ label: '切换或管理视频工程', fx: 0.255, fy: 0.032, fw: 0.14, fh: 0.038, kind: 'button' }],
+    }),
+    'utf8',
+  )
+  await importAssets({ projectDir: tmpV036Proj, sources: [rawPngShot, rawMp4Rec] })
+  const groundRes = await groundTestAssets({ projectDir: tmpV036Proj, enableVision: false })
+  const groundedManifest = readAssets(tmpV036Proj)
+  const imgItem = groundedManifest.items.find((x) => x.type === 'image')
+  const vidItem = groundedManifest.items.find((x) => x.type === 'video')
+  const dimsMapV036 = buildTestDimsMap(groundedManifest)
+  const repairedAnchorPlan = repairFreeformPlan(
+    {
+      genre: 'ui-tutorial',
+      shots: [
+        { id: 'scene-01', title: '切换工程', narration: '点击左上角切换或管理视频工程。', clickLabel: '切换或管理视频工程', assetRefs: [imgItem.path] },
+        { id: 'scene-02', title: '动态录屏演示', narration: '真实操作录屏演示完整步骤。', clickLabel: '新建工程', assetRefs: [vidItem.path] },
+      ],
+    },
+    { topic: '工作台教程', genre: 'ui-tutorial', authoringMode: 'ai-coded', assetsManifest: groundedManifest },
+  )
+  const shot1Click = repairedAnchorPlan.shots[0]?.cursors?.find((c) => c.click)
+  const shot2Cursors = repairedAnchorPlan.shots[1]?.cursors
+  if (
+    !groundRes.ok ||
+    !imgItem?.uiAnchors?.length ||
+    !dimsMapV036[imgItem.path] ||
+    dimsMapV036[imgItem.path].width !== 1920 ||
+    Math.abs((shot1Click?.fx || 0) - 0.255) > 0.001 ||
+    Math.abs((shot1Click?.fy || 0) - 0.032) > 0.001 ||
+    (Array.isArray(shot2Cursors) && shot2Cursors.length > 0)
+  ) {
+    throw new Error(`v0.3.6 UI anchor & anti-fake-cursor verification failed: ${JSON.stringify({ shot1Click, shot2Cursors, dimsMapV036 })}`)
+  }
+
+  // 18c. Verify media-editor preserves UI video aspect + FocusShot containerType & __DSH_MEDIA_DIMS compile cleanly under tsc --noEmit
+  scaffoldVideoProject(tmpV036Proj, { title: 'v036 FocusShot Check', engine: 'remotion', style: 'tech' })
+  await executeCurateAndEditAssets({ projectDir: tmpV036Proj, aspectRatio: '16:9', quality: '1080p' })
+  const v036Script = JSON.parse(readFileSync(join(tmpV036Proj, 'script.json'), 'utf8'))
+  syncFreeformCode(tmpV036Proj, v036Script, { forceOverwrite: true })
+  const v036Shotcraft = readFileSync(join(tmpV036Proj, 'src', 'lib', 'shotcraft.tsx'), 'utf8')
+  const v036Comp = readFileSync(join(tmpV036Proj, 'src', 'VideoComposition.tsx'), 'utf8')
+  const v036Tsc = await runTypecheckOnProject(tmpV036Proj)
+  rmSync(tmpV036Proj, { recursive: true, force: true })
+  if (
+    !v036Shotcraft.includes('__DSH_MEDIA_DIMS') ||
+    !v036Shotcraft.includes('100cqw') ||
+    !v036Shotcraft.includes('M0 0 L8 25') ||
+    !v036Comp.includes('__DSH_MEDIA_DIMS') ||
+    !v036Tsc.ok
+  ) {
+    throw new Error(`v0.3.6 FocusShot/VideoComposition tsc check failed: tsc=${JSON.stringify(v036Tsc.errors)}`)
+  }
+  console.log(
+    `[18/18] v0.3.6 Pixel-Exact FocusShot (containerType 100cqw + __DSH_MEDIA_DIMS + exact 0,0 cursor tip) & 4-Protocol Multimodal Vision/Sidecar Grounding Verified (tsc 0 errors)!`,
   )
   console.log('======================================================================')
 }

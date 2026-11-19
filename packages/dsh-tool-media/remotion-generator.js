@@ -15,8 +15,10 @@ import {
   syncProjectFonts,
 } from '../shared/index.js'
 import { resolvePalette } from './html-generator.js'
+import { readAssets } from './asset-manager.js'
 import { writeNarrativeDioramaRemotionLib } from './narrative-diorama.js'
 import { writeShotcraftRemotionLib } from './shotcraft-lib.js'
+import { buildMediaDimsMap } from './vision-grounding.js'
 
 function syncFileToPublic(absSrc, absDest) {
   if (!existsSync(absSrc)) return
@@ -94,6 +96,7 @@ export function writeRemotionProjectFiles(projectDir, script, { rebuildTemplate 
   const safeZone = resolveSafeZoneSpec(script?.width || 1920, script?.height || 1080, script?.targetPlatform || 'universal')
   const complianceNotice = buildComplianceNoticeText(script)
   const hasMasterAudio = existsSync(join(absDir, 'public', 'master-audio.wav'))
+  const computedMediaDims = buildMediaDimsMap(readAssets(absDir), script)
 
   writeFileSync(
     join(srcDir, 'index.ts'),
@@ -161,6 +164,7 @@ import {
   AbsoluteFill,
   Audio,
   Easing,
+  Freeze,
   Img,
   OffthreadVideo,
   Sequence,
@@ -311,6 +315,8 @@ const MediaTile: React.FC<{
   scaleBoost?: number;
   fitMode?: 'cover' | 'contain';
 }> = ({ media, progress, isBlur, scaleBoost = 1, fitMode = 'cover' }) => {
+  const localF = useCurrentFrame();
+  const { fps: tileFps } = useVideoConfig();
   if (!media?.path) return null;
   const rel = String(media.path).replace(/^\\/+/, '').replace(/\\\\/g, '/');
   const motion = media.motion || 'zoom-in';
@@ -337,6 +343,16 @@ const MediaTile: React.FC<{
     filter: isBlur ? 'blur(26px) brightness(0.32) saturate(1.25)' : undefined,
   };
   if (isVid) {
+    const regMap: Record<string, any> = (globalThis as any).__DSH_MEDIA_DIMS || {};
+    const clipSec = Number(media.durationSec || regMap[rel]?.durationSec || 0);
+    const safeEndF = clipSec > 0.2 ? Math.max(4, Math.floor((clipSec - 0.14) * Math.max(1, tileFps || 30))) : 0;
+    if (safeEndF > 0 && localF >= safeEndF) {
+      return (
+        <Freeze frame={Math.max(0, safeEndF - 1)}>
+          <OffthreadVideo src={staticFile(rel)} style={style} muted />
+        </Freeze>
+      );
+    }
     return <OffthreadVideo src={staticFile(rel)} style={style} muted />;
   }
   return <Img src={staticFile(rel)} style={style} />;
@@ -1592,6 +1608,7 @@ export const VideoComposition: React.FC = () => {
   const isPortrait = width < height;
   const sData: any = scriptData;
   (globalThis as any).__DSH_LOW_SPEC_SAFE = Boolean(sData?.lowSpecSafe);
+  (globalThis as any).__DSH_MEDIA_DIMS = { ...${JSON.stringify(computedMediaDims)}, ...(sData?.mediaDims || {}) };
   const scenes: any[] = Array.isArray(sData.scenes) ? sData.scenes : [];
   const subtitles: any[] = Array.isArray(sData.subtitles) ? sData.subtitles : [];
   const beats: number[] = Array.isArray(sData.bgm?.beats) ? sData.bgm.beats : [];

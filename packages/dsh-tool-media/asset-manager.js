@@ -360,6 +360,29 @@ export async function importAssets({ projectDir, sources, onProgress } = {}) {
       }
     }
 
+    let sidecarAnchors = null
+    if (type === 'image' || type === 'video') {
+      const sidecarCandidates = [
+        `${file}.anchors.json`,
+        join(dirname(file), `${basename(file, ext)}.anchors.json`),
+      ]
+      for (const scPath of sidecarCandidates) {
+        if (!existsSync(scPath)) continue
+        try {
+          const parsedSc = JSON.parse(readFileSync(scPath, 'utf8'))
+          const rawA = Array.isArray(parsedSc) ? parsedSc : parsedSc?.uiAnchors || parsedSc?.anchors
+          if (Array.isArray(rawA) && rawA.length > 0) {
+            sidecarAnchors = {
+              uiAnchors: rawA.slice(0, 24),
+              visualSummary: typeof parsedSc?.visualSummary === 'string' ? parsedSc.visualSummary.trim().slice(0, 260) : '',
+              actions: Array.isArray(parsedSc?.actions) ? parsedSc.actions : undefined,
+            }
+            break
+          }
+        } catch {}
+      }
+    }
+
     const item = {
       id,
       type,
@@ -380,6 +403,14 @@ export async function importAssets({ projectDir, sources, onProgress } = {}) {
       placement: how,
       sourceKey,
       description: '',
+      ...(sidecarAnchors
+        ? {
+            uiAnchors: sidecarAnchors.uiAnchors,
+            visualSummary: sidecarAnchors.visualSummary || '',
+            ...(sidecarAnchors.actions ? { actions: sidecarAnchors.actions } : {}),
+            anchorSource: 'dom-sidecar',
+          }
+        : {}),
     }
     manifest.items.push(item)
     byHash.set(sourceKey, item)
@@ -443,7 +474,7 @@ export function updateAsset(projectDir, assetId, patch = {}) {
   const manifest = readAssets(projectDir)
   const it = manifest.items.find((x) => x.id === assetId)
   if (!it) throw new Error(`Asset not found: ${assetId}`)
-  for (const k of ['description', 'role', 'name']) if (patch[k] !== undefined) it[k] = patch[k]
+  for (const k of ['description', 'role', 'name', 'uiAnchors', 'visualSummary', 'anchorSource']) if (patch[k] !== undefined) it[k] = patch[k]
   writeAssets(projectDir, manifest)
   return it
 }

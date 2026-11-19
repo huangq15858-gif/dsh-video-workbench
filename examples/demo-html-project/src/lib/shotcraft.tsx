@@ -7,6 +7,7 @@ import React, { useEffect, useLayoutEffect, useRef } from 'react'
 import {
   AbsoluteFill,
   Easing,
+  Freeze,
   Img,
   OffthreadVideo,
   interpolate,
@@ -502,18 +503,20 @@ export const AppWindow: React.FC<{
 
 export const HotspotMark: React.FC<{
   item: HotspotMarkItem
+  zoomScale?: number
   accentColor?: string
   goldColor?: string
-}> = ({ item, accentColor = '#45D1B2', goldColor = '#F6BA6F' }) => {
+}> = ({ item, zoomScale = 1, accentColor = '#45D1B2', goldColor = '#F6BA6F' }) => {
   const frame = useCurrentFrame()
   const { fps } = useVideoConfig()
   const startF = Math.max(0, Number(item.startFrame || 6))
   const sp = spring({ frame: Math.max(0, frame - startF), fps, config: { damping: 14, stiffness: 200 } })
   if (frame < startF) return null
   const col = item.tone === 'gold' ? goldColor : accentColor
-  const pulse = 0.72 + 0.28 * Math.sin((frame - startF) * 0.22)
-  const wPct = Math.max(3, Number(item.fw ?? item.w ?? 0.18) * 100)
-  const hPct = Math.max(3, Number(item.fh ?? item.h ?? 0.12) * 100)
+  const pulse = 0.78 + 0.22 * Math.sin((frame - startF) * 0.22)
+  const invZ = 1 / Math.max(1, Number(zoomScale) || 1)
+  const wPct = Math.max(3, Number(item.fw ?? item.w ?? 0.14) * 100)
+  const hPct = Math.max(3, Number(item.fh ?? item.h ?? 0.08) * 100)
   const rawL = item.fx == null && item.x != null ? Number(item.x) * 100 : Number(item.fx ?? 0.5) * 100 - wPct / 2
   const rawT = item.fy == null && item.y != null ? Number(item.y) * 100 : Number(item.fy ?? 0.5) * 100 - hPct / 2
   const lPct = Math.max(0, Math.min(100 - wPct, rawL))
@@ -527,11 +530,12 @@ export const HotspotMark: React.FC<{
         top: `${tPct.toFixed(2)}%`,
         width: `${wPct.toFixed(2)}%`,
         height: `${hPct.toFixed(2)}%`,
-        borderRadius: item.shape === 'ring' ? 999 : 12,
-        border: `2.5px solid ${col}`,
-        boxShadow: `0 0 0 4px rgba(0,0,0,0.35), 0 0 24px ${col}88`,
+        borderRadius: item.shape === 'ring' ? 999 : Math.max(6, Math.round(12 * invZ)),
+        border: `${Math.max(1.5, 2.8 * invZ).toFixed(2)}px solid ${col}`,
+        background: `${col}18`,
+        boxShadow: `0 0 0 ${Math.max(2, 4 * invZ).toFixed(1)}px rgba(15,23,42,0.18), 0 0 20px ${col}66`,
         opacity: interpolate(sp, [0, 1], [0, pulse]),
-        transform: `scale(${interpolate(sp, [0, 1], [1.18, 1])})`,
+        transform: `scale(${interpolate(sp, [0, 1], [1.12, 1])})`,
         pointerEvents: 'none',
         zIndex: 15,
       }}
@@ -541,18 +545,19 @@ export const HotspotMark: React.FC<{
           style={{
             position: 'absolute',
             left: '50%',
-            ...(placeBelow ? { top: 'calc(100% + 8px)' } : { bottom: 'calc(100% + 8px)' }),
-            transform: 'translateX(-50%)',
+            ...(placeBelow ? { top: 'calc(100% + 6px)' } : { bottom: 'calc(100% + 6px)' }),
+            transform: `translateX(-50%) scale(${invZ.toFixed(3)})`,
+            transformOrigin: placeBelow ? 'top center' : 'bottom center',
             whiteSpace: 'nowrap',
             padding: '5px 12px',
             borderRadius: 999,
-            background: 'rgba(6, 14, 14, 0.92)',
+            background: 'rgba(15, 23, 42, 0.92)',
             border: `1.5px solid ${col}`,
             color: '#F8FAFC',
             fontFamily: FONT_SANS,
-            fontSize: 16,
+            fontSize: 15,
             fontWeight: 800,
-            boxShadow: '0 8px 20px rgba(0,0,0,0.55)',
+            boxShadow: '0 8px 20px rgba(15,23,42,0.35)',
           }}
         >
           {item.label}
@@ -570,6 +575,8 @@ export const FocusShot: React.FC<{
   mediaWidth?: number
   mediaHeight?: number
   fitMode?: 'contain' | 'cover'
+  playbackRate?: number
+  startFrom?: number
   accentColor?: string
   goldColor?: string
 }> = ({
@@ -580,6 +587,8 @@ export const FocusShot: React.FC<{
   mediaWidth = 0,
   mediaHeight = 0,
   fitMode = 'contain',
+  playbackRate = 1,
+  startFrom = 0,
   accentColor = '#45D1B2',
   goldColor = '#F6BA6F',
 }) => {
@@ -587,6 +596,14 @@ export const FocusShot: React.FC<{
   const { durationInFrames, fps } = useVideoConfig()
   const durSec = Math.max(1, durationInFrames / Math.max(1, fps || 30))
   const resolvedMediaUrl = resolveStaticSrc(src)
+  const cleanLookupKey = String(src || '').replace(/^\.?[\\/]+/, '').replace(/\\/g, '/')
+  const dimsRegistry: Record<string, { width?: number; height?: number; durationSec?: number }> = (globalThis as any).__DSH_MEDIA_DIMS || {}
+  const regEntry = dimsRegistry[cleanLookupKey] || dimsRegistry[cleanLookupKey.replace(/^public\//, '')] || null
+  const effW = Number(mediaWidth) > 0 ? Number(mediaWidth) : Number(regEntry?.width || 0)
+  const effH = Number(mediaHeight) > 0 ? Number(mediaHeight) : Number(regEntry?.height || 0)
+  const clipDurSec = Number(regEntry?.durationSec || 0)
+  const safeVidEndFrame = clipDurSec > 0.2 ? Math.max(4, Math.floor(((clipDurSec - 0.14) * Math.max(1, fps || 30)) / Math.max(0.25, Number(playbackRate) || 1))) : 0
+
   const p = Math.min(1, frame / Math.max(1, durationInFrames - 1))
   const maxCamT = Array.isArray(cams)
     ? Math.max(0, ...cams.map((k: any) => Number(k?.t ?? k?.at ?? 0)).filter(Number.isFinite))
@@ -615,14 +632,14 @@ export const FocusShot: React.FC<{
       : Number.isFinite(Number(r.s))
         ? Number(r.s)
         : 1.0
-    return { t: tVal, fx: fxVal, fy: fyVal, z: Math.max(0.5, zVal) }
+    return { t: tVal, fx: fxVal, fy: fyVal, z: Math.max(1.0, zVal) }
   }
   const rawArr = Array.isArray(cams) ? cams.map((k, ki) => normKey(k, ki, cams.length)) : []
   const keys = rawArr.length >= 2
     ? [...rawArr].sort((a, b) => a.t - b.t)
     : rawArr.length === 1
       ? [rawArr[0], { ...rawArr[0], t: 1 }]
-      : [{ t: 0, fx: 0.5, fy: 0.5, z: 1.0 }, { t: 1, fx: 0.5, fy: 0.5, z: 1.06 }]
+      : [{ t: 0, fx: 0.5, fy: 0.5, z: 1.0 }, { t: 1, fx: 0.5, fy: 0.5, z: 1.04 }]
 
   let fx = keys[0].fx
   let fy = keys[0].fy
@@ -642,43 +659,59 @@ export const FocusShot: React.FC<{
       fx = b.fx; fy = b.fy; z = b.z
     }
   }
-  const tx = Math.max(1 - z, Math.min(0, 0.5 - fx * z)) * 100
-  const ty = Math.max(1 - z, Math.min(0, 0.5 - fy * z)) * 100
+  // Exact center-origin clamped pan math: focal point (fx, fy) in [0..1] media space maps cleanly to viewport center
+  // with zero blank margins and 1:1 coordinate lock between <Img>/<OffthreadVideo>, <HotspotMark> and <InteractiveCursor>.
+  const maxPan = Math.max(0, (z - 1) / 2)
+  const dxPct = Math.max(-maxPan, Math.min(maxPan, (0.5 - fx) * z)) * 100
+  const dyPct = Math.max(-maxPan, Math.min(maxPan, (0.5 - fy) * z)) * 100
   const isVid = /\.(mp4|mov|webm|mkv)$/i.test(String(src || ''))
-  const hasAspect = Number(mediaWidth) > 0 && Number(mediaHeight) > 0
-  const stageStyle: React.CSSProperties = hasAspect
-    ? {
-        position: 'relative',
-        aspectRatio: `${Number(mediaWidth)} / ${Number(mediaHeight)}`,
-        maxWidth: '100%',
-        maxHeight: '100%',
-        height: '100%',
-        width: 'auto',
-        margin: 'auto',
-        transformOrigin: '0 0',
-        transform: `translate(${tx.toFixed(3)}%, ${ty.toFixed(3)}%) scale(${z.toFixed(4)})`,
-      }
+  const hasAspect = effW > 0 && effH > 0
+  const ratio = hasAspect ? effW / effH : 16 / 9
+  const aspectBoxStyle: React.CSSProperties = hasAspect
+    ? fitMode === 'cover'
+      ? {
+          position: 'relative',
+          flexShrink: 0,
+          width: `max(100cqw, calc(100cqh * ${ratio.toFixed(6)}))`,
+          height: `max(100cqh, calc(100cqw / ${ratio.toFixed(6)}))`,
+          transformOrigin: '50% 50%',
+          transform: `translate(${dxPct.toFixed(3)}%, ${dyPct.toFixed(3)}%) scale(${z.toFixed(4)})`,
+        }
+      : {
+          position: 'relative',
+          flexShrink: 0,
+          width: `min(100cqw, calc(100cqh * ${ratio.toFixed(6)}))`,
+          height: `min(100cqh, calc(100cqw / ${ratio.toFixed(6)}))`,
+          transformOrigin: '50% 50%',
+          transform: `translate(${dxPct.toFixed(3)}%, ${dyPct.toFixed(3)}%) scale(${z.toFixed(4)})`,
+        }
     : {
         position: 'relative',
         width: '100%',
         height: '100%',
-        transformOrigin: '0 0',
-        transform: `translate(${tx.toFixed(3)}%, ${ty.toFixed(3)}%) scale(${z.toFixed(4)})`,
+        transformOrigin: '50% 50%',
+        transform: `translate(${dxPct.toFixed(3)}%, ${dyPct.toFixed(3)}%) scale(${z.toFixed(4)})`,
       }
   const imgFit = hasAspect ? 'fill' : fitMode
 
   return (
-    <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
-      <div style={stageStyle}>
+    <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', containerType: 'size' as any }}>
+      <div style={aspectBoxStyle}>
         {resolvedMediaUrl ? (
           isVid ? (
-            <OffthreadVideo src={resolvedMediaUrl} style={{ width: '100%', height: '100%', objectFit: imgFit }} muted />
+            safeVidEndFrame > 0 && frame >= safeVidEndFrame ? (
+              <Freeze frame={Math.max(0, safeVidEndFrame - 1)}>
+                <OffthreadVideo src={resolvedMediaUrl} playbackRate={playbackRate} startFrom={startFrom} style={{ width: '100%', height: '100%', objectFit: imgFit, display: 'block' }} muted />
+              </Freeze>
+            ) : (
+              <OffthreadVideo src={resolvedMediaUrl} playbackRate={playbackRate} startFrom={startFrom} style={{ width: '100%', height: '100%', objectFit: imgFit, display: 'block' }} muted />
+            )
           ) : (
-            <Img src={resolvedMediaUrl} style={{ width: '100%', height: '100%', objectFit: imgFit }} />
+            <Img src={resolvedMediaUrl} style={{ width: '100%', height: '100%', objectFit: imgFit, display: 'block' }} />
           )
         ) : null}
         {(marks || []).map((m, mi) => (
-          <HotspotMark key={mi} item={m} accentColor={accentColor} goldColor={goldColor} />
+          <HotspotMark key={mi} item={m} zoomScale={z} accentColor={accentColor} goldColor={goldColor} />
         ))}
         {Array.isArray(cursors) && cursors.length > 0 ? (
           <InteractiveCursor cursors={cursors} zoomScale={z} accentColor={accentColor} goldColor={goldColor} />
@@ -749,13 +782,15 @@ export const InteractiveCursor: React.FC<{
   const invZ = 1 / Math.max(1, Number(zoomScale) || 1)
   const squeeze = activeClick && clickProgress < 0.35 ? 0.84 : 1.0
   const nearestLabel = [...list].reverse().find((c) => c.label && p >= c.t - 0.03 && p <= c.t + 0.34)?.label || ''
+  const flipLeft = cx > 0.7
+  const flipUp = cy > 0.78
 
   return (
     <div
       style={{
         position: 'absolute',
-        left: `${(cx * 100).toFixed(2)}%`,
-        top: `${(cy * 100).toFixed(2)}%`,
+        left: `${(cx * 100).toFixed(3)}%`,
+        top: `${(cy * 100).toFixed(3)}%`,
         transform: `scale(${(invZ * squeeze).toFixed(3)})`,
         transformOrigin: '0 0',
         pointerEvents: 'none',
@@ -793,15 +828,16 @@ export const InteractiveCursor: React.FC<{
           />
         </>
       ) : null}
-      <svg width={38} height={42} viewBox="0 0 28 32" style={{ filter: 'drop-shadow(0 4px 10px rgba(0,0,0,0.42))' }}>
-        <path d="M2 2 L10 26 L14 17 L24 16 Z" fill="#FFFFFF" stroke="#0F172A" strokeWidth={2.2} strokeLinejoin="round" />
+      {/* Exact (0,0) tip-anchored cursor SVG so arrow point touches exact (fx * W, fy * H) */}
+      <svg width={34} height={38} viewBox="0 0 28 32" style={{ display: 'block', overflow: 'visible', filter: 'drop-shadow(0 4px 10px rgba(15,23,42,0.45))' }}>
+        <path d="M0 0 L8 25 L12.5 16.5 L23 15.5 Z" fill="#FFFFFF" stroke="#0F172A" strokeWidth={2.2} strokeLinejoin="round" />
       </svg>
       {nearestLabel ? (
         <div
           style={{
             position: 'absolute',
-            left: 26,
-            top: 22,
+            ...(flipLeft ? { right: 16 } : { left: 24 }),
+            ...(flipUp ? { bottom: 14 } : { top: 22 }),
             whiteSpace: 'nowrap',
             padding: '5px 12px',
             borderRadius: 999,
@@ -829,6 +865,8 @@ export const UiDrawerSlide: React.FC<{
   camsBefore?: CamKeyframe[]
   camsAfter?: CamKeyframe[]
   cursors?: any[]
+  mediaWidth?: number
+  mediaHeight?: number
   accentColor?: string
   goldColor?: string
 }> = ({
@@ -839,29 +877,34 @@ export const UiDrawerSlide: React.FC<{
   camsBefore = [],
   camsAfter = [],
   cursors = [],
+  mediaWidth = 0,
+  mediaHeight = 0,
   accentColor = '#0284C7',
   goldColor = '#D97706',
 }) => {
   const frame = useCurrentFrame()
   const { fps, durationInFrames } = useVideoConfig()
   const triggerFrame = Math.round(revealAt * Math.max(1, durationInFrames - 1))
-  const revealSp = spring({ frame: Math.max(0, frame - triggerFrame), fps, config: { damping: 16, stiffness: 150 } })
-  const txPct = direction === 'left' ? (1 - revealSp) * -100 : direction === 'right' ? (1 - revealSp) * 100 : 0
-  const modalScale = direction === 'modal' ? 0.88 + 0.12 * revealSp : 1
-
-  return (
-    <div style={{ position: 'relative', width: '100%', height: '100%', overflow: 'hidden', background: '#F8FAFC' }}>
-      <FocusShot src={beforeSrc} cams={camsBefore} cursors={frame < triggerFrame ? cursors : []} accentColor={accentColor} goldColor={goldColor} />
-      {frame >= triggerFrame ? (
-        <div
-          style={{
+  const revealSp = spring({ frame: Math.max(0, frame - triggerFrame), fps, config: { damping: 16, stiffness: 165 } })
+  const wipePct = Math.max(0, Math.min(100, (1 - revealSp) * 100))
+  const afterOverlayStyle: React.CSSProperties =
+    direction === 'left'
+      ? { position: 'absolute', inset: 0, clipPath: `inset(0 ${wipePct.toFixed(2)}% 0 0)` }
+      : direction === 'right'
+        ? { position: 'absolute', inset: 0, clipPath: `inset(0 0 0 ${wipePct.toFixed(2)}%)` }
+        : {
             position: 'absolute',
             inset: 0,
             opacity: revealSp,
-            transform: `translateX(${txPct.toFixed(2)}%) scale(${modalScale.toFixed(4)})`,
-          }}
-        >
-          <FocusShot src={afterSrc} cams={camsAfter} cursors={cursors} accentColor={accentColor} goldColor={goldColor} />
+            transform: `scale(${(0.95 + 0.05 * revealSp).toFixed(4)})`,
+          }
+
+  return (
+    <div style={{ position: 'relative', width: '100%', height: '100%', overflow: 'hidden', background: '#F8FAFC' }}>
+      <FocusShot src={beforeSrc} cams={camsBefore} cursors={frame < triggerFrame ? cursors : []} mediaWidth={mediaWidth} mediaHeight={mediaHeight} accentColor={accentColor} goldColor={goldColor} />
+      {frame >= triggerFrame ? (
+        <div style={afterOverlayStyle}>
+          <FocusShot src={afterSrc} cams={camsAfter} cursors={cursors} mediaWidth={mediaWidth} mediaHeight={mediaHeight} accentColor={accentColor} goldColor={goldColor} />
         </div>
       ) : null}
     </div>

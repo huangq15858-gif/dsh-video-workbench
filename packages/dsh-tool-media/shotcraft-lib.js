@@ -21,6 +21,7 @@ import React, { useEffect, useLayoutEffect, useRef } from 'react'
 import {
   AbsoluteFill,
   Easing,
+  Freeze,
   Img,
   OffthreadVideo,
   interpolate,
@@ -516,18 +517,20 @@ export const AppWindow: React.FC<{
 
 export const HotspotMark: React.FC<{
   item: HotspotMarkItem
+  zoomScale?: number
   accentColor?: string
   goldColor?: string
-}> = ({ item, accentColor = '#45D1B2', goldColor = '#F6BA6F' }) => {
+}> = ({ item, zoomScale = 1, accentColor = '#45D1B2', goldColor = '#F6BA6F' }) => {
   const frame = useCurrentFrame()
   const { fps } = useVideoConfig()
   const startF = Math.max(0, Number(item.startFrame || 6))
   const sp = spring({ frame: Math.max(0, frame - startF), fps, config: { damping: 14, stiffness: 200 } })
   if (frame < startF) return null
   const col = item.tone === 'gold' ? goldColor : accentColor
-  const pulse = 0.72 + 0.28 * Math.sin((frame - startF) * 0.22)
-  const wPct = Math.max(3, Number(item.fw ?? item.w ?? 0.18) * 100)
-  const hPct = Math.max(3, Number(item.fh ?? item.h ?? 0.12) * 100)
+  const pulse = 0.78 + 0.22 * Math.sin((frame - startF) * 0.22)
+  const invZ = 1 / Math.max(1, Number(zoomScale) || 1)
+  const wPct = Math.max(3, Number(item.fw ?? item.w ?? 0.14) * 100)
+  const hPct = Math.max(3, Number(item.fh ?? item.h ?? 0.08) * 100)
   const rawL = item.fx == null && item.x != null ? Number(item.x) * 100 : Number(item.fx ?? 0.5) * 100 - wPct / 2
   const rawT = item.fy == null && item.y != null ? Number(item.y) * 100 : Number(item.fy ?? 0.5) * 100 - hPct / 2
   const lPct = Math.max(0, Math.min(100 - wPct, rawL))
@@ -541,11 +544,12 @@ export const HotspotMark: React.FC<{
         top: \`\${tPct.toFixed(2)}%\`,
         width: \`\${wPct.toFixed(2)}%\`,
         height: \`\${hPct.toFixed(2)}%\`,
-        borderRadius: item.shape === 'ring' ? 999 : 12,
-        border: \`2.5px solid \${col}\`,
-        boxShadow: \`0 0 0 4px rgba(0,0,0,0.35), 0 0 24px \${col}88\`,
+        borderRadius: item.shape === 'ring' ? 999 : Math.max(6, Math.round(12 * invZ)),
+        border: \`\${Math.max(1.5, 2.8 * invZ).toFixed(2)}px solid \${col}\`,
+        background: \`\${col}18\`,
+        boxShadow: \`0 0 0 \${Math.max(2, 4 * invZ).toFixed(1)}px rgba(15,23,42,0.18), 0 0 20px \${col}66\`,
         opacity: interpolate(sp, [0, 1], [0, pulse]),
-        transform: \`scale(\${interpolate(sp, [0, 1], [1.18, 1])})\`,
+        transform: \`scale(\${interpolate(sp, [0, 1], [1.12, 1])})\`,
         pointerEvents: 'none',
         zIndex: 15,
       }}
@@ -555,18 +559,19 @@ export const HotspotMark: React.FC<{
           style={{
             position: 'absolute',
             left: '50%',
-            ...(placeBelow ? { top: 'calc(100% + 8px)' } : { bottom: 'calc(100% + 8px)' }),
-            transform: 'translateX(-50%)',
+            ...(placeBelow ? { top: 'calc(100% + 6px)' } : { bottom: 'calc(100% + 6px)' }),
+            transform: \`translateX(-50%) scale(\${invZ.toFixed(3)})\`,
+            transformOrigin: placeBelow ? 'top center' : 'bottom center',
             whiteSpace: 'nowrap',
             padding: '5px 12px',
             borderRadius: 999,
-            background: 'rgba(6, 14, 14, 0.92)',
+            background: 'rgba(15, 23, 42, 0.92)',
             border: \`1.5px solid \${col}\`,
             color: '#F8FAFC',
             fontFamily: FONT_SANS,
-            fontSize: 16,
+            fontSize: 15,
             fontWeight: 800,
-            boxShadow: '0 8px 20px rgba(0,0,0,0.55)',
+            boxShadow: '0 8px 20px rgba(15,23,42,0.35)',
           }}
         >
           {item.label}
@@ -584,6 +589,8 @@ export const FocusShot: React.FC<{
   mediaWidth?: number
   mediaHeight?: number
   fitMode?: 'contain' | 'cover'
+  playbackRate?: number
+  startFrom?: number
   accentColor?: string
   goldColor?: string
 }> = ({
@@ -594,6 +601,8 @@ export const FocusShot: React.FC<{
   mediaWidth = 0,
   mediaHeight = 0,
   fitMode = 'contain',
+  playbackRate = 1,
+  startFrom = 0,
   accentColor = '#45D1B2',
   goldColor = '#F6BA6F',
 }) => {
@@ -601,6 +610,14 @@ export const FocusShot: React.FC<{
   const { durationInFrames, fps } = useVideoConfig()
   const durSec = Math.max(1, durationInFrames / Math.max(1, fps || 30))
   const resolvedMediaUrl = resolveStaticSrc(src)
+  const cleanLookupKey = String(src || '').replace(/^\\.?[\\\\/]+/, '').replace(/\\\\/g, '/')
+  const dimsRegistry: Record<string, { width?: number; height?: number; durationSec?: number }> = (globalThis as any).__DSH_MEDIA_DIMS || {}
+  const regEntry = dimsRegistry[cleanLookupKey] || dimsRegistry[cleanLookupKey.replace(/^public\\//, '')] || null
+  const effW = Number(mediaWidth) > 0 ? Number(mediaWidth) : Number(regEntry?.width || 0)
+  const effH = Number(mediaHeight) > 0 ? Number(mediaHeight) : Number(regEntry?.height || 0)
+  const clipDurSec = Number(regEntry?.durationSec || 0)
+  const safeVidEndFrame = clipDurSec > 0.2 ? Math.max(4, Math.floor(((clipDurSec - 0.14) * Math.max(1, fps || 30)) / Math.max(0.25, Number(playbackRate) || 1))) : 0
+
   const p = Math.min(1, frame / Math.max(1, durationInFrames - 1))
   const maxCamT = Array.isArray(cams)
     ? Math.max(0, ...cams.map((k: any) => Number(k?.t ?? k?.at ?? 0)).filter(Number.isFinite))
@@ -629,14 +646,14 @@ export const FocusShot: React.FC<{
       : Number.isFinite(Number(r.s))
         ? Number(r.s)
         : 1.0
-    return { t: tVal, fx: fxVal, fy: fyVal, z: Math.max(0.5, zVal) }
+    return { t: tVal, fx: fxVal, fy: fyVal, z: Math.max(1.0, zVal) }
   }
   const rawArr = Array.isArray(cams) ? cams.map((k, ki) => normKey(k, ki, cams.length)) : []
   const keys = rawArr.length >= 2
     ? [...rawArr].sort((a, b) => a.t - b.t)
     : rawArr.length === 1
       ? [rawArr[0], { ...rawArr[0], t: 1 }]
-      : [{ t: 0, fx: 0.5, fy: 0.5, z: 1.0 }, { t: 1, fx: 0.5, fy: 0.5, z: 1.06 }]
+      : [{ t: 0, fx: 0.5, fy: 0.5, z: 1.0 }, { t: 1, fx: 0.5, fy: 0.5, z: 1.04 }]
 
   let fx = keys[0].fx
   let fy = keys[0].fy
@@ -656,43 +673,59 @@ export const FocusShot: React.FC<{
       fx = b.fx; fy = b.fy; z = b.z
     }
   }
-  const tx = Math.max(1 - z, Math.min(0, 0.5 - fx * z)) * 100
-  const ty = Math.max(1 - z, Math.min(0, 0.5 - fy * z)) * 100
+  // Exact center-origin clamped pan math: focal point (fx, fy) in [0..1] media space maps cleanly to viewport center
+  // with zero blank margins and 1:1 coordinate lock between <Img>/<OffthreadVideo>, <HotspotMark> and <InteractiveCursor>.
+  const maxPan = Math.max(0, (z - 1) / 2)
+  const dxPct = Math.max(-maxPan, Math.min(maxPan, (0.5 - fx) * z)) * 100
+  const dyPct = Math.max(-maxPan, Math.min(maxPan, (0.5 - fy) * z)) * 100
   const isVid = /\\.(mp4|mov|webm|mkv)$/i.test(String(src || ''))
-  const hasAspect = Number(mediaWidth) > 0 && Number(mediaHeight) > 0
-  const stageStyle: React.CSSProperties = hasAspect
-    ? {
-        position: 'relative',
-        aspectRatio: \`\${Number(mediaWidth)} / \${Number(mediaHeight)}\`,
-        maxWidth: '100%',
-        maxHeight: '100%',
-        height: '100%',
-        width: 'auto',
-        margin: 'auto',
-        transformOrigin: '0 0',
-        transform: \`translate(\${tx.toFixed(3)}%, \${ty.toFixed(3)}%) scale(\${z.toFixed(4)})\`,
-      }
+  const hasAspect = effW > 0 && effH > 0
+  const ratio = hasAspect ? effW / effH : 16 / 9
+  const aspectBoxStyle: React.CSSProperties = hasAspect
+    ? fitMode === 'cover'
+      ? {
+          position: 'relative',
+          flexShrink: 0,
+          width: \`max(100cqw, calc(100cqh * \${ratio.toFixed(6)}))\`,
+          height: \`max(100cqh, calc(100cqw / \${ratio.toFixed(6)}))\`,
+          transformOrigin: '50% 50%',
+          transform: \`translate(\${dxPct.toFixed(3)}%, \${dyPct.toFixed(3)}%) scale(\${z.toFixed(4)})\`,
+        }
+      : {
+          position: 'relative',
+          flexShrink: 0,
+          width: \`min(100cqw, calc(100cqh * \${ratio.toFixed(6)}))\`,
+          height: \`min(100cqh, calc(100cqw / \${ratio.toFixed(6)}))\`,
+          transformOrigin: '50% 50%',
+          transform: \`translate(\${dxPct.toFixed(3)}%, \${dyPct.toFixed(3)}%) scale(\${z.toFixed(4)})\`,
+        }
     : {
         position: 'relative',
         width: '100%',
         height: '100%',
-        transformOrigin: '0 0',
-        transform: \`translate(\${tx.toFixed(3)}%, \${ty.toFixed(3)}%) scale(\${z.toFixed(4)})\`,
+        transformOrigin: '50% 50%',
+        transform: \`translate(\${dxPct.toFixed(3)}%, \${dyPct.toFixed(3)}%) scale(\${z.toFixed(4)})\`,
       }
   const imgFit = hasAspect ? 'fill' : fitMode
 
   return (
-    <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
-      <div style={stageStyle}>
+    <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', containerType: 'size' as any }}>
+      <div style={aspectBoxStyle}>
         {resolvedMediaUrl ? (
           isVid ? (
-            <OffthreadVideo src={resolvedMediaUrl} style={{ width: '100%', height: '100%', objectFit: imgFit }} muted />
+            safeVidEndFrame > 0 && frame >= safeVidEndFrame ? (
+              <Freeze frame={Math.max(0, safeVidEndFrame - 1)}>
+                <OffthreadVideo src={resolvedMediaUrl} playbackRate={playbackRate} startFrom={startFrom} style={{ width: '100%', height: '100%', objectFit: imgFit, display: 'block' }} muted />
+              </Freeze>
+            ) : (
+              <OffthreadVideo src={resolvedMediaUrl} playbackRate={playbackRate} startFrom={startFrom} style={{ width: '100%', height: '100%', objectFit: imgFit, display: 'block' }} muted />
+            )
           ) : (
-            <Img src={resolvedMediaUrl} style={{ width: '100%', height: '100%', objectFit: imgFit }} />
+            <Img src={resolvedMediaUrl} style={{ width: '100%', height: '100%', objectFit: imgFit, display: 'block' }} />
           )
         ) : null}
         {(marks || []).map((m, mi) => (
-          <HotspotMark key={mi} item={m} accentColor={accentColor} goldColor={goldColor} />
+          <HotspotMark key={mi} item={m} zoomScale={z} accentColor={accentColor} goldColor={goldColor} />
         ))}
         {Array.isArray(cursors) && cursors.length > 0 ? (
           <InteractiveCursor cursors={cursors} zoomScale={z} accentColor={accentColor} goldColor={goldColor} />
@@ -763,13 +796,15 @@ export const InteractiveCursor: React.FC<{
   const invZ = 1 / Math.max(1, Number(zoomScale) || 1)
   const squeeze = activeClick && clickProgress < 0.35 ? 0.84 : 1.0
   const nearestLabel = [...list].reverse().find((c) => c.label && p >= c.t - 0.03 && p <= c.t + 0.34)?.label || ''
+  const flipLeft = cx > 0.7
+  const flipUp = cy > 0.78
 
   return (
     <div
       style={{
         position: 'absolute',
-        left: \`\${(cx * 100).toFixed(2)}%\`,
-        top: \`\${(cy * 100).toFixed(2)}%\`,
+        left: \`\${(cx * 100).toFixed(3)}%\`,
+        top: \`\${(cy * 100).toFixed(3)}%\`,
         transform: \`scale(\${(invZ * squeeze).toFixed(3)})\`,
         transformOrigin: '0 0',
         pointerEvents: 'none',
@@ -807,15 +842,16 @@ export const InteractiveCursor: React.FC<{
           />
         </>
       ) : null}
-      <svg width={38} height={42} viewBox="0 0 28 32" style={{ filter: 'drop-shadow(0 4px 10px rgba(0,0,0,0.42))' }}>
-        <path d="M2 2 L10 26 L14 17 L24 16 Z" fill="#FFFFFF" stroke="#0F172A" strokeWidth={2.2} strokeLinejoin="round" />
+      {/* Exact (0,0) tip-anchored cursor SVG so arrow point touches exact (fx * W, fy * H) */}
+      <svg width={34} height={38} viewBox="0 0 28 32" style={{ display: 'block', overflow: 'visible', filter: 'drop-shadow(0 4px 10px rgba(15,23,42,0.45))' }}>
+        <path d="M0 0 L8 25 L12.5 16.5 L23 15.5 Z" fill="#FFFFFF" stroke="#0F172A" strokeWidth={2.2} strokeLinejoin="round" />
       </svg>
       {nearestLabel ? (
         <div
           style={{
             position: 'absolute',
-            left: 26,
-            top: 22,
+            ...(flipLeft ? { right: 16 } : { left: 24 }),
+            ...(flipUp ? { bottom: 14 } : { top: 22 }),
             whiteSpace: 'nowrap',
             padding: '5px 12px',
             borderRadius: 999,
@@ -843,6 +879,8 @@ export const UiDrawerSlide: React.FC<{
   camsBefore?: CamKeyframe[]
   camsAfter?: CamKeyframe[]
   cursors?: any[]
+  mediaWidth?: number
+  mediaHeight?: number
   accentColor?: string
   goldColor?: string
 }> = ({
@@ -853,29 +891,34 @@ export const UiDrawerSlide: React.FC<{
   camsBefore = [],
   camsAfter = [],
   cursors = [],
+  mediaWidth = 0,
+  mediaHeight = 0,
   accentColor = '#0284C7',
   goldColor = '#D97706',
 }) => {
   const frame = useCurrentFrame()
   const { fps, durationInFrames } = useVideoConfig()
   const triggerFrame = Math.round(revealAt * Math.max(1, durationInFrames - 1))
-  const revealSp = spring({ frame: Math.max(0, frame - triggerFrame), fps, config: { damping: 16, stiffness: 150 } })
-  const txPct = direction === 'left' ? (1 - revealSp) * -100 : direction === 'right' ? (1 - revealSp) * 100 : 0
-  const modalScale = direction === 'modal' ? 0.88 + 0.12 * revealSp : 1
-
-  return (
-    <div style={{ position: 'relative', width: '100%', height: '100%', overflow: 'hidden', background: '#F8FAFC' }}>
-      <FocusShot src={beforeSrc} cams={camsBefore} cursors={frame < triggerFrame ? cursors : []} accentColor={accentColor} goldColor={goldColor} />
-      {frame >= triggerFrame ? (
-        <div
-          style={{
+  const revealSp = spring({ frame: Math.max(0, frame - triggerFrame), fps, config: { damping: 16, stiffness: 165 } })
+  const wipePct = Math.max(0, Math.min(100, (1 - revealSp) * 100))
+  const afterOverlayStyle: React.CSSProperties =
+    direction === 'left'
+      ? { position: 'absolute', inset: 0, clipPath: \`inset(0 \${wipePct.toFixed(2)}% 0 0)\` }
+      : direction === 'right'
+        ? { position: 'absolute', inset: 0, clipPath: \`inset(0 0 0 \${wipePct.toFixed(2)}%)\` }
+        : {
             position: 'absolute',
             inset: 0,
             opacity: revealSp,
-            transform: \`translateX(\${txPct.toFixed(2)}%) scale(\${modalScale.toFixed(4)})\`,
-          }}
-        >
-          <FocusShot src={afterSrc} cams={camsAfter} cursors={cursors} accentColor={accentColor} goldColor={goldColor} />
+            transform: \`scale(\${(0.95 + 0.05 * revealSp).toFixed(4)})\`,
+          }
+
+  return (
+    <div style={{ position: 'relative', width: '100%', height: '100%', overflow: 'hidden', background: '#F8FAFC' }}>
+      <FocusShot src={beforeSrc} cams={camsBefore} cursors={frame < triggerFrame ? cursors : []} mediaWidth={mediaWidth} mediaHeight={mediaHeight} accentColor={accentColor} goldColor={goldColor} />
+      {frame >= triggerFrame ? (
+        <div style={afterOverlayStyle}>
+          <FocusShot src={afterSrc} cams={camsAfter} cursors={cursors} mediaWidth={mediaWidth} mediaHeight={mediaHeight} accentColor={accentColor} goldColor={goldColor} />
         </div>
       ) : null}
     </div>
@@ -3506,6 +3549,7 @@ export function buildBatchedRemotionScenesPrompt({
   directorNotes = '',
   contentOutline = [],
   bgmMeta = null,
+  assetCatalog = [],
 }) {
   const isPortrait = width < height
   const pad = String(batchIndex + 1).padStart(2, '0')
@@ -3531,10 +3575,17 @@ ${genreGuide}
 ${directorNotes ? `\n【导演备注（仅供你编排视觉/运镜/动效时参考，严禁把“本视频要求…”之类指令原文写入画面或字幕！）】：\n${String(directorNotes).slice(0, 900)}` : ''}
 
 === 按题材定制的自由创作规范（当前画布 ${width}x${height} ${isPortrait ? '竖屏构图' : '横屏构图'}） ===
-${isUiTutorial ? `- **【软件实操教程专属视觉规范 —— 严禁暗黑缩略图与静态 PPT！】**：
-  1. **高对比度亮色专业画布**：如果导入截图为亮色清晰画面，外背景严禁做成乌漆麻黑的压抑黑底框！应采用干净明快的 Studio 亮灰/冷白光影渐变底（如 \`#F1F5F9 -> #E2E8F0\`）搭配深色精炼字号，或全幅贴合 \`AppWindow theme="light"\`（占画面 **85%–98%** 空间，绝不缩小塞进黑框！）。
-  2. **局部特写推拉运镜 (Zoom 1.8x ~ 2.5x)**：讲解点击具体按钮、抽屉或设置项时，\`<FocusShot src={...} cams={...} marks={...} cursors={...} />\` 必须从 \`z: 1.02\` 平滑推近放大至 \`z: 1.85 ~ 2.45\` 聚焦到目标按钮/下拉框区域，让观众连按钮上的每个汉字都清晰锐利！
-  3. **真实 UI 交互动画（拒绝静态死图！）**：每一步都要使用 \`cursors\`（例如 \`[{ t: 0.1, fx: 0.5, fy: 0.5 }, { t: 0.45, fx: targetX, fy: targetY, click: true, label: '点击...' }]\`）触发光标沿曲线滑入 + 点击波纹扩散；涉及抽屉/弹窗前后状态切换时使用 \`<UiDrawerSlide beforeSrc={...} afterSrc={...} revealAt={0.42} direction="left|modal" />\`（当 \`publicAssetFiles.length >= 2\` 时衔接前后截图状态！）；涉及输入框打字时用 \`<UiTypingOverlay text={...} />\`；角标仅用轻量悬浮玻璃标签（别用大块黑侧栏挤占截图面积）！` : `- **【按题材定制视觉语言 —— 严禁千篇一律用同一套科技风卡片！】**：
+${isUiTutorial ? `- **【软件实操教程专属视觉规范 —— 零错位精准点击 · 坚决拒绝 PPT 死图！】**：
+  1. **全幅高清亮色沉浸呈现（绝不做成左图右字 PPT 幻灯片！）**：
+     - 严禁把截图/录屏缩小塞在左半边、右边列大段要点文字（那是劣质 PPT！）；严禁在真实软件界面上贴大块白色悬浮便签或假输入框遮挡真实软件界面！
+     - 真实软件操作视频或亮色高清截图必须全幅展开（占画面 **92%–100%** 空间，顶部仅留极简清爽 42px 细条或左上角单枚胶囊章标，外背景用极净 Studio 亮灰渐变 \`#F8FAFC -> #E2E8F0\`，绝不做暗黑黑框或左右大白边）。
+  2. **像素级精确坐标铁律（严禁瞎猜 \`fx / fy\`！）**：
+     - 凡使用 \`<FocusShot src={...} mediaWidth={...} mediaHeight={...} cams={...} marks={...} cursors={...} />\`，所有 \`cams\`、\`marks\`、\`cursors\` 的归一化坐标 \`(fx, fy)\` **必须严格取自 \`assetCatalog\` 里该素材对应的 \`uiAnchors\` 真实坐标（或场景传入的已核验坐标）**！
+     - 严禁凭空猜测按钮位置导致鼠标点在空白处或错位按钮上！如果某个元素在 \`uiAnchors\` 中没有对应坐标，请只做柔和区域推镜或整体呈现，**宁可不画假光标，也绝不能点错位置**！
+  3. **真实录屏视频优先 + 动态推镜特写（拒绝静态死图！）**：
+     - 若本幕 \`publicAssetFiles\` 含真实操作录屏视频（\`.mp4\` / \`.webm\`）：直接传入 \`<FocusShot src={videoPath} cams={...} marks={...} />\` 全幅清晰播放真实动态交互（真实鼠标移动、抽屉展开、真实打字、开关切换），配合平滑 1.4x–2.0x 镜头推近追踪操作区；**切勿在已有真实光标动作的录屏视频上再叠加第二个假 \`cursors\`！**
+     - 若本幕为静态高清截图：使用 \`assetCatalog[].uiAnchors\` 精准坐标执行 1.7x–2.2x 局部推镜 + 精准光标点击涟漪；有前后两张状态截图时使用 \`<UiDrawerSlide beforeSrc={...} afterSrc={...} revealAt={0.38} direction="left|modal" />\` 平滑展开抽屉或弹窗！
+  4. **无重叠安全区**：右上角 \`top: 0~74px, right: 0~240px\` 严格留给合规角标 \`<AIBadge>\`，严禁在右上角放任何章节文字；底部 \`118px\` 留给字幕条！` : `- **【按题材定制视觉语言 —— 严禁千篇一律用同一套科技风卡片！】**：
   * **历史剧场 / 纪实传奇 (\`history-theater\`)**：使用水墨留白/宣纸/玄金卷轴色调，用动态 \`<svg>\` 画山河等高线、弯曲行军路线（\`pathLength=1\` + \`strokeDashoffset\` + 发光箭矢行进）、朱砂印章、纵排/衬线大字（\`FONT_SERIF\`）、以及 \`<FreeformThreeStage>\` 营造沙场火星/尘烟粒子或青铜战鼓三维光影！严禁使用现代 SaaS 科技仪表盘卡片！
   * **火柴人 / 角色动画 (\`stickman-story\`)**：手写多关节层级 SVG 骨骼动画（头/躯干/大臂/小臂/大腿/小腿用嵌套 \`<g transform="translate(...) rotate(...)">\` 受 \`spring\` 与正弦周期驱动跑跳指点）、手绘对话气泡、拟声字、速度线与道具！
   * **代码动画 / 科普原理 / 数据故事 (\`code-animation\` / \`science-explainer\` / \`data-story\`)**：用 \`<FreeformThreeStage buildScene={(api) => { ... }} />\` 手写专属 3D 模型（行星轨道、分子球棍、芯片层爆炸拆解、神经网络连线、柱状矩阵），叠加实时生长的 SVG K线/雷达/脑图/代码流/公式推导与 \`computeBeatSpring\`！
@@ -3545,7 +3596,7 @@ ${isUiTutorial ? `- **【软件实操教程专属视觉规范 —— 严禁暗�
   \`buildSmoothSvgPath(points)\`、\`describeSvgArc(cx, cy, r, a0, a1)\`、\`computeBeatSpring(frame, fps, beats)\`、\`spring()\`、\`interpolate()\`。
 - **【防错位与安全留白规则】**：
   1. **每幕独立写专属视觉结构**：严禁定义单个全局函数套全批 6 个分镜仅替换右侧 3 行字；允许复用小型通用工具（如文字/粒子辅助），但主体构图与交互动效必须随本幕台词与视觉蓝图显著变化！
-  2. 屏幕底部 \`${isPortrait ? 420 : 158}px\` 区域（Y > ${isPortrait ? Math.round(height - 440) : Math.round(height - 165)}）留给主合成器字幕条，右上角 \`top: 16~68px, right: 20~200px\` 预留给合规角标 \`<AIBadge>\`，切勿把角标文字放到右上角与它重叠！主要画面主体放在 Y = 50 ~ ${isPortrait ? 1400 : 880} 清晰区域内；严禁自行渲染底部大字幕或 Audio！
+  2. 屏幕底部 \`${isPortrait ? 420 : 158}px\` 区域（Y > ${isPortrait ? Math.round(height - 440) : Math.round(height - 165)}）留给主合成器字幕条，右上角 \`top: 16~68px, right: 20~200px\` 预留给合规角标 \`<AIBadge>\`，切勿把角标文字放到右上角与它重叠！若是软件教程/产品演示分镜，如需顶部步骤标题条，请使用 \`display:'flex', flexDirection:'column'\` 在 \`<FocusShot>\` 上方独立留出 \`48~56px\` 顶栏（并保留右侧 \`200px\` 给 \`<AIBadge>\`），切勿用 \`position:'absolute'\` 浮标压住软件自身的左上角导航栏！主要画面主体放在 Y = 50 ~ ${isPortrait ? 1400 : 880} 清晰区域内；严禁自行渲染底部大字幕或 Audio！
   3. 屏幕文字（title/highlights/标签/标注）必须全部使用**阿拉伯数字**（如 \`206年\`、\`3000人\`、\`8 GB\`），不要强行改写为中文数字，也不要带无意义双引号或“本视频要求…”字样！
 
 === 工程合规铁律（触犯即被沙箱打回！） ===
@@ -3561,7 +3612,7 @@ ${isUiTutorial ? `- **【软件实操教程专属视觉规范 —— 严禁暗�
 4. 严禁 Node 模块、\`eval\`、\`new Function\`、外网 URL、受限商用字体（微软雅黑/宋体/黑体）；只用 \`FONT_SANS\` / \`FONT_SERIF\` / \`FONT_MONO\`；\`<defs>\` 渐变/clipPath ID 必须拼接 \`\${idx}\` 唯一后缀！
 5. TypeScript strict 零错误（所有回调与字典加类型注解，\`publicAssetFiles\` 里的相对路径如 'assets/...' 只能给原生 \`<Img src={staticFile(p)} />\` 用；传给 \`<FocusShot src={p} />\`, \`<UiDrawerSlide beforeSrc={p} afterSrc={q} />\`, \`<AppWindow brandMark={p} />\` 时直接传原始相对字符串，**切勿再用 staticFile() 包一层**！\`cams\` 和 \`cursors\` 的时间戳 \`t\` 统一用 \`0..1\` 归一化进度）；
    可用导入（严格以此为准）：
-   - \`from 'remotion'\`: \`AbsoluteFill, Easing, Img, interpolate, random, spring, staticFile, useCurrentFrame, useVideoConfig\`
+   - \`from 'remotion'\`: \`AbsoluteFill, Easing, Img, OffthreadVideo, interpolate, random, spring, staticFile, useCurrentFrame, useVideoConfig\`
    - \`from '../lib/shotcraft'\`: \`FreeformThreeStage, FreeformThreeApi, ThreeCyberStage, THREE, ThreeCanvas, THREE_STAGE_PRESETS, buildSmoothSvgPath, describeSvgArc, SvgArchitectureDiagram, HudDataDashboard, HudTelemetryOverlay, BeatSpringPhysicsRig, computeBeatSpring, CameraRig, AnimatedRoutePath, ParallaxHorizon, AppWindow, FocusShot, InteractiveCursor, UiDrawerSlide, UiTypingOverlay, BeforeAfterWipe, MetricPanel, DigitRoll, ClipCard, PageCam, computeBeatPulse, FONT_SANS, FONT_MONO, FONT_SERIF\`
    - \`from '../lib/narrative-diorama'\`: \`NarrativeDioramaStage, HeroWarriorFigure, StrategicMapStage, SlashBurstOverlay, CalligraphyColumnPanel, MOOD_PRESETS, computeBeatSignal\``
 
@@ -3578,6 +3629,7 @@ ${isUiTutorial ? `- **【软件实操教程专属视觉规范 —— 严禁暗�
       bgmSummary: bgmMeta?.analyzed
         ? { bpm: bgmMeta.bpm, beatSec: bgmMeta.beatSec, drops: (bgmMeta.drops || []).slice(0, 8) }
         : undefined,
+      assetCatalog: Array.isArray(assetCatalog) && assetCatalog.length > 0 ? assetCatalog : undefined,
       scenes: batchScenes.map((s) => ({
         id: s.id,
         index: s.index,

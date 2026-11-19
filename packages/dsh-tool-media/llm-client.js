@@ -963,15 +963,53 @@ export async function callLlmChat({
 
   let headers
   let payload
-  const sysParts = [system, ...messages.filter((m) => m?.role === 'system').map((m) => m.content)]
+  const sysParts = [system, ...messages.filter((m) => m?.role === 'system').map((m) => (typeof m.content === 'string' ? m.content : ''))]
     .filter(Boolean)
     .join('\n\n')
+  const normalizeMsgParts = (rawContent) => {
+    if (Array.isArray(rawContent)) {
+      const parts = []
+      for (const item of rawContent) {
+        if (!item) continue
+        if (typeof item === 'string') {
+          if (item) parts.push({ type: 'text', text: item })
+        } else if (item.type === 'text' && item.text) {
+          parts.push({ type: 'text', text: String(item.text) })
+        } else if (item.type === 'image' && item.base64) {
+          parts.push({
+            type: 'image',
+            mimeType: String(item.mimeType || 'image/jpeg'),
+            base64: String(item.base64).replace(/^data:[^;]+;base64,/, ''),
+          })
+        } else if (item.type === 'image_url' && item.image_url?.url) {
+          const urlStr = String(item.image_url.url)
+          const dm = /^data:([^;]+);base64,(.+)$/i.exec(urlStr)
+          if (dm) {
+            parts.push({ type: 'image', mimeType: dm[1], base64: dm[2] })
+          } else {
+            parts.push({ type: 'image_url', url: urlStr })
+          }
+        }
+      }
+      return parts
+    }
+    const text = String(rawContent || '')
+    return text ? [{ type: 'text', text }] : []
+  }
+
   const chatMsgs = messages
     .filter((m) => m && m.role !== 'system' && m.content)
-    .map((m) => ({
-      role: m.role === 'assistant' ? 'assistant' : 'user',
-      content: String(m.content || ''),
-    }))
+    .map((m) => {
+      const role = m.role === 'assistant' ? 'assistant' : 'user'
+      const parts = normalizeMsgParts(m.content)
+      const isPlainText = parts.every((p) => p.type === 'text')
+      return {
+        role,
+        parts,
+        textOnly: isPlainText ? parts.map((p) => p.text).join('\n') : null,
+      }
+    })
+    .filter((m) => m.parts.length > 0)
 
   if (protocol === 'anthropic-messages') {
     headers = {
@@ -984,7 +1022,17 @@ export async function callLlmChat({
       max_tokens: maxOut,
       temperature: temp,
       ...(sysParts ? { system: sysParts } : {}),
-      messages: chatMsgs,
+      messages: chatMsgs.map((m) => ({
+        role: m.role,
+        content:
+          m.textOnly !== null
+            ? m.textOnly
+            : m.parts.map((p) =>
+                p.type === 'image'
+                  ? { type: 'image', source: { type: 'base64', media_type: p.mimeType, data: p.base64 } }
+                  : { type: 'text', text: p.text || '' },
+              ),
+      })),
     }
   } else if (protocol === 'openai-responses') {
     headers = {
@@ -998,7 +1046,13 @@ export async function callLlmChat({
       input: chatMsgs.map((m) => ({
         type: 'message',
         role: m.role,
-        content: [{ type: m.role === 'assistant' ? 'output_text' : 'input_text', text: m.content }],
+        content: m.parts.map((p) =>
+          p.type === 'image'
+            ? { type: 'input_image', image_url: `data:${p.mimeType};base64,${p.base64}` }
+            : p.type === 'image_url'
+              ? { type: 'input_image', image_url: p.url }
+              : { type: m.role === 'assistant' ? 'output_text' : 'input_text', text: p.text || '' },
+        ),
       })),
       max_output_tokens: maxOut,
     }
@@ -1011,7 +1065,11 @@ export async function callLlmChat({
       ...(sysParts ? { systemInstruction: { parts: [{ text: sysParts }] } } : {}),
       contents: chatMsgs.map((m) => ({
         role: m.role === 'assistant' ? 'model' : 'user',
-        parts: [{ text: m.content }],
+        parts: m.parts.map((p) =>
+          p.type === 'image'
+            ? { inlineData: { mimeType: p.mimeType, data: p.base64 } }
+            : { text: p.text || '' },
+        ),
       })),
       generationConfig: {
         temperature: temp,
@@ -1025,7 +1083,21 @@ export async function callLlmChat({
     }
     const normMsgs = []
     if (sysParts) normMsgs.push({ role: 'system', content: sysParts })
-    for (const m of chatMsgs) normMsgs.push(m)
+    for (const m of chatMsgs) {
+      normMsgs.push({
+        role: m.role,
+        content:
+          m.textOnly !== null
+            ? m.textOnly
+            : m.parts.map((p) =>
+                p.type === 'image'
+                  ? { type: 'image_url', image_url: { url: `data:${p.mimeType};base64,${p.base64}` } }
+                  : p.type === 'image_url'
+                    ? { type: 'image_url', image_url: { url: p.url } }
+                    : { type: 'text', text: p.text || '' },
+              ),
+      })
+    }
     payload = {
       model: cfg.model,
       messages: normMsgs,

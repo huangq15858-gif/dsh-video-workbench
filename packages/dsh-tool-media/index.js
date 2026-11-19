@@ -63,6 +63,7 @@ import {
   runSchemaDirectorWithDegradation,
   VALID_TRANSITIONS,
 } from './plan-schema.js'
+import { buildMediaDimsMap, groundVisualAssets, loadSidecarAnchors } from './vision-grounding.js'
 import { exportPublishPack } from './publish-pack.js'
 import { registerVendorClip, renderVendorClipIsolated } from './vendor-clip.js'
 
@@ -86,6 +87,9 @@ export {
   VALID_TRANSITIONS,
   normalizeTransitionKind,
   runSchemaDirectorWithDegradation,
+  groundVisualAssets,
+  loadSidecarAnchors,
+  buildMediaDimsMap,
   exportPublishPack,
   registerVendorClip,
   renderVendorClipIsolated,

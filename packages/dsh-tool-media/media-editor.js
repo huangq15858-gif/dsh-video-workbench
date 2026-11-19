@@ -11,6 +11,7 @@ import {
   writeScriptJson,
 } from '../shared/index.js'
 import { readAssets, writeAssets } from './asset-manager.js'
+import { buildMediaDimsMap } from './vision-grounding.js'
 
 const STYLE_COLOR_GRADE = Object.fromEntries(
   Object.entries(VIDEO_STYLES).map(([k, v]) => [k, v.colorGrade]),
@@ -99,18 +100,18 @@ export async function executeCurateAndEditAssets(options = {}) {
     const roleHint = `${item.role || ''} ${item.name || ''} ${item.originalName || ''} ${item.path || ''}`.toLowerCase()
     const iw = Number(item.width || 0)
     const ih = Number(item.height || 0)
-    const isUiHiResShot = /ui|screen|app|shot|drawer|modal|step|warroom|task|hardware|tts|llm|light|dark|studio|board|polish/i.test(roleHint)
+    const isUiHiResShot = /ui|screen|app|shot|drawer|modal|step|warroom|task|hardware|tts|llm|light|dark|studio|board|polish|record|demo|tutorial|walkthrough|capture/i.test(roleHint)
     const preserveAspect =
       item.fitMode === 'preserve' ||
       item.fitMode === 'contain' ||
+      isUiHiResShot ||
       (item.type === 'image' && (
-        isUiHiResShot ||
         /logo|brand|mark|comic|char|art|theme|compare|shelf|asset|render|export/.test(roleHint) ||
         (iw > 0 && ih > 0 && iw !== ih && Math.abs(iw / ih - targetW / targetH) > 0.04)
       ))
 
-    const maxPresW = isUiHiResShot ? Math.max(targetW * 2, 3840) : targetW
-    const maxPresH = isUiHiResShot ? Math.max(targetH * 2, 2160) : targetH
+    const maxPresW = item.type === 'image' && isUiHiResShot ? Math.max(targetW * 2, 3840) : targetW
+    const maxPresH = item.type === 'image' && isUiHiResShot ? Math.max(targetH * 2, 2160) : targetH
     const vfChain = preserveAspect
       ? [
           `scale='min(${maxPresW},iw)':'min(${maxPresH},ih)':force_original_aspect_ratio=decrease:flags=lanczos`,
@@ -177,11 +178,16 @@ export async function executeCurateAndEditAssets(options = {}) {
 
       const res = await runCommandRedirected(ffmpeg, ffArgs, { timeoutMs: 120_000, signal, onChild })
       if (res.code === 0 && existsSync(outAbs)) {
+        const vScaleDown = preserveAspect && iw > 0 && ih > 0 ? Math.min(1, maxPresW / iw, maxPresH / ih) : 1
+        const actualVW = preserveAspect && iw > 0 ? Math.ceil((iw * vScaleDown) / 2) * 2 : targetW
+        const actualVH = preserveAspect && ih > 0 ? Math.ceil((ih * vScaleDown) / 2) * 2 : targetH
         item.editedPath = outRel
         item.editedWebPath = `./${outRel}`
+        item.editedWidth = actualVW
+        item.editedHeight = actualVH
         item.editedSpec = {
-          width: targetW,
-          height: targetH,
+          width: actualVW,
+          height: actualVH,
           style: style || 'tech',
           clipSpeed: safeSpeed,
           trimSeconds: safeTrim,
@@ -194,31 +200,36 @@ export async function executeCurateAndEditAssets(options = {}) {
 
   writeAssets(absDir, manifest)
 
-  // Map edited paths onto script.json media entries if scenes exist
+  // Map edited paths, exact dimensions & UI anchors onto script.json media entries if scenes exist
   if (scriptObj && Array.isArray(scriptObj.scenes)) {
-    const editedByPath = new Map()
-    const editedById = new Map()
+    const itemByPath = new Map()
+    const itemById = new Map()
     for (const it of manifest.items || []) {
-      if (it.editedPath) {
-        editedByPath.set(it.path, it.editedPath)
-        editedById.set(it.id, it.editedPath)
-      }
+      if (it.path) itemByPath.set(it.path, it)
+      if (it.editedPath) itemByPath.set(it.editedPath, it)
+      if (it.id) itemById.set(it.id, it)
     }
     let updatedScenes = false
     for (const sc of scriptObj.scenes) {
       if (Array.isArray(sc.media)) {
         for (const m of sc.media) {
-          const matched = (m.assetId && editedById.get(m.assetId)) || editedByPath.get(m.originalPath || m.path)
-          if (matched) {
+          const hit = (m.assetId && itemById.get(m.assetId)) || itemByPath.get(m.originalPath || m.path)
+          if (hit?.editedPath) {
             if (!m.originalPath) m.originalPath = m.path
-            m.path = matched
+            m.path = hit.editedPath
+            m.width = Number(hit.editedWidth || hit.width || m.width || 0)
+            m.height = Number(hit.editedHeight || hit.height || m.height || 0)
+            if (Number(hit.durationSec) > 0) m.durationSec = hit.durationSec
+            if (Array.isArray(hit.uiAnchors) && hit.uiAnchors.length > 0) m.uiAnchors = hit.uiAnchors
+            if (hit.visualSummary) m.visualSummary = hit.visualSummary
             updatedScenes = true
           }
         }
         sc.assetPaths = sc.media.map((x) => x.path).filter(Boolean)
       }
     }
-    if (updatedScenes) {
+    scriptObj.mediaDims = buildMediaDimsMap(manifest, scriptObj)
+    if (updatedScenes || Object.keys(scriptObj.mediaDims).length > 0) {
       writeScriptJson(absDir, scriptObj)
     }
   }

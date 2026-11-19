@@ -1,6 +1,6 @@
 {
   "name": "dsh-video-workbench",
-  "version": "0.3.5",
+  "version": "0.3.6",
   "description": "DeepSeek Harness 多智能体双引擎视频工作台：Opus 5.5 级无限制自由编程 (Freeform Three.js 3D + 动态 SVG + HUD + 节拍弹簧物理)、内置预设保底、48kHz 踩点混音与多引擎配音。",
   "license": "MIT",
   "author": "Merziller",

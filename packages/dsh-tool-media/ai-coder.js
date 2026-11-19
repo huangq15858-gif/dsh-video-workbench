@@ -42,6 +42,7 @@ import { buildRichHtmlVideo, resolvePalette } from './html-generator.js'
 import { callLlmChat, extractJsonFromLlmText, resolveLlmConfig } from './llm-client.js'
 import { writeNarrativeDioramaRemotionLib } from './narrative-diorama.js'
 import { syncRemotionPublicAssets, writeRemotionProjectFiles } from './remotion-generator.js'
+import { buildMediaDimsMap, groundVisualAssets } from './vision-grounding.js'
 import {
   buildBatchedRemotionScenesPrompt,
   buildDirectorPromptPackage,
@@ -408,9 +409,42 @@ export async function authorBatchedRemotionScenes({
 
   const scenesDir = join(absDir, 'src', 'scenes')
   mkdirSync(scenesDir, { recursive: true })
+  const batchAssetsManifest = readAssets(absDir)
+  lockedScript.mediaDims = buildMediaDimsMap(batchAssetsManifest, lockedScript)
   syncRemotionPublicAssets(absDir, lockedScript)
   writeShotcraftRemotionLib(absDir)
   writeNarrativeDioramaRemotionLib(absDir)
+
+  const manifestItems = Array.isArray(batchAssetsManifest?.items) ? batchAssetsManifest.items : []
+  const buildBatchAssetCatalog = (bScenes) => {
+    const usedPaths = new Set()
+    for (const sc of bScenes || []) {
+      for (const m of sc.media || []) {
+        if (m?.path) usedPaths.add(String(m.path).replace(/^\/+/, '').replace(/\\/g, '/'))
+        if (m?.originalPath) usedPaths.add(String(m.originalPath).replace(/^\/+/, '').replace(/\\/g, '/'))
+      }
+      for (const p of sc.assetPaths || []) {
+        if (p) usedPaths.add(String(p).replace(/^\/+/, '').replace(/\\/g, '/'))
+      }
+    }
+    const matched = manifestItems.filter((it) => {
+      if (it.type !== 'image' && it.type !== 'video') return false
+      const p1 = String(it.path || '').replace(/^\/+/, '').replace(/\\/g, '/')
+      const p2 = String(it.editedPath || '').replace(/^\/+/, '').replace(/\\/g, '/')
+      return usedPaths.size === 0 || usedPaths.has(p1) || (p2 && usedPaths.has(p2))
+    })
+    return matched.map((it) => ({
+      path: String(it.editedPath || it.path || '').replace(/^\/+/, '').replace(/\\/g, '/'),
+      originalPath: String(it.path || '').replace(/^\/+/, '').replace(/\\/g, '/'),
+      name: it.originalName || it.name,
+      type: it.type,
+      width: Number(it.editedWidth || it.width || 0),
+      height: Number(it.editedHeight || it.height || 0),
+      ...(Number(it.durationSec) > 0 ? { durationSec: it.durationSec } : {}),
+      ...(it.visualSummary ? { visualSummary: it.visualSummary } : {}),
+      ...(Array.isArray(it.uiAnchors) && it.uiAnchors.length > 0 ? { uiAnchors: it.uiAnchors.slice(0, 18) } : {}),
+    }))
+  }
 
   let completedCount = 0
   const hwBatchPolicy = resolveLowSpecPolicy({ repoRoot: REPO_ROOT })
@@ -438,6 +472,7 @@ export async function authorBatchedRemotionScenes({
         directorNotes: lockedScript.directorNotes || '',
         contentOutline: Array.isArray(lockedScript.contentOutline) ? lockedScript.contentOutline : [],
         bgmMeta: lockedScript.bgm,
+        assetCatalog: buildBatchAssetCatalog(item.batchScenes),
       })
       item.systemPrompt = pkg.system
       onProgress?.(
@@ -774,6 +809,17 @@ export async function runAiStudioPipeline(options = {}) {
   let plan = null
   let schemaMeta = null
 
+  if (visuals.length > 0) {
+    try {
+      await groundVisualAssets({
+        projectDir: absDir,
+        callLlmChatFn: llmCfg?.apiKey ? (p) => callLlmChat({ overrideConfig: llmCfg, fetchImpl, ...p }) : null,
+        enableVision: Boolean(llmCfg?.apiKey) && resolvedCreationMode !== 'schema-plan',
+      })
+    } catch {}
+  }
+  const groundedManifest = readAssets(absDir)
+
   if (resolvedCreationMode === 'schema-plan') {
     emit('architect', 14, '2/7 正在执行 Schema 分镜调度 (含 4 档强弱模型容错降级)...')
     const schemaRes = await runSchemaDirectorWithDegradation({
@@ -787,7 +833,7 @@ export async function runAiStudioPipeline(options = {}) {
       style: existingScript?.style || 'tech',
       targetPlatform: resolvedPlatform,
       scriptData: existingScript || {},
-      assetsManifest,
+      assetsManifest: groundedManifest,
       bgmMeta: analyzedBgmMeta,
       narrationMode: resolvedNarrationMode,
       pacingMode: pacingMode || existingScript?.pacingMode || 'auto',

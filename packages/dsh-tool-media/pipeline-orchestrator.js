@@ -46,6 +46,7 @@ import { callLlmChat, extractJsonFromLlmText, getSafeLlmConfigSummary } from './
 import { runSchemaDirectorWithDegradation } from './plan-schema.js'
 import { writeRemotionProjectFiles } from './remotion-generator.js'
 import { taskManager } from './task-manager.js'
+import { buildMediaDimsMap, groundVisualAssets } from './vision-grounding.js'
 
 /**
  * Normalize pipeline execution mode (`local-draft` / `draft` / `fast-draft` -> `fast-draft`).
@@ -297,7 +298,28 @@ async function executeMultiAgentRunner(run, helpers) {
         if (Number(spec.targetDurationSec) > 0) {
           curScript.totalDurationSec = Number(spec.targetDurationSec)
         }
+        // Ground visual assets with exact DOM sidecars (*.anchors.json) or multimodal Vision LLM coordinates
+        try {
+          const groundRes = await groundVisualAssets({
+            projectDir: absDir,
+            callLlmChatFn: (p) => callLlmChat({ ...p, signal }),
+            enableVision: mode === 'ai-coded' && llmSummary.configured,
+            signal,
+            onProgress: (pct, msg) => {
+              updateTask('t-director', {
+                status: 'running',
+                progress: Math.max(40, Math.min(54, Math.round(40 + pct * 0.14))),
+                message: msg,
+                log: false,
+              })
+            },
+          })
+          if (groundRes?.grounded > 0) {
+            appendLog('director', `已完成界面视觉坐标锚点定位：精确 DOM 侧车 ${groundRes.sidecarCount} 份 · 视觉识别 ${groundRes.visionCount} 份`)
+          }
+        } catch {}
         const assetsManifest = readAssets(absDir)
+        curScript.mediaDims = buildMediaDimsMap(assetsManifest, curScript)
         const schemaRes = await runSchemaDirectorWithDegradation({
           projectDir: absDir,
           topic: spec.topic || curScript.topic || curScript.title,
@@ -961,6 +983,7 @@ async function executeMultiAgentRunner(run, helpers) {
     })
 
     const curScript = readScriptJson(absDir).data
+    curScript.mediaDims = buildMediaDimsMap(readAssets(absDir), curScript)
     const enableAiCode = spec.aiAuthorCode !== undefined ? Boolean(spec.aiAuthorCode) : mode === 'ai-coded'
     if (enableAiCode && llmSummary.configured) {
       curScript.authoringMode = 'ai-coded'
@@ -1199,5 +1222,13 @@ export async function startPipelineBackground(spec = {}) {
 export async function runMultiAgentPipeline(spec = {}) {
   const run = createNormalizedPipelineRun(spec)
   const started = await taskManager.startRun(run.id, executeMultiAgentRunner)
-  return await started.promise
+  const completed = await started.promise
+  const summary = completed?.resultSummary || {}
+  return {
+    ...completed,
+    ok: completed?.status === 'completed' && summary?.ok !== false,
+    outputPath: summary?.outputPath || null,
+    snapshotPath: summary?.snapshotPath || null,
+    qa: summary?.qa || null,
+  }
 }

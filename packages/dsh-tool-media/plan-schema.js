@@ -535,31 +535,57 @@ export function repairPromoPlanRules(
     ).trim()
     const defaultRate = resolvedGenre === 'ui-tutorial' ? (idx === 0 || idx === rawShots.length - 1 ? 1.08 : 1.05) : isHistoricalTopic ? 0.98 : 1.04
 
-    const hasFocusPt = Number.isFinite(Number(s?.focusFx)) || Number.isFinite(Number(s?.focusFy))
-    const fFx = hasFocusPt ? Math.max(0.08, Math.min(0.92, Number(s?.focusFx ?? 0.5))) : 0.42
-    const fFy = hasFocusPt ? Math.max(0.08, Math.min(0.92, Number(s?.focusFy ?? 0.45))) : 0.36
+    const primaryRef = rawRefs[0] || ''
+    const primaryAsset = primaryRef
+      ? (assetsManifest?.items || []).find((it) => it.path === primaryRef || it.editedPath === primaryRef)
+      : null
+    const isPrimaryVideo =
+      /\.(mp4|mov|webm|mkv)$/i.test(primaryRef) || primaryAsset?.type === 'video'
+    const clickLabel = normalizeNumeralsForDisplay(stripMetaInstructions(String(s?.clickLabel || '').trim())).slice(0, 18)
+    const anchors = Array.isArray(primaryAsset?.uiAnchors) ? primaryAsset.uiAnchors : []
+    const findMatchingAnchor = (query) => {
+      const q = String(query || '').trim().toLowerCase()
+      if (!q || anchors.length === 0) return null
+      return (
+        anchors.find((a) => String(a.label || '').toLowerCase() === q) ||
+        anchors.find((a) => String(a.label || '').toLowerCase().includes(q) || q.includes(String(a.label || '').toLowerCase())) ||
+        null
+      )
+    }
+    const matchedAnchor = findMatchingAnchor(clickLabel) || findMatchingAnchor(s?.focusAnchor) || findMatchingAnchor(cleanShotTitle)
+    const rawHasFocusPt = Number.isFinite(Number(s?.focusFx)) && Number.isFinite(Number(s?.focusFy))
+    const hasExactAnchorOrFocus = Boolean(matchedAnchor || rawHasFocusPt)
+    const fFx = matchedAnchor
+      ? Number(matchedAnchor.fx)
+      : rawHasFocusPt
+        ? Math.max(0.015, Math.min(0.985, Number(s.focusFx)))
+        : 0.5
+    const fFy = matchedAnchor
+      ? Number(matchedAnchor.fy)
+      : rawHasFocusPt
+        ? Math.max(0.015, Math.min(0.985, Number(s.focusFy)))
+        : 0.5
     const synthCams =
       Array.isArray(s?.cams) && s.cams.length > 0
         ? s.cams
         : existingScenes[idx]?.cams?.length > 0
           ? existingScenes[idx].cams
-          : resolvedGenre === 'ui-tutorial' && rawRefs.length > 0
+          : resolvedGenre === 'ui-tutorial' && rawRefs.length > 0 && hasExactAnchorOrFocus
             ? [
-                { t: 0, fx: 0.5, fy: 0.48, z: 1.03 },
-                { t: 0.42, fx: fFx, fy: fFy, z: hasFocusPt ? 2.1 : 1.85 },
-                { t: 0.88, fx: fFx, fy: fFy, z: hasFocusPt ? 2.18 : 1.92 },
+                { t: 0, fx: 0.5, fy: 0.5, z: 1.0 },
+                { t: 0.35, fx: fFx, fy: fFy, z: isPrimaryVideo ? 1.45 : 1.95 },
+                { t: 0.88, fx: fFx, fy: fFy, z: isPrimaryVideo ? 1.52 : 2.05 },
               ]
             : undefined
-    const clickLabel = normalizeNumeralsForDisplay(stripMetaInstructions(String(s?.clickLabel || '').trim())).slice(0, 18)
     const synthCursors =
       Array.isArray(s?.cursors) && s.cursors.length > 0
         ? s.cursors
         : existingScenes[idx]?.cursors?.length > 0
           ? existingScenes[idx].cursors
-          : resolvedGenre === 'ui-tutorial' && rawRefs.length > 0 && (hasFocusPt || clickLabel)
+          : resolvedGenre === 'ui-tutorial' && !isPrimaryVideo && rawRefs.length > 0 && hasExactAnchorOrFocus && (clickLabel || matchedAnchor)
             ? [
-                { t: 0.08, fx: 0.52, fy: 0.54 },
-                { t: 0.45, fx: fFx, fy: fFy, click: true, label: clickLabel || cleanShotTitle.slice(0, 10) },
+                { t: 0.1, fx: Math.min(0.88, Math.max(0.12, fFx + (fFx > 0.5 ? -0.18 : 0.18))), fy: Math.min(0.88, Math.max(0.12, fFy + (fFy > 0.5 ? -0.16 : 0.16))) },
+                { t: 0.44, fx: fFx, fy: fFy, click: true, label: clickLabel || matchedAnchor?.label || '' },
               ]
             : undefined
 
@@ -826,9 +852,19 @@ export async function runSchemaDirectorWithDegradation({
           if (it.path) mediaDimMap.set(it.path, { width: Number(it.width || 0), height: Number(it.height || 0) })
           if (it.editedPath) mediaDimMap.set(it.editedPath, { width: Number(it.editedWidth || it.width || 0), height: Number(it.editedHeight || it.height || 0) })
         }
-        const mediaNames = (assetsManifest?.items || [])
+        const visualItemsCatalog = (assetsManifest?.items || [])
           .filter((it) => it.role !== 'music' && it.role !== 'sfx' && it.role !== 'note' && it.role !== 'brand_mark' && it.type !== 'audio')
-          .map((it) => it.path)
+          .map((it) => ({
+            path: it.path,
+            type: it.type,
+            name: it.originalName || it.name,
+            width: Number(it.editedWidth || it.width || 0),
+            height: Number(it.editedHeight || it.height || 0),
+            ...(Number(it.durationSec) > 0 ? { durationSec: it.durationSec } : {}),
+            ...(it.visualSummary ? { visualSummary: it.visualSummary } : {}),
+            ...(Array.isArray(it.uiAnchors) && it.uiAnchors.length > 0 ? { uiAnchors: it.uiAnchors.slice(0, 16) } : {}),
+          }))
+        const mediaNames = visualItemsCatalog.map((it) => it.path)
         const zeroVisualAssets = mediaNames.length === 0
         const noteSummaries = (assetsManifest?.notes || [])
           .filter((n) => n?.text)
@@ -863,6 +899,7 @@ export async function runSchemaDirectorWithDegradation({
             : { allowedLayouts: Array.from(VALID_SHOWCASE_LAYOUTS) }),
           ...(zeroVisualAssets && resolvedGenre === 'history-theater' ? { allowedStageArchetypes: VALID_STAGE_ARCHETYPES, allowedStageMoods: ['dawn-amber', 'crimson-war', 'indigo-night', 'ash-twilight', 'bronze-hall', 'jade-river', 'void-gold'], allowedStageSettings: ['palace-stairs', 'mountain-camp', 'city-siege', 'river-gorge', 'vast-plain'] } : {}),
           relativeAssets: mediaNames,
+          assetsCatalog: visualItemsCatalog.length > 0 ? visualItemsCatalog : undefined,
           scenesHint: scriptData?.authoringMode === 'local-draft'
             ? undefined
             : (scriptData?.scenes || []).map((s) => ({
@@ -899,9 +936,12 @@ export async function runSchemaDirectorWithDegradation({
 【红线铁律 3 · 全题材开放路由与无预设自由创作】：当前创作定位为 **${resolvedGenreLabel} (\`${resolvedGenre}\`)**。${genreGuidance}`
         const uiInteractiveRules =
           resolvedGenre === 'ui-tutorial' || (!zeroVisualAssets && /工作台|教程|客户端|软件|UI|界面|实操/.test(rawGoalText))
-            ? `\n【红线铁律 4 · 高清亮色交互式软件教程镜头规范】：
-- 凡展示真实软件界面截图的镜头，**一律置 \`"windowTheme": "light"\`（严禁暗色黑底缩略小图/PPT死图）**；
-- 如需镜头推近（1.8x~2.4x）及光标点击动作，仅填写简洁的 \`focusFx\` (0.15~0.85)、\`focusFy\` (0.15~0.85) 与 \`clickLabel\`（如 \`"新建工程"\`），系统会自动生成平滑 2.1x 放大镜头、光标移动轨迹、波纹特效及 \`click/whoosh\` 音效，无需手写冗长数组！`
+            ? `\n【红线铁律 4 · 高清亮色交互式软件教程镜头规范（零错位 · 零 PPT 感！）】：
+- 凡展示真实软件界面画面，**一律置 \`"windowTheme": "light"\`（严禁暗色黑底缩略图或左右分栏 PPT 幻灯片）**；
+- **严格依据 \`assetsCatalog\` 中的真实内容与 \`uiAnchors\` 坐标编写分镜**：
+  1. 若某素材 \`type === "video"\`（真实动态录屏），直接引用该视频播放真实交互流程，可按 \`uiAnchors\` 给柔和焦点缩放，**严禁在已有真实鼠标动作的录屏上再凭空乱填假 \`clickLabel\`**；
+  2. 若某素材为静态截图且带有 \`uiAnchors\`，填写 \`focusFx\`、\`focusFy\`、\`clickLabel\` 时**必须直接照抄 \`uiAnchors\` 里的真实坐标（包括顶栏 \`fy≈0.03\` 等位置）**，严禁靠猜编造坐标！
+  3. 严禁虚构与画面实际显示的文字不符的假案例（如画面显示工作台真实工程名却硬编无关示例）。`
             : ''
         const pacingLabelHint = `当前选用节奏方案【${pacingProfile.label}】：${pacingProfile.ruleHint}${unlimitedDurationHint}\n${strictContentRules}${uiInteractiveRules}`
         const zeroLayoutExample = isFreeformCoding

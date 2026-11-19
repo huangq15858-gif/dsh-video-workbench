@@ -3,6 +3,7 @@ import {
   AbsoluteFill,
   Audio,
   Easing,
+  Freeze,
   Img,
   OffthreadVideo,
   Sequence,
@@ -153,6 +154,8 @@ const MediaTile: React.FC<{
   scaleBoost?: number;
   fitMode?: 'cover' | 'contain';
 }> = ({ media, progress, isBlur, scaleBoost = 1, fitMode = 'cover' }) => {
+  const localF = useCurrentFrame();
+  const { fps: tileFps } = useVideoConfig();
   if (!media?.path) return null;
   const rel = String(media.path).replace(/^\/+/, '').replace(/\\/g, '/');
   const motion = media.motion || 'zoom-in';
@@ -179,6 +182,16 @@ const MediaTile: React.FC<{
     filter: isBlur ? 'blur(26px) brightness(0.32) saturate(1.25)' : undefined,
   };
   if (isVid) {
+    const regMap: Record<string, any> = (globalThis as any).__DSH_MEDIA_DIMS || {};
+    const clipSec = Number(media.durationSec || regMap[rel]?.durationSec || 0);
+    const safeEndF = clipSec > 0.2 ? Math.max(4, Math.floor((clipSec - 0.14) * Math.max(1, tileFps || 30))) : 0;
+    if (safeEndF > 0 && localF >= safeEndF) {
+      return (
+        <Freeze frame={Math.max(0, safeEndF - 1)}>
+          <OffthreadVideo src={staticFile(rel)} style={style} muted />
+        </Freeze>
+      );
+    }
     return <OffthreadVideo src={staticFile(rel)} style={style} muted />;
   }
   return <Img src={staticFile(rel)} style={style} />;
@@ -1434,6 +1447,7 @@ export const VideoComposition: React.FC = () => {
   const isPortrait = width < height;
   const sData: any = scriptData;
   (globalThis as any).__DSH_LOW_SPEC_SAFE = Boolean(sData?.lowSpecSafe);
+  (globalThis as any).__DSH_MEDIA_DIMS = { ...{"assets/images/image-02-aurora-showcase-afaa.png":{"width":1280,"height":720,"type":"image"},"assets/edited/image-02-aurora-showcase-afaa-edited.png":{"width":1280,"height":720,"type":"image"},"assets/images/image-03-amber-finale-25b7.png":{"width":1280,"height":720,"type":"image"},"assets/edited/image-03-amber-finale-25b7-edited.png":{"width":1280,"height":720,"type":"image"},"assets/images/image-01-cinema-opener-db8c.png":{"width":1280,"height":720,"type":"image"},"assets/edited/image-01-cinema-opener-db8c-edited.png":{"width":1280,"height":720,"type":"image"},"assets/images/image-02-aurora-showcase-de37.png":{"width":1280,"height":720,"type":"image"},"assets/edited/image-02-aurora-showcase-de37-edited.png":{"width":1280,"height":720,"type":"image"},"assets/images/image-03-amber-finale-cf54.png":{"width":1280,"height":720,"type":"image"},"assets/edited/image-03-amber-finale-cf54-edited.png":{"width":1280,"height":720,"type":"image"},"assets/images/image-01-cinema-opener-d9b1.png":{"width":1280,"height":720,"type":"image"},"assets/edited/image-01-cinema-opener-d9b1-edited.png":{"width":1280,"height":720,"type":"image"},"assets/images/image-02-aurora-showcase-757a.png":{"width":1280,"height":720,"type":"image"},"assets/edited/image-02-aurora-showcase-757a-edited.png":{"width":1280,"height":720,"type":"image"},"assets/images/image-03-amber-finale-7949.png":{"width":1280,"height":720,"type":"image"},"assets/edited/image-03-amber-finale-7949-edited.png":{"width":1280,"height":720,"type":"image"},"assets/images/image-01-cinema-opener-27fc.png":{"width":1280,"height":720,"type":"image"},"assets/images/image-02-aurora-showcase-f432.png":{"width":1280,"height":720,"type":"image"},"assets/images/image-03-amber-finale-e618.png":{"width":1280,"height":720,"type":"image"},"assets/images/image-01-cinema-opener-b2f2.png":{"width":1280,"height":720,"type":"image"},"assets/images/image-02-aurora-showcase-9eeb.png":{"width":1280,"height":720,"type":"image"},"assets/images/image-03-amber-finale-2b6c.png":{"width":1280,"height":720,"type":"image"}}, ...(sData?.mediaDims || {}) };
   const scenes: any[] = Array.isArray(sData.scenes) ? sData.scenes : [];
   const subtitles: any[] = Array.isArray(sData.subtitles) ? sData.subtitles : [];
   const beats: number[] = Array.isArray(sData.bgm?.beats) ? sData.bgm.beats : [];
