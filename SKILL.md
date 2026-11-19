@@ -8,19 +8,19 @@ description: Universal Dual-Engine AI Video Studio (Remotion 4.x + Three.js 3D &
 > **Original Author**: Merziller · **QQ**: `1411574209` · **WeChat**: `Merziller` · **Email**: `k26789228@gmail.com`  
 > **Repository**: https://github.com/Merziller/dsh-video-workbench (MIT License — retain original author attribution in forks/redistributions)
 
-## Capabilities (29 MCP Tools + Visual Web Studio)
+## Capabilities (32 MCP Tools + Visual Web Studio + 影核广场 CinePulse Hub)
 
 1. **Dual-Engine Video Creation**:
    - **Remotion 4.x TSX + Three.js 3D (`<FreeformThreeStage />`) + Dynamic SVG + `NarrativeDioramaStage`** (backlit hero silhouettes, charging cavalry, waving banners, crescent sword slash VFX, red-black conquest maps, 3D bamboo slips)
    - **HyperFrames HTML5/Canvas + Three.js 3D** deterministic full-FPS CDP renderer
-2. **Reference Video Deep Reverse-Engineering & Same-Style Remake (`analyze_reference_video` + `MOTION.md`)**:
-   - Feed any reference `.mp4` -> FFprobe + FFmpeg shot-boundary detection + audio BPM/drops + 9-frame contact sheet + 4-protocol Multimodal Vision LLM extracts replicable visual/character/VFX/transition/pacing DNA, writes `MOTION.md`, and binds `script.json.referenceStyle`.
-3. **BGM Beat-Sync & Pure-Music MV (`subtitle-mv` / `tts-beat-sync` / `tts`)**:
-   - Real BPM/phase/drop detection, 0.5/1/2/4-beat shot quantization, 34–54 high-density shots for dynamic MVs, procedural 48kHz combat/drum/slash/click SFX choreography, and broadcast `-14.5 LUFS` mastering.
-4. **Optional Multi-Engine TTS (`install_tts_engine` / `generate_speech`)**:
-   - Works out-of-the-box with **0GB GPU Windows Native SAPI** or **Pure-Music Beat-Sync (no TTS)**, OR optionally one-click installs `Edge-TTS`, `IndexTTS-2.5`, `IndexTTS-2`, or `GPT-SoVITS` (automatically creates `voices/` and seeds default reference WAVs!).
-5. **Hardware Guard & Brand Kit**:
-   - `check_hardware_profile` protects 8GB RAM / iGPU laptops (`auto` / `safe` / `performance`); `manage_brand_kit` persists brand colors, logo, tagline & exports `MOTION.md`.
+2. **CinePulse Hub · 影核广场 (`manage_template_plaza`) & Reference Video Reverse-Engineering (`analyze_reference_video` + `MOTION.md`)**:
+   - Browse/apply/publish curated `MOTION.md` blueprints across History, Tech Launch, SaaS Tutorial, Science Explainer, and Data Ranking; or upload any reference `.mp4` for FFmpeg shot-cut + BPM/drop + 9-frame Multimodal Vision reverse-engineering with side-by-side/curtain sync comparison.
+3. **Cross-Genre Adaptive Beat-Sync, 48kHz SFX & Mastering (`audioProfile`)**:
+   - Automatically adapts FFmpeg beat quantization, 28+ procedural 48kHz SFX palettes (combat, UI clicks/typing, sonar/counters, cartoon boing, shutter, warm chimes), camera beat intensity, and EBU R128 loudness (`-14.0` to `-15.0 LUFS`) across all genres and AI-designed custom profiles.
+4. **Optional BYOK Cloud AI Media (`configure_cloud_media` / `generate_cloud_media`)**:
+   - Supports Volcengine Seedream/Seedance, Kling AI (JWT/Bearer), Flux, Suno Music, MiniMax Music-2.0 / Speech-02-HD / Hailuo Video, ElevenLabs, plus open Custom HTTP/JSON protocol (sync & async polling) for Image, Video, and Audio.
+5. **Optional Multi-Engine TTS (`install_tts_engine` / `generate_speech`) & Silent Windowless Daemon**:
+   - Works out-of-the-box with **0GB GPU Windows Native SAPI** or **Pure-Music Beat-Sync (no TTS)**, OR optionally one-click installs `Edge-TTS`, `IndexTTS-2.5`, `IndexTTS-2`, or `GPT-SoVITS`. Launches silently with zero black CMD window (`start-workbench.vbs` / `start-workbench.cmd` / `stop-workbench.cmd`).
 
 ## Recommended Agent Workflow
 

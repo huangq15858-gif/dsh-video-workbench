@@ -7,11 +7,11 @@ This repository is a **universal, agent-agnostic Dual-Engine AI Video Studio** c
 
 ## Quick Start for Any Local Agent
 1. Install Node dependencies once: `npm install` (or `pnpm install`).
-2. Expose all **29 video production tools** over standard MCP stdio:
+2. Expose all **32 video production tools** over standard MCP stdio:
    ```bash
    node ./bin/dsh-video-mcp.mjs
    ```
-3. Launch the standalone visual Web Studio UI (works in any browser, zero DSH required):
+3. Launch the standalone visual Web Studio silently in background (zero black CMD window on Windows; stop via `stop-workbench.cmd` or `node ./bin/dsh-video-cli.mjs stop`):
    ```bash
    node ./bin/dsh-video-cli.mjs studio --open
    ```

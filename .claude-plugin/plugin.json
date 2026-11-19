@@ -1,7 +1,7 @@
 {
   "name": "dsh-video-workbench",
-  "version": "0.4.0",
-  "description": "Universal Multi-Agent Dual-Engine AI Video Studio (Remotion 4.x + Three.js 3D & HyperFrames HTML5) with Reference Video Remake (MOTION.md), BGM Beat-Sync, Optional Local TTS Cloning (IndexTTS-2.5 / GPT-SoVITS / Edge-TTS / Windows SAPI), and Low-Spec Hardware Protection.",
+  "version": "0.5.0",
+  "description": "Universal Multi-Agent Dual-Engine AI Video Studio (Remotion 4.x + Three.js 3D & HyperFrames HTML5) with CinePulse Hub (影核广场) MOTION.md Template Plaza, Cross-Genre Adaptive Beat-Sync & 48kHz SFX Mastering, Reference vs Remake Split Sync Compare, Visual Multi-Track Timeline, Optional BYOK Cloud Media (Seedream/Seedance/Kling/Flux/Suno/MiniMax + Custom HTTP), and Optional Local TTS Cloning.",
   "author": {
     "name": "Merziller",
     "email": "k26789228@gmail.com",

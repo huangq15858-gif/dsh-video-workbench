@@ -28,6 +28,8 @@ jobs:
           node -c packages/dsh-preset-video/index.js
           node -c packages/dsh-tool-local-tts/tts-installer.js
           node -c packages/dsh-tool-media/reference-analyzer.js
+          node -c packages/dsh-tool-media/cloud-media.js
+          node -c packages/dsh-tool-media/template-plaza.js
           node -c packages/dsh-web-video-workbench/lib/index.js
           node -c packages/dsh-web-video-workbench/lib/client.js
 

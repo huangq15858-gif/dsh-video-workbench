@@ -1,4 +1,4 @@
-# Universal Installation Guide — DSH Video Workbench (`v0.4.0`)
+# Universal Installation Guide — DSH Video Workbench (`v0.5.0`)
 
 > **Original Author**: Merziller · **QQ**: `1411574209` · **WeChat**: `Merziller` · **Email**: `k26789228@gmail.com`  
 > **GitHub**: https://github.com/Merziller/dsh-video-workbench (MIT Open Source)
@@ -63,10 +63,15 @@ dsh plugin --profile desktop add github:Merziller/dsh-video-workbench
 ```
 Or click **Install** from the DSH Plugin Market (`awesome-dsh-plugin`).
 
-### E. Standalone Visual Web Studio (Zero Agent Required)
+### E. Standalone Visual Web Studio (Zero Black Window Silent Daemon)
 ```bash
+# Default on Windows: runs silently in background with zero black CMD window!
 node ./bin/dsh-video-cli.mjs studio --open
-# Opens http://127.0.0.1:4399 in your browser with full 4-Agent War Room, Reference Remake, & Multi-Engine TTS UI!
+# Or double-click `start-workbench.cmd` / `start-workbench.vbs` on Windows!
+# Check status / Stop silent daemon:
+node ./bin/dsh-video-cli.mjs status
+node ./bin/dsh-video-cli.mjs stop   # or double-click `stop-workbench.cmd`
+# Opens http://127.0.0.1:4399 in your browser with full 4-Agent War Room, CinePulse Hub, Reference Compare, 4-Track Timeline, BYOK Cloud Media & Multi-Engine TTS UI!
 ```
 
 ---

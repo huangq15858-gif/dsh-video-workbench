@@ -31,13 +31,30 @@ function printBanner() {
 if (cmd === 'mcp') {
   startMcpStdioServer()
 } else if (cmd === 'studio' || cmd === 'start') {
-  printBanner()
+  const subArgs = args.slice(1)
+  const wantForeground = subArgs.includes('--foreground') || subArgs.includes('--fg')
+  const wantStop = subArgs.includes('--stop')
+  const wantStatus = subArgs.includes('--status')
+  if (!wantStop && !wantStatus) printBanner()
   const runnerPath = join(PACKAGE_ROOT, 'scripts', 'dsh-runner.mjs')
-  const passArgs = [runnerPath, 'video', '--keep-alive', ...args.slice(1)]
+  const passArgs = [runnerPath, 'video', '--keep-alive', ...subArgs]
+  if (!wantForeground && !wantStop && !wantStatus && !subArgs.includes('--daemon') && !subArgs.includes('--bg')) {
+    // Default to silent windowless background daemon so no black CMD stays open!
+    passArgs.push('--daemon')
+  }
   const child = spawn(process.execPath, passArgs, {
     cwd: REPO_ROOT,
     stdio: 'inherit',
+    windowsHide: true,
   })
+  child.on('exit', (code) => process.exit(code ?? 0))
+} else if (cmd === 'stop') {
+  const runnerPath = join(PACKAGE_ROOT, 'scripts', 'dsh-runner.mjs')
+  const child = spawn(process.execPath, [runnerPath, 'video', '--stop'], { cwd: REPO_ROOT, stdio: 'inherit', windowsHide: true })
+  child.on('exit', (code) => process.exit(code ?? 0))
+} else if (cmd === 'status') {
+  const runnerPath = join(PACKAGE_ROOT, 'scripts', 'dsh-runner.mjs')
+  const child = spawn(process.execPath, [runnerPath, 'video', '--status'], { cwd: REPO_ROOT, stdio: 'inherit', windowsHide: true })
   child.on('exit', (code) => process.exit(code ?? 0))
 } else if (cmd === 'install-tts') {
   const installerPath = join(PACKAGE_ROOT, 'scripts', 'install-tts-engine.mjs')

@@ -545,18 +545,28 @@ const SceneStage: React.FC<{
       publicAssetFiles,
       threePreset: sceneThreePreset,
     };
-    const applyBeatCamera = !isLightCustom && (isBeatEnergyVideo || beats.length > 0);
-    const cutImpact = applyBeatCamera && idx > 0 && localFrame < 9 ? Math.exp(-localFrame * 0.34) : 0;
-    const customShakeX = cutImpact * Math.sin(localFrame * 4.1 + idx) * (isBeatEnergyVideo ? 10 : 4);
-    const customShakeY = cutImpact * Math.cos(localFrame * 4.7 + idx) * (isBeatEnergyVideo ? 7 : 3);
+    const audioCamIntensity = Number((scriptData as any)?.audioProfile?.cameraBeatIntensity);
+    const resolvedCamIntensity = Number.isFinite(audioCamIntensity)
+      ? Math.max(0, Math.min(1.2, audioCamIntensity))
+      : isLightCustom
+        ? 0
+        : isBeatEnergyVideo
+          ? 1.0
+          : beats.length > 0
+            ? 0.36
+            : 0;
+    const applyBeatCamera = !isLightCustom && resolvedCamIntensity > 0.02 && (isBeatEnergyVideo || beats.length > 0);
+    const cutImpact = applyBeatCamera && idx > 0 && localFrame < 9 ? Math.exp(-localFrame * 0.34) * resolvedCamIntensity : 0;
+    const customShakeX = cutImpact * Math.sin(localFrame * 4.1 + idx) * 10;
+    const customShakeY = cutImpact * Math.cos(localFrame * 4.7 + idx) * 7;
     const customPunchScale =
       applyBeatCamera && (effectiveTxKind === 'zoom-punch' || effectiveTxKind === 'flash-cut' || effectiveTxKind === 'slash-wipe') && localFrame < 10
-        ? interpolate(localFrame, [0, 10], [isBeatEnergyVideo ? 1.075 : 1.035, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: easeOut })
+        ? interpolate(localFrame, [0, 10], [1 + 0.075 * resolvedCamIntensity, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: easeOut })
         : 1;
-    const customScale = applyBeatCamera ? customPunchScale + bp * (isBeatEnergyVideo ? 0.026 : 0.008) : 1;
+    const customScale = applyBeatCamera ? customPunchScale + bp * (0.025 * resolvedCamIntensity) : 1;
     const customFlashAlpha =
-      applyBeatCamera && isBeatEnergyVideo && idx > 0 && localFrame < 5
-        ? interpolate(localFrame, [0, 5], [effectiveTxKind === 'flash-cut' ? 0.42 : 0.22, 0], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })
+      applyBeatCamera && resolvedCamIntensity >= 0.65 && idx > 0 && localFrame < 5
+        ? interpolate(localFrame, [0, 5], [effectiveTxKind === 'flash-cut' ? 0.40 * resolvedCamIntensity : 0.20 * resolvedCamIntensity, 0], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })
         : 0;
     return (
       <AbsoluteFill style={{ overflow: 'hidden', backgroundColor: isLightCustom ? '#F4F7FB' : PALETTE.background }}>

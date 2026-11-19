@@ -2,9 +2,10 @@
 chcp 65001 >nul
 setlocal
 cd /d "%~dp0"
-echo ======================================================================
-echo 🎬 正在启动 DeepSeek Harness 双引擎视频工作台 (Profile: video)...
-echo    服务就绪后将自动打开实际监听的浏览器预览地址（默认 http://127.0.0.1:4399）
-echo ======================================================================
-call "%~dp0pnpm.cmd" dsh video --keep-alive --open
-pause
+REM Auto-hide black CMD window: delegate immediately to silent WScript daemon launcher!
+if exist "%~dp0start-workbench.vbs" (
+  start "" wscript.exe //nologo "%~dp0start-workbench.vbs"
+  exit /b 0
+)
+node "%~dp0scripts\dsh-runner.mjs" video --keep-alive --open --daemon
+exit /b 0

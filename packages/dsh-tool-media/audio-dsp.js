@@ -601,6 +601,71 @@ export function synthSfxStereo(type = 'whoosh', opts = {}) {
     return { L, R }
   }
 
+  if (kind === 'boing' || kind === 'spring') {
+    const dur = 0.36
+    const n = Math.floor(dur * DSP_SR)
+    const L = new Float32Array(n)
+    const R = new Float32Array(n)
+    let ph = 0
+    for (let i = 0; i < n; i++) {
+      const t = i / DSP_SR
+      const f = 190 + 340 * (1 - Math.exp(-t * 14)) + 45 * Math.sin(2 * Math.PI * 16 * t) * Math.exp(-t * 6)
+      ph += (2 * Math.PI * f) / DSP_SR
+      const s = (Math.sin(ph) * 0.72 + Math.sin(ph * 2) * 0.24) * Math.exp(-t * 6.5) * 0.62
+      L[i] = s
+      R[i] = s
+    }
+    return { L, R }
+  }
+
+  if (kind === 'shutter' || kind === 'camera') {
+    const dur = 0.16
+    const n = Math.floor(dur * DSP_SR)
+    const raw = new Float32Array(n)
+    for (let i = 0; i < n; i++) {
+      const t = i / DSP_SR
+      const click1 = Math.exp(-t * 210)
+      const click2 = t > 0.055 ? Math.exp(-(t - 0.055) * 185) * 0.85 : 0
+      raw[i] = (rand() * 2 - 1) * (click1 + click2)
+    }
+    const bp = biquadFilter(raw, 'bp', 3400, 1.1)
+    const L = new Float32Array(n)
+    const R = new Float32Array(n)
+    for (let i = 0; i < n; i++) {
+      const s = bp[i] * 0.78
+      L[i] = s
+      R[i] = s * 0.96
+    }
+    return { L, R }
+  }
+
+  if (kind === 'radar' || kind === 'sonar' || kind === 'ping') {
+    const dur = 0.92
+    const n = Math.floor(dur * DSP_SR)
+    const L = new Float32Array(n)
+    const R = new Float32Array(n)
+    for (let i = 0; i < n; i++) {
+      const t = i / DSP_SR
+      const env = Math.min(1, t / 0.008) * Math.exp(-t * 4.4)
+      const s = (Math.sin(2 * Math.PI * 1320 * t) * 0.7 + Math.sin(2 * Math.PI * 2640 * t) * 0.22) * env * 0.45
+      L[i] = s
+      R[i] = s * (0.92 + 0.08 * Math.sin(2 * Math.PI * 4 * t))
+    }
+    return { L, R }
+  }
+
+  if (kind === 'bell_warm') {
+    const dur = 1.4
+    const n = Math.floor(dur * DSP_SR)
+    const L = new Float32Array(n)
+    const R = new Float32Array(n)
+    ;[69, 76, 81].forEach((m, k) => {
+      const g = synthGlock(m, 1.1, 0.22)
+      addMonoPanned(L, R, g, k * 0.055, 0.9, (k - 1) * 0.2)
+    })
+    return { L, R }
+  }
+
   // pop / bubble_pop / win_pop / dock
   const dur = 0.18
   const n = Math.floor(dur * DSP_SR)

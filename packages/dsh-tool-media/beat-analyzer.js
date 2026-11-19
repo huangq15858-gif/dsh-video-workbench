@@ -261,7 +261,8 @@ export function snapTimeToBeatGrid(targetSec, beatMeta, { preferDownbeat = true,
  * - `subtitle-mv`: scene cut points align cleanly to beat/downbeat boundaries matching total duration / beatCounts.
  * - `tts-beat-sync`: preserves spoken speech duration and pads trailing silence cleanly to the next musical beat/downbeat.
  */
-export function quantizeScenesToBeatGrid(scenes = [], beatMeta = {}, { mode = 'tts-beat-sync', fps = 30, targetDurationSec = 0 } = {}) {
+export function quantizeScenesToBeatGrid(scenes = [], beatMeta = {}, opts = {}) {
+  const { mode = 'tts-beat-sync', fps = 30, targetDurationSec = 0 } = opts || {}
   if (!Array.isArray(scenes) || scenes.length === 0) return []
   const beats = Array.isArray(beatMeta?.beats) && beatMeta.beats.length > 0 ? beatMeta.beats : []
   const beatStep = Number(beatMeta?.beatSec) || (60 / (Number(beatMeta?.bpm) || 112))
@@ -294,23 +295,26 @@ export function quantizeScenesToBeatGrid(scenes = [], beatMeta = {}, { mode = 't
   }
 
   const updated = scenes.map((s) => ({ ...s }))
+  const audioProf = resolveAdaptiveAudioProfile(opts)
+  const allowBlitzCut = audioProf.blitzAllowed !== false
+  const minBeatSpan = Math.max(0.5, Number(audioProf.minBeatMultiple) || (allowBlitzCut ? 0.5 : 1.0))
 
   if (mode === 'subtitle-mv') {
     const usableBeats = normBeats.filter((b) => b.time <= capDur + 0.1)
     const fallbackBeats = usableBeats.length >= scenes.length + 1 ? usableBeats : normBeats
     const totalAvailableBeats = Math.max(scenes.length, Math.round(capDur / beatStep))
 
-    // Allocate beat counts honoring explicit `beatCount` hints (supports 0.5-beat blitzes) or proportional bar distribution
+    // Allocate beat counts honoring explicit `beatCount` hints (0.5-beat blitzes when allowed by genre/AI audioProfile)
     const rawCounts = updated.map((sc, idx) => {
       const explicit = Number(sc.beatCount)
-      if (Number.isFinite(explicit) && explicit >= 0.45) return explicit
+      if (Number.isFinite(explicit) && explicit >= 0.45) return allowBlitzCut ? explicit : Math.max(minBeatSpan, explicit)
       const hintDur = Number(sc.durationSec)
       if (Number.isFinite(hintDur) && hintDur >= 0.26 && targetDurationSec <= 0) {
-        return Math.max(0.5, Number((hintDur / beatStep).toFixed(2)))
+        return Math.max(minBeatSpan, Number((hintDur / beatStep).toFixed(2)))
       }
-      if (sc.stageSpec?.archetype === 'slash-climax' || sc.transition === 'flash-cut') return 1
+      if (sc.stageSpec?.archetype === 'slash-climax' || sc.transition === 'flash-cut') return allowBlitzCut ? 1 : Math.max(1, minBeatSpan)
       if (idx === 0 || idx === updated.length - 1) return 4
-      return 3
+      return Math.max(minBeatSpan, 3)
     })
 
     const rawSum = rawCounts.reduce((a, b) => a + b, 0) || scenes.length
@@ -324,7 +328,7 @@ export function quantizeScenesToBeatGrid(scenes = [], beatMeta = {}, { mode = 't
       const sc = updated[i]
       const isLast = i === updated.length - 1
       const scaledRaw = rawCounts[i] * scale
-      const spanBeats = scaledRaw <= 0.72 ? 0.5 : Math.max(1, Math.round(scaledRaw))
+      const spanBeats = allowBlitzCut && scaledRaw <= 0.72 ? 0.5 : Math.max(minBeatSpan >= 2 ? 2 : 1, Math.round(scaledRaw))
 
       if (spanBeats < 1) {
         subBeatAcc += spanBeats
@@ -478,13 +482,304 @@ export function quantizeScenesToBeatGrid(scenes = [], beatMeta = {}, { mode = 't
 }
 
 /**
- * Align transition & impact SFX cues onto real beat timestamps inside every scene.
+ * Universal Cross-Genre Adaptive Audio-Visual Rhythm Profiles.
+ * Ensures FFmpeg beat-grid quantization, 48kHz procedural SFX choreography, camera beat pulse,
+ * BGM sidechain ducking, and EBU R128 loudness mastering automatically adapt to EVERY video genre
+ * (and honor any AI Director `script.audioProfile` custom override for open/custom genres!).
+ */
+export const GENRE_AUDIO_PROFILES = {
+  'history-theater': {
+    profileName: '史诗高燃卡点声场',
+    beatCutIntensity: 'high',
+    blitzAllowed: true,
+    minBeatMultiple: 0.5,
+    cameraBeatIntensity: 1.0,
+    targetLufs: -14.0,
+    bgmDuckRatio: 2.2,
+    sfxBoostVoice: 1.28,
+    sfxBoostMv: 1.65,
+    bgmVolVoice: 0.48,
+    bgmVolMv: 0.84,
+    sfxPalette: {
+      opener: ['hit', 'shimmer_swell'],
+      drop: ['sub_drop', 'crash_cym'],
+      action: ['slash', 'hit'],
+      data: ['stamp', 'flip'],
+      neutral: ['whoosh', 'hit'],
+      internal: ['slash', 'hit', 'stamp'],
+      preCut: ['riser', 'suck'],
+    },
+  },
+  'mv-lyric': {
+    profileName: '高燃节奏卡点 MV 声场',
+    beatCutIntensity: 'high',
+    blitzAllowed: true,
+    minBeatMultiple: 0.5,
+    cameraBeatIntensity: 0.92,
+    targetLufs: -14.0,
+    bgmDuckRatio: 2.1,
+    sfxBoostVoice: 1.25,
+    sfxBoostMv: 1.55,
+    bgmVolVoice: 0.50,
+    bgmVolMv: 0.86,
+    sfxPalette: {
+      opener: ['riser', 'hit'],
+      drop: ['sub_drop', 'crash_cym'],
+      action: ['slash', 'shutter'],
+      data: ['sparkle', 'chime'],
+      neutral: ['whoosh', 'pop_soft'],
+      internal: ['hit', 'shutter', 'sparkle'],
+      preCut: ['riser', 'suck'],
+    },
+  },
+  'product-promo': {
+    profileName: '科技旗舰商业发布会声场',
+    beatCutIntensity: 'medium',
+    blitzAllowed: true,
+    minBeatMultiple: 1.0,
+    cameraBeatIntensity: 0.48,
+    targetLufs: -14.0,
+    bgmDuckRatio: 2.6,
+    sfxBoostVoice: 1.15,
+    sfxBoostMv: 1.38,
+    bgmVolVoice: 0.42,
+    bgmVolMv: 0.80,
+    sfxPalette: {
+      opener: ['riser', 'shine'],
+      drop: ['sub_drop', 'shine'],
+      action: ['swoosh', 'shutter'],
+      data: ['counter', 'radar'],
+      neutral: ['whoosh', 'pop_soft'],
+      internal: ['sparkle', 'shutter', 'chime'],
+      preCut: ['riser', 'swoosh'],
+    },
+  },
+  'ui-tutorial': {
+    profileName: '软件实操清晰键鼠声场',
+    beatCutIntensity: 'gentle',
+    blitzAllowed: false,
+    minBeatMultiple: 2.0,
+    cameraBeatIntensity: 0.0,
+    targetLufs: -15.0,
+    bgmDuckRatio: 3.4,
+    sfxBoostVoice: 0.84,
+    sfxBoostMv: 1.05,
+    bgmVolVoice: 0.30,
+    bgmVolMv: 0.68,
+    sfxPalette: {
+      opener: ['chime', 'pop_soft'],
+      drop: ['card', 'chime'],
+      action: ['click', 'pop_soft'],
+      data: ['typing', 'tick'],
+      neutral: ['click', 'card'],
+      internal: ['click', 'typing', 'pop_soft'],
+      preCut: ['swoosh', 'flip'],
+    },
+  },
+  'code-animation': {
+    profileName: '代码与架构演进精密声场',
+    beatCutIntensity: 'gentle',
+    blitzAllowed: false,
+    minBeatMultiple: 2.0,
+    cameraBeatIntensity: 0.12,
+    targetLufs: -14.8,
+    bgmDuckRatio: 3.2,
+    sfxBoostVoice: 0.92,
+    sfxBoostMv: 1.18,
+    bgmVolVoice: 0.34,
+    bgmVolMv: 0.72,
+    sfxPalette: {
+      opener: ['radar', 'chime'],
+      drop: ['glitch', 'shine'],
+      action: ['typing', 'radar'],
+      data: ['counter', 'tick'],
+      neutral: ['click', 'swoosh'],
+      internal: ['typing', 'radar', 'lock'],
+      preCut: ['swoosh', 'riser'],
+    },
+  },
+  'science-explainer': {
+    profileName: '深度科普动态拆解声场',
+    beatCutIntensity: 'medium',
+    blitzAllowed: false,
+    minBeatMultiple: 1.0,
+    cameraBeatIntensity: 0.24,
+    targetLufs: -14.5,
+    bgmDuckRatio: 3.0,
+    sfxBoostVoice: 1.02,
+    sfxBoostMv: 1.24,
+    bgmVolVoice: 0.36,
+    bgmVolMv: 0.74,
+    sfxPalette: {
+      opener: ['shimmer_swell', 'radar'],
+      drop: ['sub_drop', 'sparkle'],
+      action: ['whoosh', 'radar'],
+      data: ['counter', 'tick'],
+      neutral: ['card', 'pop_soft'],
+      internal: ['radar', 'counter', 'sparkle'],
+      preCut: ['riser', 'swoosh'],
+    },
+  },
+  'data-story': {
+    profileName: '数据榜单与商业洞察声场',
+    beatCutIntensity: 'medium',
+    blitzAllowed: true,
+    minBeatMultiple: 1.0,
+    cameraBeatIntensity: 0.30,
+    targetLufs: -14.3,
+    bgmDuckRatio: 2.9,
+    sfxBoostVoice: 1.08,
+    sfxBoostMv: 1.32,
+    bgmVolVoice: 0.38,
+    bgmVolMv: 0.76,
+    sfxPalette: {
+      opener: ['counter', 'shine'],
+      drop: ['sub_drop', 'stamp'],
+      action: ['counter', 'whoosh'],
+      data: ['counter', 'tick'],
+      neutral: ['card', 'tick'],
+      internal: ['counter', 'tick', 'chime'],
+      preCut: ['riser', 'swoosh'],
+    },
+  },
+  'stickman-story': {
+    profileName: '趣味故事/轻喜剧节奏声场',
+    beatCutIntensity: 'medium',
+    blitzAllowed: false,
+    minBeatMultiple: 1.0,
+    cameraBeatIntensity: 0.32,
+    targetLufs: -14.5,
+    bgmDuckRatio: 3.0,
+    sfxBoostVoice: 1.06,
+    sfxBoostMv: 1.25,
+    bgmVolVoice: 0.36,
+    bgmVolMv: 0.74,
+    sfxPalette: {
+      opener: ['pop', 'chime'],
+      drop: ['boing', 'sparkle'],
+      action: ['pop', 'whoosh'],
+      data: ['flip', 'tick'],
+      neutral: ['pop_soft', 'flip'],
+      internal: ['pop', 'boing', 'chime'],
+      preCut: ['swoosh', 'pop_soft'],
+    },
+  },
+  'brand-story': {
+    profileName: '品牌人文与治愈叙事声场',
+    beatCutIntensity: 'gentle',
+    blitzAllowed: false,
+    minBeatMultiple: 2.0,
+    cameraBeatIntensity: 0.16,
+    targetLufs: -14.8,
+    bgmDuckRatio: 2.8,
+    sfxBoostVoice: 0.90,
+    sfxBoostMv: 1.12,
+    bgmVolVoice: 0.42,
+    bgmVolMv: 0.78,
+    sfxPalette: {
+      opener: ['shimmer_swell', 'bell_warm'],
+      drop: ['shimmer_swell', 'shine'],
+      action: ['swoosh', 'shutter'],
+      data: ['flip', 'bell_warm'],
+      neutral: ['swoosh', 'pop_soft'],
+      internal: ['bell_warm', 'sparkle'],
+      preCut: ['shimmer_swell', 'swoosh'],
+    },
+  },
+  'talking-head': {
+    profileName: '口播干货清晰人声声场',
+    beatCutIntensity: 'gentle',
+    blitzAllowed: false,
+    minBeatMultiple: 2.0,
+    cameraBeatIntensity: 0.08,
+    targetLufs: -15.0,
+    bgmDuckRatio: 3.4,
+    sfxBoostVoice: 0.85,
+    sfxBoostMv: 1.05,
+    bgmVolVoice: 0.30,
+    bgmVolMv: 0.68,
+    sfxPalette: {
+      opener: ['pop_soft', 'chime'],
+      drop: ['pop', 'chime'],
+      action: ['swoosh', 'pop'],
+      data: ['tick', 'card'],
+      neutral: ['pop_soft', 'card'],
+      internal: ['pop_soft', 'chime'],
+      preCut: ['swoosh', 'flip'],
+    },
+  },
+}
+
+/**
+ * Resolve the adaptive audio/rhythm profile for ANY video genre or custom AI Director override.
+ */
+export function resolveAdaptiveAudioProfile(opts = {}) {
+  const genreRaw = String(opts.genre || opts.referenceStyle?.genre || '').trim().toLowerCase()
+  const labelRaw = `${opts.genreLabel || ''} ${opts.title || ''} ${opts.topic || ''} ${opts.style || ''}`.toLowerCase()
+
+  let baseKey = GENRE_AUDIO_PROFILES[genreRaw] ? genreRaw : ''
+  if (!baseKey) {
+    if (/历史|史诗|战国|秦|汉|楚|三国|武侠|高燃|燃剪|卡点|mv|节奏/.test(labelRaw)) baseKey = 'history-theater'
+    else if (/教程|实操|指南|教学|软件|界面|操作|演示|ui/.test(labelRaw)) baseKey = 'ui-tutorial'
+    else if (/代码|架构|编程|开源|源码|api|算法/.test(labelRaw)) baseKey = 'code-animation'
+    else if (/发布|产品|宣传|旗舰|科技|商业|广告|promo/.test(labelRaw)) baseKey = 'product-promo'
+    else if (/数据|榜单|排行|财报|对比|趋势|统计|洞察/.test(labelRaw)) baseKey = 'data-story'
+    else if (/科普|原理|解剖|科学|物理|生物|天文|拆解/.test(labelRaw)) baseKey = 'science-explainer'
+    else if (/火柴人|搞笑|段子|吐槽|漫剧|趣味|故事/.test(labelRaw)) baseKey = 'stickman-story'
+    else if (/治愈|旅行|vlog|纪录|温暖|品牌|情感|人文|美食/.test(labelRaw)) baseKey = 'brand-story'
+    else if (/口播|访谈|干货|解说/.test(labelRaw)) baseKey = 'talking-head'
+    else if (opts.style === 'energetic') baseKey = 'product-promo'
+    else if (opts.style === 'warm' || opts.style === 'documentary') baseKey = 'brand-story'
+    else if (opts.style === 'cinematic') baseKey = 'history-theater'
+    else baseKey = 'product-promo'
+  }
+
+  const base = GENRE_AUDIO_PROFILES[baseKey] || GENRE_AUDIO_PROFILES['product-promo']
+  const aiOv = opts.audioProfile && typeof opts.audioProfile === 'object' ? opts.audioProfile : {}
+  const mergedPalette = {
+    ...base.sfxPalette,
+    ...(aiOv.sfxPalette && typeof aiOv.sfxPalette === 'object' ? aiOv.sfxPalette : {}),
+  }
+
+  const intensity = String(aiOv.beatCutIntensity || base.beatCutIntensity).toLowerCase()
+  const clampNum = (v, min, max, fallback) => {
+    const n = Number(v)
+    return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : fallback
+  }
+
+  return {
+    genreKey: baseKey,
+    profileName: String(aiOv.profileName || base.profileName),
+    beatCutIntensity: ['high', 'medium', 'gentle', 'off'].includes(intensity) ? intensity : base.beatCutIntensity,
+    blitzAllowed: typeof aiOv.blitzAllowed === 'boolean' ? aiOv.blitzAllowed : (intensity === 'high' ? true : base.blitzAllowed),
+    minBeatMultiple: clampNum(aiOv.minBeatMultiple, 0.5, 4, intensity === 'high' ? 0.5 : intensity === 'gentle' ? 2.0 : base.minBeatMultiple),
+    cameraBeatIntensity: clampNum(aiOv.cameraBeatIntensity, 0, 1.2, base.cameraBeatIntensity),
+    targetLufs: clampNum(aiOv.targetLufs, -18.0, -12.0, base.targetLufs),
+    bgmDuckRatio: clampNum(aiOv.bgmDuckRatio, 1.4, 5.0, base.bgmDuckRatio),
+    sfxBoostVoice: clampNum(aiOv.sfxBoostVoice ?? aiOv.sfxBoost, 0.4, 1.8, base.sfxBoostVoice),
+    sfxBoostMv: clampNum(aiOv.sfxBoostMv ?? aiOv.sfxBoost, 0.6, 2.0, base.sfxBoostMv),
+    bgmVolVoice: clampNum(aiOv.bgmVolVoice, 0.18, 0.65, base.bgmVolVoice),
+    bgmVolMv: clampNum(aiOv.bgmVolMv, 0.5, 0.95, base.bgmVolMv),
+    sfxPalette: mergedPalette,
+  }
+}
+
+/**
+ * Align transition & impact SFX cues onto real beat timestamps inside every scene,
+ * automatically adapting SFX palette & density to ANY video genre or AI Director `audioProfile`!
  */
 export function choreographBeatSfxCues(scenes = [], beatMeta = {}, opts = {}) {
   const beats = Array.isArray(beatMeta?.beats) ? beatMeta.beats : []
   const drops = Array.isArray(beatMeta?.drops) ? beatMeta.drops : []
   const total = scenes.length
   const sfxPick = opts.sfxPick || ((kind) => `audio/sfx/${kind}.wav`)
+  const profile = resolveAdaptiveAudioProfile(opts)
+  const pal = profile.sfxPalette || GENRE_AUDIO_PROFILES['product-promo'].sfxPalette
+  const pickFrom = (arr, fallback, idx = 0) => {
+    const list = Array.isArray(arr) && arr.length > 0 ? arr : [fallback]
+    return String(list[idx % list.length] || fallback)
+  }
+  const volScale = profile.beatCutIntensity === 'gentle' ? 0.76 : profile.beatCutIntensity === 'medium' ? 0.90 : 1.0
 
   return scenes.map((sc, idx) => {
     const startSec = Number(sc.startSec || 0)
@@ -495,53 +790,91 @@ export function choreographBeatSfxCues(scenes = [], beatMeta = {}, opts = {}) {
     const nearDrop = drops.some((dt) => Math.abs(dt - startSec) <= 0.35)
     const arch = sc.stageSpec?.archetype || ''
     const layoutStr = String(sc.layout || '')
-    const blueStr = `${sc.visualBlueprint || ''} ${sc.motionNotes || ''}`
-    const isAction = /slash|clash|oath|cavalry|duel/i.test(arch) || sc.transition === 'flash-cut' || sc.transition === 'slash-wipe' || /冲击|爆发|劈|闪切|撞击|跃迁/i.test(blueStr)
-    const isMapOrData = /strategic-map|scroll-calligraphy|metric-dashboard|workflow-steps/i.test(`${arch} ${layoutStr}`)
+    const blueStr = `${sc.visualBlueprint || ''} ${sc.motionNotes || ''} ${sc.title || ''}`
+    const isAction =
+      /slash|clash|oath|cavalry|duel/i.test(arch) ||
+      sc.transition === 'flash-cut' ||
+      sc.transition === 'slash-wipe' ||
+      /冲击|爆发|劈|闪切|撞击|跃迁|点击|高光|切换/i.test(blueStr)
+    const isMapOrData =
+      /strategic-map|scroll-calligraphy|bamboo-slips|metric-dashboard|workflow-steps|chart|ranking|code/i.test(
+        `${arch} ${layoutStr} ${blueStr}`,
+      )
 
-    // 1. Cut-in impact right on downbeat / half-beat boundary (offsetSec = 0)
+    // 1. Cut-in SFX right on beat boundary (adapted to genre palette!)
     if (idx === 0) {
-      cues.push({ type: 'hit', path: sfxPick('hit'), offsetSec: 0, volume: 0.9, pan: 0 })
-      cues.push({ type: 'shimmer_swell', path: sfxPick('shimmer_swell'), offsetSec: 0.02, volume: 0.72, pan: 0 })
+      const a = pickFrom(pal.opener, 'hit', 0)
+      const b = pickFrom(pal.opener, 'shimmer_swell', 1)
+      cues.push({ type: a, path: sfxPick(a), offsetSec: 0, volume: Number((0.88 * volScale).toFixed(2)), pan: 0 })
+      if (b && b !== a) {
+        cues.push({ type: b, path: sfxPick(b), offsetSec: 0.02, volume: Number((0.70 * volScale).toFixed(2)), pan: 0 })
+      }
     } else if (nearDrop || sc.transition === 'zoom-punch' || arch === 'plaque-summary' || sc.transition === 'glitch-cut') {
-      cues.push({ type: sc.transition === 'glitch-cut' ? 'glitch' : 'sub_drop', path: sfxPick(sc.transition === 'glitch-cut' ? 'glitch' : 'sub_drop'), offsetSec: 0, volume: 0.94, pan: 0 })
-      cues.push({ type: 'crash_cym', path: sfxPick('crash_cym'), offsetSec: 0.015, volume: 0.68, pan: 0.12 })
+      const a = sc.transition === 'glitch-cut' ? 'glitch' : pickFrom(pal.drop, 'sub_drop', idx)
+      const b = pickFrom(pal.drop, 'shine', idx + 1)
+      cues.push({ type: a, path: sfxPick(a), offsetSec: 0, volume: Number((0.92 * volScale).toFixed(2)), pan: 0 })
+      if (b && b !== a) {
+        cues.push({ type: b, path: sfxPick(b), offsetSec: 0.015, volume: Number((0.64 * volScale).toFixed(2)), pan: 0.12 })
+      }
     } else if (isAction) {
-      cues.push({ type: 'slash', path: sfxPick('slash'), offsetSec: 0, volume: 0.88, pan: idx % 2 === 0 ? -0.18 : 0.18 })
-      cues.push({ type: 'hit', path: sfxPick('hit'), offsetSec: 0.01, volume: 0.82, pan: 0 })
+      const a = pickFrom(pal.action, 'whoosh', idx)
+      const b = pickFrom(pal.action, 'hit', idx + 1)
+      cues.push({ type: a, path: sfxPick(a), offsetSec: 0, volume: Number((0.86 * volScale).toFixed(2)), pan: idx % 2 === 0 ? -0.16 : 0.16 })
+      if (b && b !== a && profile.beatCutIntensity !== 'gentle') {
+        cues.push({ type: b, path: sfxPick(b), offsetSec: 0.012, volume: Number((0.76 * volScale).toFixed(2)), pan: 0 })
+      }
     } else if (isMapOrData) {
-      cues.push({ type: 'stamp', path: sfxPick('stamp'), offsetSec: 0, volume: 0.84, pan: 0 })
-      cues.push({ type: 'flip', path: sfxPick('flip'), offsetSec: 0.02, volume: 0.62, pan: -0.1 })
+      const a = pickFrom(pal.data, 'counter', idx)
+      const b = pickFrom(pal.data, 'flip', idx + 1)
+      cues.push({ type: a, path: sfxPick(a), offsetSec: 0, volume: Number((0.80 * volScale).toFixed(2)), pan: 0 })
+      if (b && b !== a) {
+        cues.push({ type: b, path: sfxPick(b), offsetSec: 0.02, volume: Number((0.58 * volScale).toFixed(2)), pan: -0.1 })
+      }
     } else {
-      cues.push({ type: 'whoosh', path: sfxPick('whoosh'), offsetSec: 0, volume: 0.8, pan: idx % 2 === 0 ? -0.1 : 0.1 })
-      if (idx % 3 === 0) {
-        cues.push({ type: 'hit', path: sfxPick('hit'), offsetSec: 0.01, volume: 0.68, pan: 0 })
+      const a = pickFrom(pal.neutral, 'whoosh', idx)
+      cues.push({ type: a, path: sfxPick(a), offsetSec: 0, volume: Number((0.76 * volScale).toFixed(2)), pan: idx % 2 === 0 ? -0.1 : 0.1 })
+      if (idx % 3 === 0 && profile.beatCutIntensity === 'high') {
+        const b = pickFrom(pal.neutral, 'hit', 1)
+        if (b && b !== a) cues.push({ type: b, path: sfxPick(b), offsetSec: 0.01, volume: Number((0.65 * volScale).toFixed(2)), pan: 0 })
       }
     }
 
-    // 2. Snap mid-scene SFX hits directly to internal BGM beats (supports any genre)
+    // 2. Snap mid-scene SFX accents directly to internal BGM beats (respecting gentle vs high intensity)
     const internalBeats = beats
       .map((b) => (typeof b === 'number' ? { time: b, strong: true } : b))
-      .filter((b) => b.time > startSec + 0.28 && b.time < endSec - 0.36)
+      .filter((b) => b.time > startSec + 0.32 && b.time < endSec - 0.38)
 
     const preferredBeats = internalBeats.filter((b) => b.strong)
-    const chosenHits = (preferredBeats.length > 0 ? preferredBeats : internalBeats).slice(0, dur >= 2.8 ? 2 : 1)
+    const maxInternalHits = profile.beatCutIntensity === 'gentle' ? (dur >= 4.5 ? 1 : 0) : dur >= 2.8 ? 2 : 1
+    const chosenHits = (preferredBeats.length > 0 ? preferredBeats : internalBeats).slice(0, maxInternalHits)
     for (let hi = 0; hi < chosenHits.length; hi++) {
       const targetBeat = chosenHits[hi]
       const relSec = Number((targetBeat.time - startSec).toFixed(3))
-      const beatType = arch === 'strategic-map' ? 'stamp' : arch === 'scroll-calligraphy' ? 'flip' : isMapOrData ? 'counter' : isAction ? 'slash' : (hi % 2 === 0 ? 'pop_soft' : 'hit')
-      cues.push({ type: beatType, path: sfxPick(beatType), offsetSec: relSec, volume: 0.78, pan: (idx + hi) % 2 === 0 ? 0.22 : -0.22 })
+      const beatType =
+        arch === 'strategic-map'
+          ? 'stamp'
+          : arch === 'scroll-calligraphy' || arch === 'bamboo-slips'
+            ? 'flip'
+            : pickFrom(pal.internal, isMapOrData ? 'counter' : 'pop_soft', idx + hi)
+      cues.push({
+        type: beatType,
+        path: sfxPick(beatType),
+        offsetSec: relSec,
+        volume: Number((0.74 * volScale).toFixed(2)),
+        pan: (idx + hi) % 2 === 0 ? 0.2 : -0.2,
+      })
     }
 
-    // 3. Pre-cut riser/suck leading tightly INTO the next scene's downbeat cut
-    if (idx < total - 1 && dur >= 0.95) {
+    // 3. Pre-cut riser/swoosh leading tightly INTO the next scene's downbeat cut
+    if (idx < total - 1 && dur >= (profile.beatCutIntensity === 'gentle' ? 2.4 : 0.95)) {
       const riseDur = Math.min(0.42, dur * 0.35)
       const preOff = Number(Math.max(0.22, dur - riseDur).toFixed(3))
+      const preType = pickFrom(pal.preCut, idx % 2 === 0 ? 'riser' : 'swoosh', idx)
       cues.push({
-        type: idx % 2 === 0 ? 'riser' : 'suck',
-        path: sfxPick(idx % 2 === 0 ? 'riser' : 'suck'),
+        type: preType,
+        path: sfxPick(preType),
         offsetSec: preOff,
-        volume: 0.66,
+        volume: Number((0.62 * volScale).toFixed(2)),
         pan: 0,
         d: riseDur,
       })

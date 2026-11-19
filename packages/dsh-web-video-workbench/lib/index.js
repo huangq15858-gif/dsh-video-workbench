@@ -75,13 +75,19 @@ import {
 import {
   analyzeAudioBeatStructure,
   analyzeReferenceVideo,
+  applyPlazaTemplateToProject,
   callLlmChat,
+  CLOUD_MEDIA_PRESETS,
   detectGenre,
   exportProjectMotionMd,
   extractJsonFromLlmText,
+  generateCloudMediaAsset,
+  getCloudMediaConfigSummary,
   getGenreProfile,
+  getPlazaTemplate,
   GENRE_PROFILES,
   listGenresForPrompt,
+  listPlazaTemplates,
   loadBrandKit,
   exportPublishPack,
   generateAiCodedBgmTrack,
@@ -92,7 +98,10 @@ import {
   masterVoiceTracks,
   mixVideoAudio,
   planVideoFromAssets,
+  PLAZA_BRAND,
+  PLAZA_CATEGORIES,
   produceFullVideo,
+  publishProjectToPlaza,
   readAssets,
   refineAiScene,
   removeAsset,
@@ -100,6 +109,7 @@ import {
   rollbackAiVersion,
   runAiStudioPipeline,
   saveBrandKit,
+  saveCloudMediaConfig,
   saveLlmConfig,
   saveUploadedAsset,
   summarizeAssets,
@@ -187,24 +197,42 @@ export function getWorkspaceRoot() {
 }
 
 /**
- * List all video projects in `DSH_VIDEO_WORKSPACE` (ensuring starter demo projects exist).
+ * List all video projects in `DSH_VIDEO_WORKSPACE` (ensuring the 2 built-in flagship demos exist:
+ * 1. `dsh-video-workbench-promo` [宣传片]
+ * 2. `full-tutorial-v036` [教程]
+ * ).
  */
 export function listVideoProjects() {
   const wsRoot = getWorkspaceRoot()
-  const demoDir = join(wsRoot, 'demo-html-project')
-  if (!existsSync(join(demoDir, 'script.json'))) {
-    scaffoldVideoProject(demoDir, {
-      title: 'DeepSeek Harness 双引擎视频工作台演示 (HTML5 动效)',
-      engine: 'html',
-    })
+  const ensureBuiltinDemo = (folderName, fallbackTitle, templateId) => {
+    const dir = join(wsRoot, folderName)
+    if (existsSync(join(dir, 'script.json'))) return
+    // Try copying shipped example from PACKAGE_ROOT/examples/<folderName> first (for installed npm/DSH users)
+    const pkgExample = join(PACKAGE_ROOT, 'examples', folderName)
+    if (pkgExample !== dir && existsSync(join(pkgExample, 'script.json'))) {
+      try {
+        mkdirSync(dir, { recursive: true })
+        for (const f of ['script.json', 'index.html', 'plan.json', 'MOTION.md']) {
+          if (existsSync(join(pkgExample, f))) writeFileSync(join(dir, f), readFileSync(join(pkgExample, f)))
+        }
+        return
+      } catch {}
+    }
+    // Try seeding from CinePulse Hub plaza template if available
+    try {
+      const tpl = getPlazaTemplate(templateId)
+      if (tpl?.script) {
+        mkdirSync(dir, { recursive: true })
+        writeScriptJson(dir, tpl.script)
+        if (tpl.motionMd) writeFileSync(join(dir, 'MOTION.md'), tpl.motionMd, 'utf8')
+        return
+      }
+    } catch {}
+    scaffoldVideoProject(dir, { title: fallbackTitle, engine: 'remotion' })
   }
-  const demoRemotionDir = join(wsRoot, 'demo-remotion-project')
-  if (!existsSync(join(demoRemotionDir, 'script.json'))) {
-    scaffoldVideoProject(demoRemotionDir, {
-      title: 'DeepSeek Harness 双引擎视频工作台演示 (Remotion)',
-      engine: 'remotion',
-    })
-  }
+
+  ensureBuiltinDemo('dsh-video-workbench-promo', 'DSH Video Workbench：双引擎全链路，开源即开拍', 'tech-launch-keynote')
+  ensureBuiltinDemo('full-tutorial-v036', 'DSH 视频工作台实操：从新建工程到质检导出', 'saas-ui-tutorial')
 
   const projects = []
   for (const entry of readdirSync(wsRoot)) {
@@ -679,6 +707,14 @@ export async function handleWorkbenchApiRequest(req) {
       if (requestedProject && existsSync(join(requestedProject, 'script.json'))) {
         const { data } = readScriptJson(requestedProject)
         const manifest = readAssets(requestedProject)
+        const refDir = join(requestedProject, 'reference')
+        let referenceVideoRel = ''
+        if (data?.referenceStyle?.sourceRel && existsSync(join(requestedProject, data.referenceStyle.sourceRel))) {
+          referenceVideoRel = String(data.referenceStyle.sourceRel).replace(/\\/g, '/')
+        } else if (existsSync(refDir)) {
+          const refVid = readdirSync(refDir).find((f) => /\.(mp4|mov|webm|mkv)$/i.test(f))
+          if (refVid) referenceVideoRel = `reference/${refVid}`
+        }
         activeProject = {
           projectDir: requestedProject,
           script: data,
@@ -686,6 +722,8 @@ export async function handleWorkbenchApiRequest(req) {
           notes: manifest.notes || [],
           assetSummary: summarizeAssets(manifest),
           hasMp4: existsSync(join(requestedProject, 'output', 'final.mp4')),
+          hasReferenceVideo: Boolean(referenceVideoRel),
+          referenceVideoRel,
           hasSnapshot: existsSync(join(requestedProject, 'output', 'snapshot-3x3.png')),
           hasMasterAudio: existsSync(join(requestedProject, 'output', 'master-audio.wav')),
           hasAvatarClip: Boolean(data?.avatarClip?.path),
@@ -708,6 +746,7 @@ export async function handleWorkbenchApiRequest(req) {
         requestedFps: Number(activeProject?.script?.fps) || 30,
         totalDurationSec: Number(activeProject?.script?.totalDurationSec) || 60,
       })
+      const plazaListing = listPlazaTemplates()
       return jsonResponse({
         ok: true,
         workspaceRoot,
@@ -716,6 +755,10 @@ export async function handleWorkbenchApiRequest(req) {
         llmConfig: getSafeLlmConfigSummary(),
         ttsConfig: getSafeTtsConfigSummary(),
         ttsInstallCatalog: getTtsInstallerCatalog(),
+        cloudMedia: getCloudMediaConfigSummary(),
+        plazaBrand: PLAZA_BRAND,
+        plazaCategories: PLAZA_CATEGORIES,
+        plazaTemplates: plazaListing.templates,
         voiceCatalog: catalog.voices,
         voiceCategories: catalog.categories,
         availableEmotions: Object.keys(catalog.emotionReferences),
@@ -926,9 +969,9 @@ export async function handleWorkbenchApiRequest(req) {
       const wsRoot = resolve(getWorkspaceRoot())
       const targetDir = resolve(body.projectDir)
       const folderName = basename(targetDir)
-      const protectedNames = new Set(['demo-html-project', 'demo-remotion-project'])
+      const protectedNames = new Set(['dsh-video-workbench-promo', 'full-tutorial-v036'])
       if (protectedNames.has(folderName)) {
-        return jsonResponse({ ok: false, error: '内置演示示例不可删除' }, 400)
+        return jsonResponse({ ok: false, error: '内置旗舰演示示例（宣传片/教程）不可删除' }, 400)
       }
       if (!targetDir.startsWith(wsRoot + '\\') && !targetDir.startsWith(wsRoot + '/')) {
         return jsonResponse({ ok: false, error: '仅允许删除工作区内的自定义项目' }, 403)
@@ -2202,6 +2245,99 @@ export async function handleWorkbenchApiRequest(req) {
       })
     }
 
+    // 6f. Optional BYOK Cloud AI Media (Image / Video / Suno & MiniMax Audio + Custom HTTP Protocol)
+    if (pathname === '/api/video-workbench/cloud-media') {
+      if (req.method === 'GET') {
+        return jsonResponse({ ok: true, config: getCloudMediaConfigSummary() })
+      }
+      if (req.method === 'POST') {
+        const body = await parseRequestJson(req)
+        return jsonResponse({ ok: true, config: saveCloudMediaConfig(body) })
+      }
+    }
+
+    if (pathname === '/api/video-workbench/cloud-media/generate' && req.method === 'POST') {
+      const body = await parseRequestJson(req)
+      const jobId = `cloud-${body.category || 'media'}-${Date.now()}`
+      const job = createJob(jobId, `☁️ 云端 AI 生成 (${body.category || 'image'})`, { projectDir: body.projectDir || '' })
+      ;(async () => {
+        try {
+          const res = await generateCloudMediaAsset({
+            ...body,
+            onProgress: (ev) => updateJob(jobId, { progress: ev.progress || 40, message: ev.message || '云端生成中...' }),
+          })
+          updateJob(jobId, { status: 'completed', progress: 100, message: `✅ 云端生成并入库完成：${res.path}`, result: res })
+        } catch (err) {
+          updateJob(jobId, { status: 'error', progress: 100, message: `云端生成失败: ${err?.message || err}`, error: err?.message || String(err) })
+        }
+      })()
+      return jsonResponse({ ok: true, jobId, job })
+    }
+
+    // 6g. 影核广场 · CinePulse Hub (Built-in & Community MOTION.md Template Plaza)
+    if (pathname === '/api/video-workbench/plaza/templates' && req.method === 'GET') {
+      const category = url.searchParams.get('category') || 'all'
+      const query = url.searchParams.get('q') || ''
+      return jsonResponse(listPlazaTemplates({ category, query }))
+    }
+
+    if (pathname === '/api/video-workbench/plaza/template' && req.method === 'GET') {
+      const id = url.searchParams.get('id') || ''
+      const detail = getPlazaTemplate(id)
+      const { dirPath, coverAbsPath, ...pubTpl } = detail.template
+      return jsonResponse({ ok: true, template: pubTpl, motionMd: detail.motionMd, sceneCount: detail.script?.scenes?.length || 0 })
+    }
+
+    if (pathname === '/api/video-workbench/plaza/cover' && req.method === 'GET') {
+      const id = url.searchParams.get('id') || ''
+      const detail = getPlazaTemplate(id)
+      if (!detail.template?.coverAbsPath || !existsSync(detail.template.coverAbsPath)) {
+        return new Response('Cover Not Found', { status: 404 })
+      }
+      const ext = extname(detail.template.coverAbsPath).toLowerCase()
+      return new Response(readFileSync(detail.template.coverAbsPath), {
+        status: 200,
+        headers: { 'Content-Type': MIME_MAP[ext] || 'image/jpeg', 'Cache-Control': 'public, max-age=3600' },
+      })
+    }
+
+    if (pathname === '/api/video-workbench/plaza/apply' && req.method === 'POST') {
+      const body = await parseRequestJson(req)
+      const res = applyPlazaTemplateToProject(body)
+      return jsonResponse(res)
+    }
+
+    if (pathname === '/api/video-workbench/plaza/publish' && req.method === 'POST') {
+      const body = await parseRequestJson(req)
+      const res = publishProjectToPlaza(body)
+      return jsonResponse({ ...res, plaza: listPlazaTemplates() })
+    }
+
+    // 6h. GET /api/video-workbench/reference/video (Range-stream uploaded reference video for side-by-side sync compare player)
+    if (pathname === '/api/video-workbench/reference/video' && req.method === 'GET') {
+      const projectDir = url.searchParams.get('projectDir') || ''
+      if (!projectDir) return new Response('projectDir required', { status: 400 })
+      const absProject = resolve(projectDir)
+      let rel = ''
+      try {
+        const { data } = readScriptJson(absProject)
+        if (data?.referenceStyle?.sourceRel) rel = data.referenceStyle.sourceRel
+      } catch {}
+      let refFile = rel ? resolve(absProject, rel) : ''
+      if (!refFile || !existsSync(refFile)) {
+        const refDir = join(absProject, 'reference')
+        if (existsSync(refDir)) {
+          const hit = readdirSync(refDir).find((f) => /\.(mp4|mov|webm|mkv)$/i.test(f))
+          if (hit) refFile = join(refDir, hit)
+        }
+      }
+      if (!refFile || !refFile.startsWith(absProject) || !existsSync(refFile)) {
+        return new Response('Reference Video Not Found', { status: 404 })
+      }
+      const ext = extname(refFile).toLowerCase()
+      return serveFileWithRange(req, refFile, MIME_MAP[ext] || 'video/mp4')
+    }
+
     // 7. GET /api/video-workbench/asset?projectDir=...&rel=... (stream HTML, images, video, WAV, MP4 with Range support)
     if (pathname === '/api/video-workbench/asset' && req.method === 'GET') {
       const projectDir = url.searchParams.get('projectDir') || ''
@@ -2295,8 +2431,16 @@ export function apply(ctx) {
       { path: '/api/video-workbench/reference/upload', methods: ['POST'] },
       { path: '/api/video-workbench/reference/analyze', methods: ['POST'] },
       { path: '/api/video-workbench/reference/clear', methods: ['POST'] },
+      { path: '/api/video-workbench/reference/video', methods: ['GET'] },
       { path: '/api/video-workbench/brand-kit', methods: ['GET', 'POST'] },
       { path: '/api/video-workbench/motion-md', methods: ['POST'] },
+      { path: '/api/video-workbench/cloud-media', methods: ['GET', 'POST'] },
+      { path: '/api/video-workbench/cloud-media/generate', methods: ['POST'] },
+      { path: '/api/video-workbench/plaza/templates', methods: ['GET'] },
+      { path: '/api/video-workbench/plaza/template', methods: ['GET'] },
+      { path: '/api/video-workbench/plaza/cover', methods: ['GET'] },
+      { path: '/api/video-workbench/plaza/apply', methods: ['POST'] },
+      { path: '/api/video-workbench/plaza/publish', methods: ['POST'] },
       { path: '/api/video-workbench/skin/upload', methods: ['POST'] },
       { path: '/api/video-workbench/skin', methods: ['GET'] },
       { path: '/api/video-workbench/asset', methods: ['GET'] },

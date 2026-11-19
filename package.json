@@ -1,7 +1,7 @@
 {
   "name": "dsh-video-workbench",
-  "version": "0.4.0",
-  "description": "全智能体通用双引擎 AI 视频工作台 (DSH / Claude Code / Codex / WorkBuddy / Cursor / 独立网页)：Remotion 4.x + Three.js 3D & HTML5 双引擎、参考视频拆解同款复刻 (MOTION.md)、高燃历史剪影卡点动画、可选本地 TTS 一键安装包 (IndexTTS-2.5 / GPT-SoVITS / Edge-TTS / Windows原生)、低配电脑保护与 48kHz 踩点混音。原创作者: Merziller (QQ: 1411574209 | 微信: Merziller | k26789228@gmail.com)",
+  "version": "0.5.0",
+  "description": "全智能体通用双引擎 AI 视频工作台 (DSH / Claude Code / Codex / WorkBuddy / Cursor / 无黑窗静默后台)：32 个 MCP & Cordis 工具、影核广场 (CinePulse Hub) MOTION.md 模板社区、全品类自适应 FFmpeg 节拍卡点与 48kHz 音效母带、参考视频左右分屏同步对比、多轨时间轴可视化微调、可选 BYOK 云端生图/生视频/Suno & MiniMax 音频及自定义协议、可选本地 TTS 一键依赖安装包。原创作者: Merziller (QQ: 1411574209 | 微信: Merziller | k26789228@gmail.com)",
   "license": "MIT",
   "author": {
     "name": "Merziller",
@@ -57,6 +57,10 @@
     "scripts/install-tts-engine.ps1",
     "scripts/tts-bridge.py",
     "scripts/tts-server.py",
+    "start-workbench.vbs",
+    "start-workbench.cmd",
+    "stop-workbench.cmd",
+    "templates/cinepulse-hub",
     "voice-packs/README.md",
     "voice-packs/catalog.example.json",
     ".mcp.json",

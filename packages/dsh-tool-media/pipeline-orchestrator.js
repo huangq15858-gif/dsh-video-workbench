@@ -518,6 +518,9 @@ async function executeMultiAgentRunner(run, helpers) {
           })
           curScript.genre = genreAfterDir.id
           curScript.genreLabel = genreAfterDir.label
+          if (schemaRes.plan?.audioProfile && typeof schemaRes.plan.audioProfile === 'object') {
+            curScript.audioProfile = schemaRes.plan.audioProfile
+          }
           curScript.title =
             normalizeNumeralsForDisplay(stripMetaInstructions(schemaRes.plan?.title || curScript.displayTitle || curScript.title)) ||
             curScript.title
@@ -887,19 +890,31 @@ async function executeMultiAgentRunner(run, helpers) {
         path: chosenUploadPath,
         uploadedPath: chosenUploadPath,
       }
-      if (beatMeta?.analyzed && (effectiveNarrationMode === 'subtitle-mv' || effectiveNarrationMode === 'tts-beat-sync' || spec.beatSync)) {
+      if (beatMeta?.analyzed && (effectiveNarrationMode === 'subtitle-mv' || effectiveNarrationMode === 'tts-beat-sync' || spec.beatSync || true)) {
         const qMode = effectiveNarrationMode === 'subtitle-mv' ? 'subtitle-mv' : 'tts-beat-sync'
+        const adaptiveOpts = {
+          genre: scriptNow.genre || spec.genre,
+          genreLabel: scriptNow.genreLabel || spec.genreLabel,
+          title: scriptNow.title || spec.topic,
+          style,
+          narrationMode: effectiveNarrationMode,
+          pacingMode: scriptNow.pacingMode || spec.pacingMode,
+          audioProfile: scriptNow.audioProfile,
+          referenceStyle: scriptNow.referenceStyle,
+          sfxPick: customSfxPick,
+        }
         scriptNow.scenes = quantizeScenesToBeatGrid(scriptNow.scenes || [], beatMeta, {
+          ...adaptiveOpts,
           mode: qMode,
           fps,
           targetDurationSec: effectiveTargetDurationSec,
         })
-        scriptNow.scenes = choreographBeatSfxCues(scriptNow.scenes, beatMeta, { sfxPick: customSfxPick })
+        scriptNow.scenes = choreographBeatSfxCues(scriptNow.scenes, beatMeta, adaptiveOpts)
         scriptNow.subtitles = scriptNow.scenes.flatMap((sc) => sc.subtitles || [])
         const lastSc = scriptNow.scenes[scriptNow.scenes.length - 1]
         scriptNow.totalDurationInFrames = lastSc ? Number(lastSc.startFrame || 0) + Number(lastSc.durationInFrames || 0) : scriptNow.totalDurationInFrames
         scriptNow.totalDurationSec = Number(((scriptNow.totalDurationInFrames || 30) / fps).toFixed(4))
-        appendLog('audio', `已完成真实上传 BGM 节拍踩点对齐：${scriptNow.scenes.length} 幕锁定 ${beatMeta.bpm} BPM (${scriptNow.totalDurationSec.toFixed(1)}s)`)
+        appendLog('audio', `已完成全品类自适应上传 BGM 节拍踩点与音效编排：${scriptNow.scenes.length} 幕锁定 ${beatMeta.bpm} BPM (${scriptNow.totalDurationSec.toFixed(1)}s)`)
       }
       writeScriptJson(absDir, scriptNow)
     } else if (bgmMode === 'llm-coded' && mode === 'ai-coded' && llmSummary.configured) {
@@ -939,13 +954,25 @@ async function executeMultiAgentRunner(run, helpers) {
 
     const postBgmScript = readScriptJson(absDir).data
     const curGenreForBeat = String(postBgmScript.genre || spec.genre || '').toLowerCase()
+    const adaptiveAudioMeta = {
+      genre: postBgmScript.genre || spec.genre,
+      genreLabel: postBgmScript.genreLabel || spec.genreLabel,
+      title: postBgmScript.title || spec.topic,
+      style,
+      narrationMode: effectiveNarrationMode,
+      pacingMode: postBgmScript.pacingMode || spec.pacingMode,
+      audioProfile: postBgmScript.audioProfile,
+      referenceStyle: postBgmScript.referenceStyle,
+      sfxPick: customSfxPick,
+    }
     const wantsBeatSync =
       effectiveNarrationMode === 'subtitle-mv' ||
       effectiveNarrationMode === 'tts-beat-sync' ||
       Boolean(spec.beatSync) ||
       bgmMode === 'uploaded' ||
       curGenreForBeat === 'history-theater' ||
-      curGenreForBeat === 'mv-lyric'
+      curGenreForBeat === 'mv-lyric' ||
+      postBgmScript.audioProfile?.beatCutIntensity !== 'off'
     if (wantsBeatSync && !(postBgmScript.scenes || []).some((s) => s.beatCutAligned)) {
       const bgmWavRel = postBgmScript.bgm?.path || ''
       const bgmWavAbs = bgmWavRel ? (isAbsolute(bgmWavRel) ? bgmWavRel : resolve(absDir, bgmWavRel)) : ''
@@ -961,17 +988,18 @@ async function executeMultiAgentRunner(run, helpers) {
       postBgmScript.bgm = { ...(postBgmScript.bgm || {}), ...grid, beats: grid.beats }
       const qMode = effectiveNarrationMode === 'subtitle-mv' ? 'subtitle-mv' : 'tts-beat-sync'
       postBgmScript.scenes = quantizeScenesToBeatGrid(postBgmScript.scenes || [], grid, {
+        ...adaptiveAudioMeta,
         mode: qMode,
         fps,
         targetDurationSec: effectiveTargetDurationSec,
       })
-      postBgmScript.scenes = choreographBeatSfxCues(postBgmScript.scenes, grid, { sfxPick: customSfxPick })
+      postBgmScript.scenes = choreographBeatSfxCues(postBgmScript.scenes, grid, adaptiveAudioMeta)
       postBgmScript.subtitles = postBgmScript.scenes.flatMap((sc) => sc.subtitles || [])
       const lastSc = postBgmScript.scenes[postBgmScript.scenes.length - 1]
       postBgmScript.totalDurationInFrames = lastSc ? Number(lastSc.startFrame || 0) + Number(lastSc.durationInFrames || 0) : postBgmScript.totalDurationInFrames
       postBgmScript.totalDurationSec = Number(((postBgmScript.totalDurationInFrames || 30) / fps).toFixed(4))
       writeScriptJson(absDir, postBgmScript)
-      appendLog('audio', `已对 AI 配乐/节拍轨执行音画踩点绑定 (${qMode} · ${postBgmScript.bgm?.bpm || 120} BPM · ${postBgmScript.scenes.length} 幕)`)
+      appendLog('audio', `已对全品类声场执行自适应音画踩点与音效编排 (${qMode} · ${postBgmScript.bgm?.bpm || 120} BPM · ${postBgmScript.scenes.length} 幕)`)
     } else if (durationPolicy.enforced && effectiveTargetDurationSec > 10 && !wantsBeatSync) {
       // Non-beat-sync TTS mode: if user set a strict duration and spoken tracks fell slightly short, add smooth visual breathing cushion
       const curTot = Number(postBgmScript.totalDurationSec) || 0

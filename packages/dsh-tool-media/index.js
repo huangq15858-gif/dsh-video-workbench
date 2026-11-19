@@ -73,6 +73,21 @@ import {
   loadBrandKit,
   saveBrandKit,
 } from './reference-analyzer.js'
+import {
+  CLOUD_MEDIA_PRESETS,
+  generateCloudMediaAsset,
+  getCloudMediaConfigSummary,
+  loadCloudMediaConfig,
+  saveCloudMediaConfig,
+} from './cloud-media.js'
+import {
+  applyPlazaTemplateToProject,
+  getPlazaTemplate,
+  listPlazaTemplates,
+  PLAZA_BRAND,
+  PLAZA_CATEGORIES,
+  publishProjectToPlaza,
+} from './template-plaza.js'
 
 export {
   analyzeAudioBeatStructure,
@@ -740,12 +755,110 @@ export function apply(ctx) {
       return { ok: true, brandKit: loadBrandKit(args.projectDir || '') }
     },
   })
+
+  ctx.tools.register({
+    name: 'configure_cloud_media',
+    description:
+      'Read or save optional BYOK Cloud AI Media Generation connectors for Image (Seedream/OpenAI/Flux/Kling/Custom), Video (Seedance/Kling/MiniMax Hailuo/Sora/Custom), and Audio/Music (Suno/MiniMax Music & Speech/ElevenLabs/Custom HTTP JSON protocol).',
+    parameters: {
+      type: 'object',
+      properties: {
+        action: { type: 'string', enum: ['get', 'save'], description: 'Use get to inspect masked config + presets, or save to update.' },
+        config: { type: 'object', description: 'Partial config patch { image?, video?, audio?, autoUseCloudBroll? }.', additionalProperties: true },
+      },
+      required: ['action'],
+      additionalProperties: false,
+    },
+    output: { schema: { type: 'object', additionalProperties: true } },
+    timeoutMs: 30_000,
+    isConcurrencySafe: () => true,
+    async execute(args) {
+      if (args.action === 'save') {
+        return { ok: true, config: saveCloudMediaConfig(args.config || {}) }
+      }
+      return { ok: true, config: getCloudMediaConfigSummary() }
+    },
+  })
+
+  ctx.tools.register({
+    name: 'generate_cloud_media',
+    description:
+      'Generate an Image, Live-Action Video B-roll, or AI Song/BGM/Audio track using configured optional BYOK Cloud AI providers (Seedream, Seedance, Kling, Flux, Suno, MiniMax Music/Speech/Hailuo, ElevenLabs, or Custom HTTP JSON protocol) and auto-import into the project.',
+    parameters: {
+      type: 'object',
+      properties: {
+        projectDir: { type: 'string', description: 'Target video project directory.' },
+        category: { type: 'string', enum: ['image', 'video', 'audio'], description: 'Media type to generate.' },
+        prompt: { type: 'string', description: 'Visual or musical description prompt.' },
+        lyrics: { type: 'string', description: 'Optional lyrics for Suno / MiniMax Music.' },
+        tags: { type: 'string', description: 'Optional musical style tags.' },
+        title: { type: 'string', description: 'Optional asset/song title.' },
+        durationSec: { type: 'number', description: 'Optional target duration in seconds (e.g. 5 or 10 for video).' },
+        aspectRatio: { type: 'string', description: 'Aspect ratio (16:9, 9:16, 1:1).' },
+        imageUrl: { type: 'string', description: 'Optional first-frame reference image URL for image-to-video.' },
+        instrumental: { type: 'boolean', description: 'Pure instrumental music without vocals (Suno/Custom).' },
+        sceneId: { type: 'string', description: 'Optional scene ID to auto-bind generated image/video into.' },
+        autoBindToScript: { type: 'boolean', description: 'Automatically bind generated BGM/visual into script.json (default true).' },
+      },
+      required: ['category', 'prompt'],
+      additionalProperties: false,
+    },
+    output: { schema: { type: 'object', additionalProperties: true } },
+    timeoutMs: 300_000,
+    isConcurrencySafe: () => false,
+    async execute(args) {
+      return await generateCloudMediaAsset(args)
+    },
+  })
+
+  ctx.tools.register({
+    name: 'manage_template_plaza',
+    description:
+      'Browse, inspect, apply, or publish reusable MOTION.md video blueprints in the built-in & community Template Plaza (影核广场 · CinePulse Hub).',
+    parameters: {
+      type: 'object',
+      properties: {
+        action: { type: 'string', enum: ['list', 'get', 'apply', 'publish'], description: 'Plaza operation.' },
+        category: { type: 'string', description: 'Optional category filter when listing.' },
+        query: { type: 'string', description: 'Optional search keyword when listing.' },
+        templateId: { type: 'string', description: 'Template ID for get/apply/publish.' },
+        projectDir: { type: 'string', description: 'Project directory for apply/publish.' },
+        newTopic: { type: 'string', description: 'Optional new topic when applying a template.' },
+        copyScenes: { type: 'boolean', description: 'If true, also copy starter scenes from template.' },
+        name: { type: 'string', description: 'Display name when publishing.' },
+        description: { type: 'string', description: 'Template description when publishing.' },
+        tags: { type: 'array', items: { type: 'string' }, description: 'Tags when publishing.' },
+      },
+      required: ['action'],
+      additionalProperties: false,
+    },
+    output: { schema: { type: 'object', additionalProperties: true } },
+    timeoutMs: 30_000,
+    isConcurrencySafe: () => true,
+    async execute(args) {
+      if (args.action === 'get') return getPlazaTemplate(args.templateId)
+      if (args.action === 'apply') return applyPlazaTemplateToProject(args)
+      if (args.action === 'publish') return publishProjectToPlaza(args)
+      return listPlazaTemplates({ category: args.category, query: args.query })
+    },
+  })
 }
 
 export {
+  applyPlazaTemplateToProject,
+  CLOUD_MEDIA_PRESETS,
   executeCurateAndEditAssets,
   generateAiCodedSfxCues,
+  generateCloudMediaAsset,
+  getCloudMediaConfigSummary,
+  getPlazaTemplate,
+  listPlazaTemplates,
+  loadCloudMediaConfig,
+  PLAZA_BRAND,
+  PLAZA_CATEGORIES,
+  publishProjectToPlaza,
   runMultiAgentPipeline,
+  saveCloudMediaConfig,
   startPipelineBackground,
   taskManager,
 }

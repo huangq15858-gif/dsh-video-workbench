@@ -21,7 +21,9 @@ import {
 import {
   analyzeAudioBeatStructure,
   choreographBeatSfxCues,
+  GENRE_AUDIO_PROFILES,
   quantizeScenesToBeatGrid,
+  resolveAdaptiveAudioProfile,
   snapTimeToBeatGrid,
 } from './beat-analyzer.js'
 
@@ -56,7 +58,9 @@ export {
   analyzeAudioBeatStructure,
   buildBeatGrid,
   choreographBeatSfxCues,
+  GENRE_AUDIO_PROFILES,
   quantizeScenesToBeatGrid,
+  resolveAdaptiveAudioProfile,
   snapTimeToBeatGrid,
 }
 
@@ -80,14 +84,22 @@ const CORE_SFX_KINDS = [
   'swoosh',
   'glitch',
   'pop',
+  'pop_soft',
   'thud',
   'card',
   'slash',
   'sparkle',
   'chime',
   'shine',
+  'shimmer_swell',
   'counter',
   'typing',
+  'click',
+  'flip',
+  'boing',
+  'shutter',
+  'radar',
+  'bell_warm',
   'riser',
   'suck',
   'sub_drop',
@@ -262,11 +274,24 @@ export async function mixVideoAudio({ projectDir, script, assetsManifest, output
   const hasBgm = Boolean(absBgm && existsSync(absBgm)) && script?.bgm?.enabled !== false
   const isPureMvNoVoice = voiceEvents.length === 0 || script?.narrationMode === 'subtitle-mv'
   const isBeatSyncVoice = !isPureMvNoVoice && (script?.narrationMode === 'tts-beat-sync' || bgmSource === 'user-imported')
+  const audioProf = resolveAdaptiveAudioProfile({
+    genre: script?.genre,
+    genreLabel: script?.genreLabel,
+    title: script?.title,
+    style: script?.style,
+    narrationMode: script?.narrationMode,
+    pacingMode: script?.pacingMode,
+    audioProfile: script?.audioProfile,
+    referenceStyle: script?.referenceStyle,
+  })
   const rawBgmVol = Number(script?.bgm?.volume)
   const bgmVol = isPureMvNoVoice
-    ? (Number.isFinite(rawBgmVol) && rawBgmVol >= 0.45 && rawBgmVol <= 1.0 ? rawBgmVol : 0.82)
-    : (Number.isFinite(rawBgmVol) && rawBgmVol >= 0.28 && rawBgmVol <= 0.85 ? rawBgmVol : isBeatSyncVoice ? 0.48 : 0.40)
+    ? (Number.isFinite(rawBgmVol) && rawBgmVol >= 0.45 && rawBgmVol <= 1.0 ? rawBgmVol : audioProf.bgmVolMv)
+    : (Number.isFinite(rawBgmVol) && rawBgmVol >= 0.20 && rawBgmVol <= 0.85 ? rawBgmVol : isBeatSyncVoice ? Math.max(audioProf.bgmVolVoice, 0.44) : audioProf.bgmVolVoice)
   const bgmFadeInSec = isPureMvNoVoice ? 0.16 : 0.40
+  const masterLufs = audioProf.targetLufs || -14.5
+  const bgmDuckRatio = audioProf.bgmDuckRatio || 2.6
+  const sfxBusBoost = isPureMvNoVoice ? (audioProf.sfxBoostMv || 1.55) : (audioProf.sfxBoostVoice || 1.12)
 
   const args = ['-y']
   const filters = []
@@ -332,7 +357,7 @@ export async function mixVideoAudio({ projectDir, script, assetsManifest, output
     if (hasBgm) {
       filters.push('[voices]asplit=2[v_out][v_sc]')
       mixInputs.push('[v_out]')
-      filters.push('[bgm_raw][v_sc]sidechaincompress=threshold=0.065:ratio=2.4:attack=20:release=240:knee=4[bgm_vduck]')
+      filters.push(`[bgm_raw][v_sc]sidechaincompress=threshold=0.062:ratio=${bgmDuckRatio.toFixed(2)}:attack=18:release=240:knee=4[bgm_vduck]`)
       bgmStreamForMix = '[bgm_vduck]'
     } else {
       mixInputs.push('[voices]')
@@ -340,7 +365,7 @@ export async function mixVideoAudio({ projectDir, script, assetsManifest, output
   }
 
   if (sfxLabels.length > 0) {
-    const sfxBoost = isPureMvNoVoice ? '1.65' : '1.18'
+    const sfxBoost = String(sfxBusBoost.toFixed(2))
     if (sfxLabels.length === 1) {
       filters.push(`${sfxLabels[0]}apad,atrim=0:${totalSec},volume=${sfxBoost},alimiter=limit=0.78:level=disabled:attack=2:release=50[sfx_bus]`)
     } else {
@@ -349,7 +374,7 @@ export async function mixVideoAudio({ projectDir, script, assetsManifest, output
     if (hasBgm && bgmStreamForMix) {
       // Transient micro-duck BGM ~2-4dB on impact/transition SFX bursts so cuts punch crisply across any music genre
       filters.push('[sfx_bus]asplit=2[sfx_out][sfx_sc]')
-      filters.push(`${bgmStreamForMix}[sfx_sc]sidechaincompress=threshold=0.055:ratio=2.6:attack=3:release=115[bgm_final]`)
+      filters.push(`${bgmStreamForMix}[sfx_sc]sidechaincompress=threshold=0.055:ratio=2.5:attack=3:release=115[bgm_final]`)
       mixInputs.push('[bgm_final]')
       mixInputs.push('[sfx_out]')
     } else {
@@ -361,7 +386,7 @@ export async function mixVideoAudio({ projectDir, script, assetsManifest, output
   }
 
   filters.push(
-    `${mixInputs.join('')}${formatAmixChain(mixInputs.length, 'first', ffmpeg)},loudnorm=I=-14.5:TP=-2.0:LRA=9,alimiter=limit=0.78:level=disabled:attack=0.5:release=50[master]`,
+    `${mixInputs.join('')}${formatAmixChain(mixInputs.length, 'first', ffmpeg)},loudnorm=I=${masterLufs.toFixed(1)}:TP=-2.0:LRA=9,alimiter=limit=0.78:level=disabled:attack=0.5:release=50[master]`,
   )
   args.push('-filter_complex', filters.join(';'), '-map', '[master]', '-c:a', 'pcm_s16le', '-ar', String(SR), '-t', String(totalSec), outWav)
 

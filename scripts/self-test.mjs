@@ -1254,25 +1254,19 @@ export const BATCH_01_SCENES: Record<string, React.FC<CustomSceneProps>> = { 'sc
     `[12b/13] v6 P0/P1 regression checks OK (raw binary upload, starter-pack +${starterPackJson.addedCount}, normalizeVideoStyle, resolvePipelineMode, offline testLlmConnection)!`,
   )
 
-  // 13. Re-scaffold clean starter demos & validate Lint + Open-Source Hygiene Scan
-  const demoDir = join(REPO_ROOT, 'examples', 'demo-html-project')
-  const demoRemotionDir = join(REPO_ROOT, 'examples', 'demo-remotion-project')
-  scaffoldVideoProject(demoDir, {
-    title: 'DeepSeek Harness 双引擎视频工作台演示 (HTML5 动效)',
-    engine: 'html',
-  })
-  scaffoldVideoProject(demoRemotionDir, {
-    title: 'DeepSeek Harness 双引擎视频工作台演示 (Remotion)',
-    engine: 'remotion',
-  })
-  matchAllScenesInScript(demoDir, { voiceId: 'auto' })
-  matchAllScenesInScript(demoRemotionDir, { voiceId: 'auto' })
-  syncProjectCodeFromScript(demoDir, readScriptJson(demoDir).data, { forceOverwrite: true })
-  syncProjectCodeFromScript(demoRemotionDir, readScriptJson(demoRemotionDir).data, { forceOverwrite: true })
-  const demoHtmlLint = await executeVideoLint({ projectDir: demoDir, engine: 'html' })
-  const demoRemLint = await executeVideoLint({ projectDir: demoRemotionDir, engine: 'remotion' })
-  if (!demoHtmlLint.ok || !demoRemLint.ok) {
-    throw new Error(`Demo lint check failed: html=${demoHtmlLint.errors.join(';')} rem=${demoRemLint.errors.join(';')}`)
+  // 13. Validate the 2 flagship built-in demos (宣传片 dsh-video-workbench-promo + 教程 full-tutorial-v036) & Open-Source Hygiene Scan
+  const demoPromoDir = join(REPO_ROOT, 'examples', 'dsh-video-workbench-promo')
+  const demoTutorialDir = join(REPO_ROOT, 'examples', 'full-tutorial-v036')
+  if (!existsSync(join(demoPromoDir, 'script.json')) || !existsSync(join(demoTutorialDir, 'script.json'))) {
+    throw new Error('Flagship built-in demos missing: dsh-video-workbench-promo and/or full-tutorial-v036')
+  }
+  const promoScriptChk = readScriptJson(demoPromoDir).data
+  const tutScriptChk = readScriptJson(demoTutorialDir).data
+  if ((promoScriptChk?.scenes?.length || 0) < 12 || (tutScriptChk?.scenes?.length || 0) < 12) {
+    throw new Error(`Flagship demos scene count unexpectedly low: promo=${promoScriptChk?.scenes?.length} tut=${tutScriptChk?.scenes?.length}`)
+  }
+  if (existsSync(join(REPO_ROOT, 'examples', 'demo-html-project')) || existsSync(join(REPO_ROOT, 'examples', 'demo-remotion-project'))) {
+    throw new Error('Legacy 3-scene demos (demo-html-project / demo-remotion-project) must remain deleted')
   }
 
   const violations = scanForHardcodedPaths(REPO_ROOT)
@@ -1280,7 +1274,7 @@ export const BATCH_01_SCENES: Record<string, React.FC<CustomSceneProps>> = { 'sc
     throw new Error(`Hardcoded machine paths found in tracked files: ${violations.join(', ')}`)
   }
   console.log(
-    `[13/14] Starter Demos lint-verified & 0 hardcoded personal paths/keys across all tracked files!`,
+    `[13/14] Flagship Built-in Demos verified (promo=${promoScriptChk.scenes.length} scenes, tutorial=${tutScriptChk.scenes.length} scenes) & 0 hardcoded personal paths/keys!`,
   )
 
   // 14. Real BGM Beat Analyzer + Zero-Asset Narrative Diorama + Subtitle-MV Quantization Verification
@@ -2586,7 +2580,209 @@ export const BATCH_01_SCENES: Record<string, React.FC<CustomSceneProps>> = {
     }
   }
   console.log(
-    `[22/22] v0.4.0 History Beat-Sync (${histMvPolicy.targetShotsMin}~${histMvPolicy.targetShotsMax} shots · banner='汉') + NarrativeDiorama Fallback + TTS UTF-8/voices Fix + Full Author Attribution (${attributionFiles.length} files) Verified!`,
+    `[22/24] v0.4.0 History Beat-Sync (${histMvPolicy.targetShotsMin}~${histMvPolicy.targetShotsMax} shots · banner='汉') + NarrativeDiorama Fallback + TTS UTF-8/voices Fix + Full Author Attribution (${attributionFiles.length} files) Verified!`,
+  )
+
+  // =========================================================================
+  // 23. v0.5.0 Universal Cross-Genre Adaptive Audio/Beat Engine + BYOK Cloud Media (Image/Video/Suno & MiniMax Audio + Custom HTTP)
+  // =========================================================================
+  const { resolveAdaptiveAudioProfile, choreographBeatSfxCues: choreoV050 } = await import('../packages/dsh-tool-media/beat-analyzer.js')
+  const { synthSfxStereo: synthSfxV050 } = await import('../packages/dsh-tool-media/audio-dsp.js')
+  const {
+    CLOUD_MEDIA_PRESETS,
+    createKlingJwt,
+    generateCloudMediaAsset,
+    getByDotPath,
+    getCloudMediaConfigSummary,
+  } = await import('../packages/dsh-tool-media/cloud-media.js')
+
+  const pHist = resolveAdaptiveAudioProfile({ genre: 'history-theater' })
+  const pTut = resolveAdaptiveAudioProfile({ genre: 'ui-tutorial' })
+  const pSci = resolveAdaptiveAudioProfile({ genre: 'science-explainer' })
+  const pStick = resolveAdaptiveAudioProfile({ genre: 'stickman-story' })
+  const pCustomAi = resolveAdaptiveAudioProfile({
+    genre: 'other',
+    genreLabel: '赛车漂移燃剪',
+    audioProfile: { profileName: '涡轮轰鸣声场', beatCutIntensity: 'high', cameraBeatIntensity: 0.95, targetLufs: -13.8, sfxPalette: { action: ['shutter', 'hit'] } },
+  })
+  if (
+    pHist.cameraBeatIntensity < 0.9 ||
+    pTut.cameraBeatIntensity !== 0 ||
+    pTut.targetLufs !== -15.0 ||
+    !pTut.sfxPalette.action.includes('click') ||
+    !pSci.sfxPalette.data.includes('counter') ||
+    !pStick.sfxPalette.drop.includes('boing') ||
+    pCustomAi.profileName !== '涡轮轰鸣声场' ||
+    pCustomAi.targetLufs !== -13.8
+  ) {
+    throw new Error(`v0.5.0 adaptive cross-genre audio profile mismatch: ${JSON.stringify({ pHist, pTut, pSci, pStick, pCustomAi })}`)
+  }
+  for (const sfxName of ['boing', 'shutter', 'radar', 'bell_warm']) {
+    const outSfx = synthSfxV050(sfxName)
+    if (!outSfx?.L?.length || !outSfx?.R?.length) throw new Error(`v0.5.0 DSP primitive failed: ${sfxName}`)
+  }
+  const tutChoreo = choreoV050(
+    [
+      { id: 'scene-01', title: '点击按钮', startSec: 0, durationSec: 3.5, transition: 'cut' },
+      { id: 'scene-02', title: '输入数据', startSec: 3.5, durationSec: 4.0, transition: 'light-wipe' },
+    ],
+    { beats: [{ time: 0, strong: true }, { time: 1.5, strong: true }, { time: 3.5, strong: true }, { time: 5.5, strong: true }], drops: [] },
+    { genre: 'ui-tutorial' },
+  )
+  const tutSfxTypes = tutChoreo.flatMap((s) => (s.sfxCues || []).map((c) => c.type))
+  if (tutSfxTypes.includes('slash')) {
+    throw new Error(`v0.5.0 ui-tutorial should NOT use historical sword slash SFX! got: ${tutSfxTypes.join(',')}`)
+  }
+
+  // Cloud Media: verify presets, Kling HS256 JWT, MiniMax Music Hex decode, Suno async poll, Seedance async poll & Custom HTTP protocol
+  const cloudSummary = getCloudMediaConfigSummary()
+  if (
+    CLOUD_MEDIA_PRESETS.image.length < 5 ||
+    CLOUD_MEDIA_PRESETS.video.length < 4 ||
+    CLOUD_MEDIA_PRESETS.audio.length < 4 ||
+    !CLOUD_MEDIA_PRESETS.audio.some((p) => p.id === 'suno-music') ||
+    !CLOUD_MEDIA_PRESETS.audio.some((p) => p.id === 'minimax-music') ||
+    !CLOUD_MEDIA_PRESETS.video.some((p) => p.id === 'volcengine-seedance') ||
+    !CLOUD_MEDIA_PRESETS.video.some((p) => p.id === 'kling-video') ||
+    !cloudSummary.presets
+  ) {
+    throw new Error('v0.5.0 cloud media presets incomplete!')
+  }
+  const jwtSample = createKlingJwt('test-ak', 'test-sk')
+  if (jwtSample.split('.').length !== 3 || getByDotPath({ a: { b: [{ c: 42 }] } }, 'a.b[0].c') !== 42) {
+    throw new Error('v0.5.0 Kling JWT or dot-path resolver failed!')
+  }
+  const cloudTmpDir = join(REPO_ROOT, '.tmp', 'v050-cloud-test')
+  rmSync(cloudTmpDir, { recursive: true, force: true })
+  mkdirSync(cloudTmpDir, { recursive: true })
+  writeScriptJson(cloudTmpDir, { title: '云端测试', engine: 'remotion', scenes: [{ id: 'scene-01', title: 'S1', durationSec: 3 }] })
+
+  // Mock MiniMax Music Hex MP3 response
+  const fakeMp3Hex = Buffer.from('ID3\x03\x00\x00\x00\x00\x00\x00mock-minimax-music-payload-bytes-1234567890').toString('hex')
+  const mmMusicRes = await generateCloudMediaAsset({
+    projectDir: cloudTmpDir,
+    category: 'audio',
+    prompt: 'Epic Chinese orchestral drums 100 BPM',
+    lyrics: '[Chorus]\nRide to the north',
+    autoBindToScript: false,
+    providerOverride: { providerId: 'minimax-music', protocol: 'minimax-music', baseUrl: 'https://mock.minimax.local', endpoint: '/v1/music_generation', model: 'music-2.0', apiKey: 'test-key' },
+    fetchImpl: async () => ({
+      ok: true,
+      status: 200,
+      headers: { get: () => 'application/json' },
+      text: async () => JSON.stringify({ base_resp: { status_code: 0, status_msg: 'success' }, data: { audio: fakeMp3Hex, status: 2 } }),
+    }),
+  })
+  // Mock Custom Async HTTP Video Protocol
+  let customPollStep = 0
+  const customVidRes = await generateCloudMediaAsset({
+    projectDir: cloudTmpDir,
+    category: 'video',
+    prompt: 'Cinematic desert cavalry tracking shot',
+    sceneId: 'scene-01',
+    pollIntervalMs: 5,
+    providerOverride: {
+      providerId: 'custom-video',
+      protocol: 'custom',
+      apiKey: 'my-secret',
+      custom: {
+        submitUrl: 'https://mock.custom.local/jobs',
+        method: 'POST',
+        headersJson: '{"Authorization":"Bearer {{apiKey}}","Content-Type":"application/json"}',
+        bodyTemplateJson: '{"prompt":"{{prompt}}","dur":{{duration}}}',
+        mode: 'async-poll',
+        taskIdPath: 'job.id',
+        pollUrlTemplate: 'https://mock.custom.local/jobs/{{taskId}}',
+        statusPath: 'job.state',
+        successValues: 'DONE',
+        failValues: 'ERR',
+        resultUrlPath: 'job.output.mp4',
+        resultFormat: 'url',
+      },
+    },
+    fetchImpl: async (u) => {
+      if (String(u).endsWith('/jobs')) {
+        return { ok: true, status: 200, headers: { get: () => 'application/json' }, text: async () => JSON.stringify({ job: { id: 'job-999' } }) }
+      }
+      if (String(u).includes('/jobs/job-999')) {
+        customPollStep++
+        return {
+          ok: true,
+          status: 200,
+          headers: { get: () => 'application/json' },
+          text: async () => JSON.stringify({ job: { state: customPollStep >= 2 ? 'DONE' : 'RUNNING', output: { mp4: 'https://mock.cdn.local/clip.mp4' } } }),
+        }
+      }
+      return { ok: true, status: 200, headers: { get: () => 'video/mp4' }, arrayBuffer: async () => Buffer.from('00000018ftypmp42mock-video') }
+    },
+  })
+  if (!mmMusicRes.ok || !existsSync(mmMusicRes.absolutePath) || !customVidRes.ok || !existsSync(customVidRes.absolutePath)) {
+    throw new Error('v0.5.0 cloud media mock generation failed!')
+  }
+  rmSync(cloudTmpDir, { recursive: true, force: true })
+  console.log(
+    `[23/24] v0.5.0 Cross-Genre Adaptive Audio/Beat Engine (4 new DSP SFX + 10 genre profiles + AI override) + BYOK Cloud Media (Image/Video/Suno/MiniMax/Custom Async Protocol) Verified!`,
+  )
+
+  // =========================================================================
+  // 24. v0.5.0 影核广场 (CinePulse Hub) Template Plaza + Silent Windowless Launcher + 32 MCP Tools
+  // =========================================================================
+  const { listPlazaTemplates, applyPlazaTemplateToProject, publishProjectToPlaza } = await import('../packages/dsh-tool-media/template-plaza.js')
+  const plazaList = listPlazaTemplates()
+  if (!plazaList.ok || plazaList.templates.length < 4 || plazaList.brand.zhName !== '影核广场') {
+    throw new Error(`v0.5.0 CinePulse Hub template plaza missing templates: count=${plazaList.templates?.length}`)
+  }
+  const plazaApplyDir = join(REPO_ROOT, '.tmp', 'v050-plaza-apply')
+  rmSync(plazaApplyDir, { recursive: true, force: true })
+  mkdirSync(plazaApplyDir, { recursive: true })
+  writeScriptJson(plazaApplyDir, { title: '复刻测试', engine: 'remotion', scenes: [] })
+  const applyRes = applyPlazaTemplateToProject({
+    projectDir: plazaApplyDir,
+    templateId: plazaList.templates[0].id,
+    newTopic: '使用影核广场模板制作新短片',
+  })
+  if (!applyRes.ok || !existsSync(join(plazaApplyDir, 'MOTION.md')) || !applyRes.script?.referenceStyle) {
+    throw new Error('v0.5.0 CinePulse Hub apply template failed!')
+  }
+  const pubTestRoot = join(REPO_ROOT, '.tmp', 'v050-plaza-pub')
+  rmSync(pubTestRoot, { recursive: true, force: true })
+  const plazaPubRes = publishProjectToPlaza({
+    projectDir: demoPromoDir,
+    templateId: 'self-test-promo-tpl',
+    name: '自检发布模板',
+    targetRoot: pubTestRoot,
+  })
+  if (!plazaPubRes.ok || !existsSync(plazaPubRes.motionMdPath)) {
+    throw new Error('v0.5.0 CinePulse Hub publish template failed!')
+  }
+  rmSync(plazaApplyDir, { recursive: true, force: true })
+  rmSync(pubTestRoot, { recursive: true, force: true })
+
+  // Verify silent windowless launchers & UI features exist
+  const clientV050 = readFileSync(join(REPO_ROOT, 'packages', 'dsh-web-video-workbench', 'lib', 'client.js'), 'utf8')
+  const runnerV050 = readFileSync(join(REPO_ROOT, 'scripts', 'dsh-runner.mjs'), 'utf8')
+  if (
+    !existsSync(join(REPO_ROOT, 'start-workbench.vbs')) ||
+    !existsSync(join(REPO_ROOT, 'stop-workbench.cmd')) ||
+    !runnerV050.includes('isDaemonLauncher') ||
+    !runnerV050.includes('windowsHide: true') ||
+    !clientV050.includes('影核广场') ||
+    !clientV050.includes('左右分屏对比参考视频') ||
+    !clientV050.includes('多轨时间轴微调') ||
+    !clientV050.includes('可选云端 AI 生图 / 生视频 / 音乐与音频中心')
+  ) {
+    throw new Error('v0.5.0 silent daemon launcher or UI plaza/compare/timeline/cloud controls missing!')
+  }
+  if (
+    mcpToolNames.length < 32 ||
+    !mcpToolNames.includes('configure_cloud_media') ||
+    !mcpToolNames.includes('generate_cloud_media') ||
+    !mcpToolNames.includes('manage_template_plaza')
+  ) {
+    throw new Error(`v0.5.0 expected >= 32 MCP tools with cloud & plaza tools (got ${mcpToolNames.length})`)
+  }
+  console.log(
+    `[24/24] v0.5.0 影核广场 · CinePulse Hub (${plazaList.templates.length} templates + apply/publish) + Silent Windowless Daemon + Reference Compare + 4-Track Timeline + ${mcpToolNames.length} MCP Tools Verified!`,
   )
   console.log('======================================================================')
 }

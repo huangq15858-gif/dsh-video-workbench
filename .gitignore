@@ -9,6 +9,8 @@ secrets.json
 .dsh-video-tts-config.json
 .dsh-video-avatar-config.json
 .dsh-video-hardware-pref.json
+.dsh-video-cloud-media.json
+templates/cinepulse-hub-custom/
 
 # Dependencies & Package Manager Caches
 node_modules/
@@ -32,15 +34,21 @@ frames-concat.txt
 tmp/
 .tmp-render/
 examples/*
-!examples/demo-html-project/
-!examples/demo-remotion-project/
+!examples/dsh-video-workbench-promo/
+!examples/full-tutorial-v036/
 examples/*/assets/
 examples/*/uploads/
 examples/*/public/
 examples/*/audio/
+examples/*/output/
+examples/*/publish/
+examples/*/fonts/
+examples/*/reference/
 examples/*/assets.json
 examples/*/.tmp-render/
 examples/*/node_modules/
+examples/*/tsconfig.preflight.json
+examples/*/.npmrc
 
 # Local Imported Voice Packs & User Assets (keep only example template)
 voice-packs/catalog.json
@@ -71,7 +79,9 @@ __pycache__/
 *.png
 !assets/screenshots/*.png
 !docs/tutorial/*.png
+!templates/cinepulse-hub/**/*.png
 *.jpg
+!templates/cinepulse-hub/**/*.jpg
 *.jpeg
 *.webp
 

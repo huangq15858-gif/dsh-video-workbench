@@ -1,7 +1,7 @@
-# 🎬 DSH Video Workbench (`dsh-video-workbench` · v0.4.0)
+# 🎬 DSH Video Workbench (`dsh-video-workbench` · v0.5.0)
 
-> **全智能体通用双引擎 AI 视频全链路工作台（不再局限于 DSH！原生支持 DeepSeek Harness · Claude Code · OpenAI Codex CLI · WorkBuddy · Cursor · Windsurf · Cline · Antigravity · 独立网页）**  
-> **Universal Multi-Agent Dual-Engine AI Video Studio (Remotion 4.x + Three.js 3D & HyperFrames HTML5) — Reference Video Reverse-Engineering & Same-Style Remake (`MOTION.md` + Brand Kit), Beat-Synced Historical/MV Silhouette & Combat VFX, Optional One-Click Local TTS Installer (`Edge-TTS` / `IndexTTS-2.5` / `GPT-SoVITS` / `Windows Native`), & Low-Spec Protection**
+> **全智能体通用双引擎 AI 视频全链路工作台（不限 DSH！支持 DeepSeek Harness · Claude Code · OpenAI Codex CLI · WorkBuddy · Cursor · Windsurf · Cline · Antigravity · 无黑窗静默后台独立网页）**  
+> **Universal Multi-Agent Dual-Engine AI Video Studio — CinePulse Hub (影核广场) `MOTION.md` Template Plaza, Cross-Genre Adaptive Beat-Sync & 48kHz SFX Mastering, Reference vs Remake Split/Curtain Sync Compare Player, 4-Track Visual Timeline, Optional BYOK Cloud Image/Video/Music (`Seedream` / `Seedance` / `Kling` / `Flux` / `Suno` / `MiniMax` + Open Custom HTTP Protocol), & Optional 1-Click Local TTS Installer**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
 [![Agents: DSH | Claude Code | Codex | WorkBuddy | Cursor](https://img.shields.io/badge/Agents-DSH%20%7C%20Claude%20Code%20%7C%20Codex%20%7C%20WorkBuddy%20%7C%20Cursor-7c3aed.svg)](#-四全智能体安装与接入指南不限-dsh-universal-multi-agent-setup)
@@ -15,13 +15,20 @@
 
 ---
 
-## 🎥 官方完整实操教程视频 & 可选本地配音安装器
+## 🎥 官方完整实操教程视频 & `v0.5.0` 核心亮点
 
 > - **仓库内教程视频**：[`docs/tutorial/dsh-video-workbench-tutorial.mp4`](./docs/tutorial/dsh-video-workbench-tutorial.mp4)（1080P · 3 分 17 秒 · 由本插件全链路自动生成）
 > - **GitHub Release 高速直链下载**：
->   - 插件全能单包：[`dsh-video-workbench-0.4.0.tgz`](https://github.com/Merziller/dsh-video-workbench/releases/download/v0.4.0/dsh-video-workbench-0.4.0.tgz)
->   - 可选本地配音一键安装包（`Edge-TTS` / `IndexTTS-2.5` / `GPT-SoVITS`）：[`dsh-tts-installer-pack-0.4.0.zip`](https://github.com/Merziller/dsh-video-workbench/releases/download/v0.4.0/dsh-tts-installer-pack-0.4.0.zip)
->   - 1080P 教程成片：[`dsh-video-workbench-tutorial.mp4`](https://github.com/Merziller/dsh-video-workbench/releases/download/v0.4.0/dsh-video-workbench-tutorial.mp4)
+>   - 插件全能单包：[`dsh-video-workbench-0.5.0.tgz`](https://github.com/Merziller/dsh-video-workbench/releases/download/v0.5.0/dsh-video-workbench-0.5.0.tgz)
+>   - 可选本地配音一键安装包（`Edge-TTS` / `IndexTTS-2.5` / `GPT-SoVITS`）：[`dsh-tts-installer-pack-0.5.0.zip`](https://github.com/Merziller/dsh-video-workbench/releases/download/v0.5.0/dsh-tts-installer-pack-0.5.0.zip)
+>   - 1080P 教程成片：[`dsh-video-workbench-tutorial.mp4`](https://github.com/Merziller/dsh-video-workbench/releases/download/v0.5.0/dsh-video-workbench-tutorial.mp4)
+> - **✨ `v0.5.0` 重磅新能力**：
+>   1. **🔇 无黑窗后台静默守护**：Windows 双击 `start-workbench.cmd` / `start-workbench.vbs` 自动隐藏 CMD 黑窗并在后台静默常驻 `http://127.0.0.1:4399`，双击 `stop-workbench.cmd` 或 `node bin/dsh-video-cli.mjs stop` 优雅停止；
+>   2. **🏛 影核广场 · CinePulse Hub**：内置 & 社区开放 `MOTION.md` 爆款模板广场（首批实产 5 大高频题材高质量模板：历史高燃卡点 / 科技旗舰发布会 / SaaS 实操教程 / 深度科普拆解 / 数据榜单洞察），支持一键复刻与发布分享；
+>   3. **🥁 全品类自适应音画节拍与声学母带引擎**：不再局限于历史高燃！FFmpeg 节拍量化、48kHz 程序化音效调色盘（战斗/键鼠 UI/雷达科普/数据计数/轻喜剧弹簧/快门/人文风铃）、镜头律动强度与 EBU R128 响度混音全面按 10+ 体裁与 AI 导演 `audioProfile` 自动跟随匹配；
+>   4. **⚖️ 参考视频 vs 复刻成品「左右分屏 / 拉帘同步对比播放器」** + **🎞️ 4 轨可视化时间轴微调台**（缩放、节拍吸附、调时长、换镜序、点切转场、48kHz 音效增删与 BGM 音量实时调节）；
+>   5. **☁️ 可选 BYOK 云端生图 / 生视频 / 音乐与音频中心**：内置火山方舟 **即梦 Seedream / Seedance**、**可灵 Kling (JWT/Bearer)**、**Flux Pro / Fal**、**Suno Music**、**MiniMax Music-2.0 / Speech-02-HD / 海螺视频**、**ElevenLabs**，且**图片、视频、音频三大类全部开放自定义 HTTP JSON 协议**（支持同步与异步轮询）；
+>   6. **📦 全新内置旗舰演示**：移除旧版 3 幕极简 Demo，内置 **22 幕双引擎官方宣传片** 与 **24 幕全功能实操教程** 两个完整工程；MCP 工具扩展至 **32 个**。
 > - **作者联系（Bug 反馈 / 交流 / 建议）**：**QQ `1411574209`** ｜ **微信 `Merziller`** ｜ **Gmail `k26789228@gmail.com`**
 
 ![DSH Video Workbench 实操教程 3×3 关键帧预览](./docs/tutorial/tutorial-preview-3x3.png)

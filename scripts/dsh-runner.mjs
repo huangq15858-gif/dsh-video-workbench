@@ -1,6 +1,6 @@
 import { createServer } from 'node:http'
 import { spawn } from 'node:child_process'
-import { existsSync, readFileSync } from 'node:fs'
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
@@ -130,28 +130,139 @@ async function main() {
   }
 
   // Start HTTP Verification / Standalone Preview Server for `dsh-web-video-workbench`
-  const RUNNER_VERSION = 'v8'
+  const RUNNER_VERSION = 'v9'
   const basePort = Number(process.env.DSH_VIDEO_PORT || 4399)
-  const smokeMode = flags.has('--smoke') || flags.has('--verify') || !flags.has('--keep-alive')
+  const daemonInfoPath = join(REPO_ROOT, '.tmp', 'workbench-daemon.json')
+  const daemonLogPath = join(REPO_ROOT, '.tmp', 'workbench-daemon.log')
+  const shouldStop = flags.has('--stop')
+  const shouldStatus = flags.has('--status')
+  const isDaemonLauncher = (flags.has('--daemon') || flags.has('--bg')) && !flags.has('--daemon-child')
+  const isDaemonChild = flags.has('--daemon-child')
+  const smokeMode = !isDaemonLauncher && !isDaemonChild && !shouldStop && !shouldStatus && (flags.has('--smoke') || flags.has('--verify') || !flags.has('--keep-alive'))
   const shouldOpenBrowser = flags.has('--open')
 
-  // Check if an existing runner is already active on basePort
-  if (!smokeMode) {
+  const openBrowserSilently = (targetUrl) => {
     try {
-      const probeRes = await fetch(`http://127.0.0.1:${basePort}/api/video-workbench/runner-info`, {
-        signal: AbortSignal.timeout(1200),
-      })
-      if (probeRes.ok) {
-        const info = await probeRes.json()
-        if (info?.version === RUNNER_VERSION && info?.repoRoot === REPO_ROOT) {
-          console.log(`\n✅ Active DSH Video Workbench (${RUNNER_VERSION}) already listening at: http://127.0.0.1:${basePort}`)
-          if (shouldOpenBrowser && process.platform === 'win32') {
-            spawn('cmd.exe', ['/c', 'start', '', `http://127.0.0.1:${basePort}`], { detached: true, stdio: 'ignore' }).unref()
-          }
-          return
-        }
+      if (process.platform === 'win32') {
+        spawn('cmd.exe', ['/c', 'start', '', targetUrl], { detached: true, stdio: 'ignore', windowsHide: true }).unref()
+      } else if (process.platform === 'darwin') {
+        spawn('open', [targetUrl], { detached: true, stdio: 'ignore' }).unref()
+      } else {
+        spawn('xdg-open', [targetUrl], { detached: true, stdio: 'ignore' }).unref()
       }
     } catch {}
+  }
+
+  const probeExisting = async () => {
+    const ports = []
+    if (existsSync(daemonInfoPath)) {
+      try {
+        const saved = JSON.parse(readFileSync(daemonInfoPath, 'utf8'))
+        if (saved?.port) ports.push(Number(saved.port))
+      } catch {}
+    }
+    if (!ports.includes(basePort)) ports.push(basePort)
+    for (const p of ports) {
+      try {
+        const probeRes = await fetch(`http://127.0.0.1:${p}/api/video-workbench/runner-info`, {
+          signal: AbortSignal.timeout(1200),
+        })
+        if (probeRes.ok) {
+          const info = await probeRes.json()
+          if (info?.ok) return { port: p, info }
+        }
+      } catch {}
+    }
+    return null
+  }
+
+  if (shouldStatus) {
+    const existing = await probeExisting()
+    if (existing) {
+      console.log(`✅ 后台静默服务运行中: ${existing.info.url} (PID ${existing.info.pid} · ${existing.info.version})`)
+      console.log(`   日志文件: ${daemonLogPath}`)
+    } else {
+      console.log('⚪ 当前未检测到运行中的 DSH Video Workbench 后台服务。')
+    }
+    return
+  }
+
+  if (shouldStop) {
+    let stopped = false
+    const existing = await probeExisting()
+    if (existing) {
+      try {
+        const stopResp = await fetch(`http://127.0.0.1:${existing.port}/api/video-workbench/runner-stop`, {
+          method: 'POST',
+          signal: AbortSignal.timeout(2500),
+        })
+        if (stopResp.ok) stopped = true
+      } catch {}
+      if (!stopped && existing.info?.pid) {
+        try {
+          process.kill(Number(existing.info.pid))
+          stopped = true
+        } catch {}
+      }
+    }
+    if (existsSync(daemonInfoPath)) {
+      try {
+        const saved = JSON.parse(readFileSync(daemonInfoPath, 'utf8'))
+        if (!stopped && saved?.pid) {
+          try {
+            process.kill(Number(saved.pid))
+            stopped = true
+          } catch {}
+        }
+        unlinkSync(daemonInfoPath)
+      } catch {}
+    }
+    console.log(stopped ? '🛑 已安全停止 DSH Video Workbench 后台静默服务。' : '⚪ 未发现需要停止的后台服务。')
+    return
+  }
+
+  // Check if an existing runner is already active
+  if (!smokeMode && !isDaemonChild) {
+    const existing = await probeExisting()
+    if (existing && existing.info?.version === RUNNER_VERSION && existing.info?.repoRoot === REPO_ROOT) {
+      console.log(`\n✅ Active DSH Video Workbench (${RUNNER_VERSION}) already listening at: ${existing.info.url}`)
+      if (shouldOpenBrowser) openBrowserSilently(existing.info.url)
+      return
+    }
+  }
+
+  // Silent Windowless Daemon Launcher (hides Windows CMD window completely!)
+  if (isDaemonLauncher) {
+    mkdirSync(join(REPO_ROOT, '.tmp'), { recursive: true })
+    const logFd = openSync(daemonLogPath, 'a')
+    const selfPath = fileURLToPath(import.meta.url)
+    const childArgs = [selfPath, profileName, '--keep-alive', '--daemon-child']
+    const child = spawn(process.execPath, childArgs, {
+      cwd: REPO_ROOT,
+      env: { ...process.env, DSH_VIDEO_PORT: String(basePort) },
+      detached: true,
+      windowsHide: true,
+      stdio: ['ignore', logFd, logFd],
+    })
+    child.unref()
+    try { closeSync(logFd) } catch {}
+
+    // Poll until background HTTP server is ready (up to 15s)
+    let readyInfo = null
+    for (let attempt = 0; attempt < 50; attempt++) {
+      await new Promise((r) => setTimeout(r, 300))
+      const probed = await probeExisting()
+      if (probed?.info?.ok) {
+        readyInfo = probed.info
+        break
+      }
+    }
+    const finalUrl = readyInfo?.url || `http://127.0.0.1:${basePort}`
+    console.log(`✅ DSH Video Workbench 已转入后台静默运行（无黑窗）: ${finalUrl} (PID ${readyInfo?.pid || child.pid})`)
+    console.log(`   日志路径: ${daemonLogPath}`)
+    console.log('   停止服务: 运行 stop-workbench.cmd 或 `node ./bin/dsh-video-cli.mjs studio --stop`')
+    if (shouldOpenBrowser) openBrowserSilently(finalUrl)
+    return
   }
 
   let actualPort = basePort
@@ -168,8 +279,20 @@ async function main() {
           port: actualPort,
           url: `http://127.0.0.1:${actualPort}`,
           repoRoot: REPO_ROOT,
+          daemonMode: isDaemonChild,
+          logPath: daemonLogPath,
         }),
       )
+      return
+    }
+    if (url.pathname === '/api/video-workbench/runner-stop' && req.method === 'POST') {
+      res.setHeader('Content-Type', 'application/json; charset=utf-8')
+      res.end(JSON.stringify({ ok: true, stopping: true, pid: process.pid }))
+      setTimeout(() => {
+        try { if (existsSync(daemonInfoPath)) unlinkSync(daemonInfoPath) } catch {}
+        try { server.close() } catch {}
+        process.exit(0)
+      }, 120)
       return
     }
     if (url.pathname.startsWith('/api/video-workbench/')) {
@@ -356,10 +479,31 @@ async function main() {
     server.close()
     console.log('✅ `pnpm dsh video` startup & live verification completed with 0 errors.')
   } else {
-    if (shouldOpenBrowser && process.platform === 'win32') {
-      spawn('cmd.exe', ['/c', 'start', '', `http://127.0.0.1:${actualPort}`], { detached: true, stdio: 'ignore' }).unref()
+    try {
+      mkdirSync(join(REPO_ROOT, '.tmp'), { recursive: true })
+      writeFileSync(
+        daemonInfoPath,
+        JSON.stringify({
+          pid: process.pid,
+          port: actualPort,
+          url: `http://127.0.0.1:${actualPort}`,
+          version: RUNNER_VERSION,
+          daemonMode: isDaemonChild,
+          startedAt: new Date().toISOString(),
+        }, null, 2) + '\n',
+        'utf8',
+      )
+    } catch {}
+    const cleanupPid = () => {
+      try { if (existsSync(daemonInfoPath)) unlinkSync(daemonInfoPath) } catch {}
+      process.exit(0)
     }
-    console.log('💡 Press Ctrl+C to stop the server.')
+    process.once('SIGINT', cleanupPid)
+    process.once('SIGTERM', cleanupPid)
+    if (shouldOpenBrowser) {
+      openBrowserSilently(`http://127.0.0.1:${actualPort}`)
+    }
+    console.log(isDaemonChild ? '💡 Running silently in background daemon mode.' : '💡 Press Ctrl+C to stop the server.')
   }
 }
 
