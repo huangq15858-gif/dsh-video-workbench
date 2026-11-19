@@ -18,7 +18,7 @@ const META_CLAUSE_RES = [
 
 const BRIEF_MARKER_RES = [
   /【\s*导演备注[^】]*】/,
-  /【\s*(?:内容要点|制作要求|视觉方案|导演指令)[^】]*】/,
+  /【\s*(?:内容要点|制作要求|视觉方案|导演指令|目标时长)[^】]*】/,
 ]
 
 const SENTENCE_SPLIT_RE = /(?<=[。！？；!?;\n])/
@@ -108,13 +108,15 @@ function parseBriefSections(raw) {
     return m ? m[1].trim() : ''
   }
   const parsedGenreLabel = grab('体裁').split(/\n/)[0].trim()
+  const parsedDurationLine = grab('目标时长').split(/\n/)[0].trim()
   return {
     title: grab('作品标题').split(/\n/)[0].trim(),
     genre: parsedGenreLabel,
     genreLabel: parsedGenreLabel,
+    durationLine: parsedDurationLine,
     outline: grab('内容要点'),
     notes: grab('导演备注'),
-    hasMarkers: /【\s*(?:作品标题|体裁|内容要点|导演备注)/.test(String(raw || '')),
+    hasMarkers: /【\s*(?:作品标题|体裁|目标时长|内容要点|导演备注)/.test(String(raw || '')),
   }
 }
 
@@ -163,6 +165,10 @@ export function formatDirectorBrief(scriptLike = {}) {
     const parts = []
     if (title) parts.push(`【作品标题】${title}`)
     if (genreLabel) parts.push(`【体裁】${genreLabel}`)
+    const targetSec = Math.round(Number(scriptLike.targetDurationSec) || 0)
+    if (scriptLike.durationMode === 'custom' && targetSec >= 10) {
+      parts.push(`【目标时长】${targetSec} 秒`)
+    }
     if (rawGoal && !BOILERPLATE_GOALS.has(rawGoal) && rawGoal !== title) {
       parts.push(`【一句话】${rawGoal}`)
     }

@@ -1256,6 +1256,8 @@ window.__ModuleLoader__?.load({
         bgmMode: 'llm-coded',
         narrationMode: 'tts',
         pacingMode: 'auto',
+        durationMode: 'auto',
+        targetDurationSec: 120,
         bgmTtsPrompt: '科技光影律动 温暖氛围铺底',
         targetPlatform: 'universal',
         aspectRatio: 'auto',
@@ -1755,9 +1757,11 @@ window.__ModuleLoader__?.load({
                   style: UNIFIED_STYLES.some((s) => s.id === ap.script?.style) ? ap.script.style : 'tech',
                   engine: normEngine,
                   creationMode: ap.script?.creationMode || 'ai-coded',
-                  bgmMode: ap.script?.bgmMode || ap.script?.audioSpec?.bgmMode || 'llm-coded',
+                  bgmMode: ap.script?.bgmMode || ap.script?.audioSpec?.bgmMode || ((ap.assets?.items || []).some((a) => a.role === 'music') ? 'uploaded' : 'llm-coded'),
                   narrationMode: ap.script?.narrationMode || 'tts',
                   pacingMode: ap.script?.pacingMode || 'auto',
+                  durationMode: ap.script?.durationMode === 'custom' || Number(ap.script?.targetDurationSec) >= 10 ? 'custom' : 'auto',
+                  targetDurationSec: Number(ap.script?.targetDurationSec) >= 10 ? Math.round(Number(ap.script.targetDurationSec)) : (prev.targetDurationSec || 120),
                   visual3dMode: ap.script?.visual3dMode || 'auto',
                   targetPlatform: ap.script?.targetPlatform || 'universal',
                   aspectRatio: ap.script?.requestedAspectRatio || ap.script?.aspectRatio || 'auto',
@@ -2111,6 +2115,8 @@ window.__ModuleLoader__?.load({
               aiBadgePosition: directorForm.aiBadgePosition || 'top-right',
               aiBadgeText: directorForm.aiBadgeText || '',
               pacingMode: directorForm.pacingMode || 'auto',
+              durationMode: directorForm.durationMode || 'auto',
+              targetDurationSec: directorForm.durationMode === 'custom' ? Math.max(15, Math.min(600, Math.round(Number(directorForm.targetDurationSec) || 120))) : 0,
               targetPlatform: directorForm.targetPlatform,
               bgmMode: directorForm.bgmMode,
               creationMode: directorForm.creationMode,
@@ -2156,6 +2162,30 @@ window.__ModuleLoader__?.load({
         }
       }
 
+      const applyAutoBoundAssets = (autoBound) => {
+        if (!autoBound || typeof autoBound !== 'object') return []
+        const notes = []
+        if (autoBound.bgm) {
+          setDirectorForm((p) => ({ ...p, bgmMode: 'uploaded' }))
+          const bpmTxt = autoBound.bgm.bpm ? ` · ${autoBound.bgm.bpm} BPM` : ''
+          const dropTxt = autoBound.bgm.dropsCount ? ` · ${autoBound.bgm.dropsCount} 个高潮突降点` : ''
+          notes.push(`🎵 已自动切换并绑定上传 BGM「${autoBound.bgm.name}」${bpmTxt}${dropTxt}`)
+        }
+        if (autoBound.avatarBase?.path) {
+          setAvatarCfg((p) => ({ ...p, sourcePath: autoBound.avatarBase.path }))
+          notes.push(`👤 已绑定数字人底板「${autoBound.avatarBase.name}」`)
+        }
+        if (autoBound.voiceClone?.path) {
+          setAvatarCfg((p) => ({ ...p, voiceSamplePath: autoBound.voiceClone.path }))
+          notes.push(`🎤 已绑定声音克隆样本「${autoBound.voiceClone.name}」`)
+        }
+        if (autoBound.hostVideo?.path) {
+          setUseHostVocal(true)
+          notes.push(`🎬 已启用真人出镜原声「${autoBound.hostVideo.name}」`)
+        }
+        return notes
+      }
+
       // Raw Binary Streaming Upload (Zero Base64 bloat on large MP4s!)
       const handleUploadFiles = async (fileList, forcedRole = '') => {
         const files = Array.from(fileList || []).filter(Boolean)
@@ -2163,6 +2193,7 @@ window.__ModuleLoader__?.load({
         let uploadedCount = 0
         let lastManifestItems = null
         let lastSummary = null
+        const boundNotes = []
         try {
           for (let i = 0; i < files.length; i += 1) {
             const file = files[i]
@@ -2191,6 +2222,7 @@ window.__ModuleLoader__?.load({
               uploadedCount += d.matchedCount || d.addedCount || d.uploadedCount || 1
               if (Array.isArray(d.manifest?.items)) lastManifestItems = d.manifest.items
               if (d.summary) lastSummary = d.summary
+              boundNotes.push(...applyAutoBoundAssets(d.autoBound))
             }
           }
           if (uploadedCount > 0) {
@@ -2199,7 +2231,12 @@ window.__ModuleLoader__?.load({
             if (assetFilter !== 'all') setAssetFilter('all')
             setAssetVersion((v) => v + 1)
             await refreshState(activeProjectDir)
-            notify(`已高速流式导入 ${uploadedCount} 个素材文件`, 'success')
+            notify(
+              boundNotes.length > 0
+                ? `已导入 ${uploadedCount} 个素材 · ${boundNotes[0]}`
+                : `已高速流式导入 ${uploadedCount} 个素材文件`,
+              'success',
+            )
           }
         } catch (err) {
           notify(`上传过程中出错: ${err.message}`, 'error')
@@ -2257,9 +2294,15 @@ window.__ModuleLoader__?.load({
           if (Array.isArray(d.manifest?.items)) setProjectAssets(d.manifest.items)
           if (d.summary) setAssetSummary(d.summary)
           if (assetFilter !== 'all') setAssetFilter('all')
+          const boundNotes = applyAutoBoundAssets(d.autoBound)
           setAssetVersion((v) => v + 1)
           await refreshState(activeProjectDir)
-          notify(`已识别导入 ${d.importedCount ?? d.matchedCount ?? d.addedCount ?? 0} 份本地素材`, 'success')
+          notify(
+            boundNotes.length > 0
+              ? `已导入 ${d.importedCount ?? d.matchedCount ?? d.addedCount ?? 0} 份本地素材 · ${boundNotes[0]}`
+              : `已识别导入 ${d.importedCount ?? d.matchedCount ?? d.addedCount ?? 0} 份本地素材`,
+            'success',
+          )
         } finally {
           setBusyLabel('')
         }
@@ -2292,8 +2335,9 @@ window.__ModuleLoader__?.load({
             notify(`切换角色失败: ${d.error}`, 'error')
             return
           }
+          const boundNotes = applyAutoBoundAssets(d.autoBound)
           await refreshState(activeProjectDir)
-          notify(`素材角色已标定为「${newRole}」`, 'success')
+          notify(boundNotes.length > 0 ? boundNotes[0] : `素材角色已标定为「${newRole}」`, 'success')
         } catch (err) {
           notify(`切换失败: ${err.message}`, 'error')
         }
@@ -2352,6 +2396,8 @@ window.__ModuleLoader__?.load({
               aspectRatio: directorForm.aspectRatio,
               targetPlatform: directorForm.targetPlatform,
               pacingMode: directorForm.pacingMode,
+              durationMode: directorForm.durationMode || 'auto',
+              targetDurationSec: directorForm.durationMode === 'custom' ? Math.max(15, Math.min(600, Math.round(Number(directorForm.targetDurationSec) || 120))) : 0,
               creationMode: directorForm.creationMode,
               narrationMode: directorForm.narrationMode,
             }),
@@ -2362,12 +2408,18 @@ window.__ModuleLoader__?.load({
             return
           }
           setUnpolishedTopicBackup(rawPrompt)
+          const resolvedDurMode = d.durationMode === 'custom' ? 'custom' : (directorForm.durationMode || 'auto')
+          const resolvedDurSec = Number(d.targetDurationSec) >= 10
+            ? Math.round(Number(d.targetDurationSec))
+            : (resolvedDurMode === 'custom' ? Math.max(15, Math.min(600, Math.round(Number(directorForm.targetDurationSec) || 120))) : 0)
           setDirectorForm((p) => ({
             ...p,
             topic: d.polishedTopic,
             displayTitle: d.displayTitle || p.displayTitle,
             genre: d.genre || p.genre,
             genreLabel: d.genreLabel || p.genreLabel,
+            durationMode: resolvedDurMode,
+            targetDurationSec: resolvedDurSec || p.targetDurationSec || 120,
             directorNotes: d.directorNotes || '',
             contentOutline: Array.isArray(d.contentOutline) ? d.contentOutline : [],
             style: d.suggestedStyle || p.style,
@@ -2386,6 +2438,8 @@ window.__ModuleLoader__?.load({
                     displayTitle: d.displayTitle || '',
                     genre: d.genre || '',
                     genreLabel: d.genreLabel || '',
+                    durationMode: resolvedDurMode,
+                    targetDurationSec: resolvedDurSec,
                     directorNotes: d.directorNotes || '',
                     contentOutline: Array.isArray(d.contentOutline) ? d.contentOutline : [],
                     goal: d.polishedTopic,
@@ -2396,7 +2450,12 @@ window.__ModuleLoader__?.load({
               })
             } catch {}
           }
-          notify(`✨ 已由 ${d.model || 'AI 大模型'} 润色生成专业导演指令并覆盖替换！`, 'success')
+          notify(
+            resolvedDurSec >= 10
+              ? `✨ 已由 ${d.model || 'AI 大模型'} 按目标时长 ${d.durationLabel || `${resolvedDurSec}秒`} 润色生成专业导演指令！`
+              : `✨ 已由 ${d.model || 'AI 大模型'} 润色生成专业导演指令并覆盖替换！`,
+            'success',
+          )
         } catch (err) {
           notify(`AI 润色请求异常: ${err.message}`, 'error')
         } finally {
@@ -2487,6 +2546,8 @@ window.__ModuleLoader__?.load({
               bgmMode: directorForm.bgmMode,
               narrationMode: directorForm.narrationMode,
               pacingMode: directorForm.pacingMode || 'auto',
+              durationMode: directorForm.durationMode || 'auto',
+              targetDurationSec: directorForm.durationMode === 'custom' ? Math.max(15, Math.min(600, Math.round(Number(directorForm.targetDurationSec) || 120))) : 0,
               visual3dMode: directorForm.visual3dMode || 'auto',
               fps: Number(directorForm.fps) || 30,
               uploadedBgmPath: script?.bgm?.uploadedPath || uploadedMusicAsset?.path || '',
@@ -2580,6 +2641,8 @@ window.__ModuleLoader__?.load({
               aiBadgePosition: directorForm.aiBadgePosition || 'top-right',
               aiBadgeText: directorForm.aiBadgeText || '',
               pacingMode: directorForm.pacingMode || 'auto',
+              durationMode: directorForm.durationMode || 'auto',
+              targetDurationSec: directorForm.durationMode === 'custom' ? Math.max(15, Math.min(600, Math.round(Number(directorForm.targetDurationSec) || 120))) : 0,
               visual3dMode: directorForm.visual3dMode || 'auto',
               narrationMode: directorForm.narrationMode || 'tts',
               bgmMode: directorForm.bgmMode,
@@ -2647,6 +2710,8 @@ window.__ModuleLoader__?.load({
               aiBadgePosition: directorForm.aiBadgePosition || 'top-right',
               aiBadgeText: directorForm.aiBadgeText || '',
               pacingMode: directorForm.pacingMode || 'auto',
+              durationMode: directorForm.durationMode || 'auto',
+              targetDurationSec: directorForm.durationMode === 'custom' ? Math.max(15, Math.min(600, Math.round(Number(directorForm.targetDurationSec) || 120))) : 0,
               visual3dMode: directorForm.visual3dMode || 'auto',
               creationMode: directorForm.creationMode,
               bgmMode: directorForm.bgmMode,
@@ -5270,6 +5335,105 @@ window.__ModuleLoader__?.load({
                 }),
               ),
             ),
+            // 目标视频时长：AI 自由匹配 / 用户自定义时长（与 AI 润色强联动）
+            h(
+              'div',
+              {
+                style: {
+                  padding: '10px 12px',
+                  borderRadius: '10px',
+                  background: T.panelMutedBg || T.surfaceSubtle || 'rgba(15,23,42,0.04)',
+                  border: `1px solid ${directorForm.durationMode === 'custom' ? T.accentBlueBorder : T.borderSubtle}`,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '8px',
+                },
+              },
+              h(
+                'div',
+                { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', flexWrap: 'wrap' } },
+                h('div', { style: { fontSize: '12.5px', fontWeight: 700, color: T.textMuted } }, '⏱ 目标视频时长（与 AI 润色/分镜强联动）'),
+                h(SegmentedPills, {
+                  value: directorForm.durationMode === 'custom' ? 'custom' : 'auto',
+                  onChange: (dm) =>
+                    updateDirectorAndSync(
+                      dm === 'custom'
+                        ? { durationMode: 'custom', targetDurationSec: Math.max(15, Math.min(600, Math.round(Number(directorForm.targetDurationSec) || 120))) }
+                        : { durationMode: 'auto', targetDurationSec: 0 },
+                    ),
+                  T,
+                  size: 'sm',
+                  options: [
+                    { id: 'auto', label: '🧠 AI 自由匹配' },
+                    { id: 'custom', label: '⏱ 自定义时长' },
+                  ],
+                }),
+              ),
+              directorForm.durationMode === 'custom'
+                ? h(
+                    'div',
+                    { style: { display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' } },
+                    [
+                      { sec: 30, label: '30秒' },
+                      { sec: 60, label: '1分钟' },
+                      { sec: 90, label: '90秒' },
+                      { sec: 120, label: '2分钟' },
+                      { sec: 180, label: '3分钟' },
+                      { sec: 300, label: '5分钟' },
+                    ].map((preset) => {
+                      const activePreset = Math.round(Number(directorForm.targetDurationSec) || 120) === preset.sec
+                      return h(
+                        'button',
+                        {
+                          key: preset.sec,
+                          type: 'button',
+                          className: 'dsh-vw-btn',
+                          onClick: () => updateDirectorAndSync({ durationMode: 'custom', targetDurationSec: preset.sec }),
+                          style: {
+                            ...(activePreset ? blueBtnStyle : ghostBtnStyle),
+                            padding: '3px 9px',
+                            fontSize: '12px',
+                            borderRadius: '999px',
+                          },
+                        },
+                        preset.label,
+                      )
+                    }),
+                    h('input', {
+                      type: 'number',
+                      min: 15,
+                      max: 600,
+                      step: 5,
+                      value: directorForm.targetDurationSec || 120,
+                      onChange: (ev) => {
+                        const raw = Math.round(Number(ev.target.value) || 0)
+                        setDirectorForm((p) => ({ ...p, durationMode: 'custom', targetDurationSec: raw }))
+                      },
+                      onBlur: (ev) => {
+                        const clamped = Math.max(15, Math.min(600, Math.round(Number(ev.target.value) || 120)))
+                        updateDirectorAndSync({ durationMode: 'custom', targetDurationSec: clamped })
+                      },
+                      style: { ...inputStyle, width: '76px', padding: '4px 8px', fontSize: '12.5px', textAlign: 'center' },
+                      title: '自定义目标时长（15 ~ 600 秒）',
+                    }),
+                    h(
+                      'span',
+                      { style: { fontSize: '12px', color: T.textMuted } },
+                      (() => {
+                        const s = Math.max(15, Math.min(600, Math.round(Number(directorForm.targetDurationSec) || 120)))
+                        const m = Math.floor(s / 60)
+                        const r = s % 60
+                        const fmt = m > 0 ? `${m}分${r > 0 ? `${String(r).padStart(2, '0')}秒` : ''}` : `${s}秒`
+                        return `秒（约 ${fmt} · 预计 ${Math.round(s * 4.1)} 字口播）`
+                      })(),
+                    ),
+                  )
+                : h(
+                    'div',
+                    { style: { fontSize: '12px', color: T.textMuted } },
+                    'AI 将按题材与素材自动决定最佳成片时长（也可在文本框里直接写如“两分钟以上”自动识别）',
+                  ),
+            ),
             h(
               'div',
               null,
@@ -5999,6 +6163,105 @@ window.__ModuleLoader__?.load({
                 ],
               }),
             ),
+          ),
+          // 目标视频时长：AI 自由匹配 / 用户自定义时长（Step 2 与作战大屏双向同步）
+          h(
+            'div',
+            {
+              style: {
+                padding: '11px 13px',
+                borderRadius: '10px',
+                background: T.panelMutedBg || T.surfaceSubtle || 'rgba(15,23,42,0.04)',
+                border: `1px solid ${directorForm.durationMode === 'custom' ? T.accentBlueBorder : T.borderSubtle}`,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '8px',
+              },
+            },
+            h(
+              'div',
+              { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', flexWrap: 'wrap' } },
+              h('label', { style: { fontSize: '12.5px', fontWeight: 700, margin: 0 } }, '⏱ 目标视频时长（AI 润色与分镜策划严格按此生成）'),
+              h(SegmentedPills, {
+                value: directorForm.durationMode === 'custom' ? 'custom' : 'auto',
+                onChange: (dm) =>
+                  updateDirectorAndSync(
+                    dm === 'custom'
+                      ? { durationMode: 'custom', targetDurationSec: Math.max(15, Math.min(600, Math.round(Number(directorForm.targetDurationSec) || 120))) }
+                      : { durationMode: 'auto', targetDurationSec: 0 },
+                  ),
+                T,
+                size: 'sm',
+                options: [
+                  { id: 'auto', label: '🧠 AI 自由匹配' },
+                  { id: 'custom', label: '⏱ 自定义时长' },
+                ],
+              }),
+            ),
+            directorForm.durationMode === 'custom'
+              ? h(
+                  'div',
+                  { style: { display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' } },
+                  [
+                    { sec: 30, label: '30秒' },
+                    { sec: 60, label: '1分钟' },
+                    { sec: 90, label: '90秒' },
+                    { sec: 120, label: '2分钟' },
+                    { sec: 180, label: '3分钟' },
+                    { sec: 300, label: '5分钟' },
+                  ].map((preset) => {
+                    const activePreset = Math.round(Number(directorForm.targetDurationSec) || 120) === preset.sec
+                    return h(
+                      'button',
+                      {
+                        key: preset.sec,
+                        type: 'button',
+                        className: 'dsh-vw-btn',
+                        onClick: () => updateDirectorAndSync({ durationMode: 'custom', targetDurationSec: preset.sec }),
+                        style: {
+                          ...(activePreset ? blueBtnStyle : ghostBtnStyle),
+                          padding: '3px 10px',
+                          fontSize: '12px',
+                          borderRadius: '999px',
+                        },
+                      },
+                      preset.label,
+                    )
+                  }),
+                  h('input', {
+                    type: 'number',
+                    min: 15,
+                    max: 600,
+                    step: 5,
+                    value: directorForm.targetDurationSec || 120,
+                    onChange: (ev) => {
+                      const raw = Math.round(Number(ev.target.value) || 0)
+                      setDirectorForm((p) => ({ ...p, durationMode: 'custom', targetDurationSec: raw }))
+                    },
+                    onBlur: (ev) => {
+                      const clamped = Math.max(15, Math.min(600, Math.round(Number(ev.target.value) || 120)))
+                      updateDirectorAndSync({ durationMode: 'custom', targetDurationSec: clamped })
+                    },
+                    style: { ...inputStyle, width: '78px', padding: '4px 8px', fontSize: '12.5px', textAlign: 'center' },
+                    title: '自定义目标时长（15 ~ 600 秒）',
+                  }),
+                  h(
+                    'span',
+                    { style: { fontSize: '12px', color: T.textMuted } },
+                    (() => {
+                      const s = Math.max(15, Math.min(600, Math.round(Number(directorForm.targetDurationSec) || 120)))
+                      const m = Math.floor(s / 60)
+                      const r = s % 60
+                      const fmt = m > 0 ? `${m}分${r > 0 ? `${String(r).padStart(2, '0')}秒` : ''}` : `${s}秒`
+                      return `秒（约 ${fmt} · 润色与分镜自动规划足量内容）`
+                    })(),
+                  ),
+                )
+              : h(
+                  'div',
+                  { style: { fontSize: '12px', color: T.textMuted } },
+                  '由 AI 按题材复杂度与素材体量自由匹配最佳时长；若在上方指令里直接写了“两分钟以上/150秒”，也会自动识别并严格达标。',
+                ),
           ),
           h(
             'div',

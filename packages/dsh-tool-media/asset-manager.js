@@ -144,7 +144,7 @@ export function classifyAudioRole(filePath, durationSec) {
   const hint = `${basename(dirname(filePath))} ${basename(filePath)}`
   if (SFX_HINT.test(hint)) return 'sfx'
   if (MUSIC_HINT.test(hint)) return 'music'
-  if (durationSec >= 20) return 'music'
+  if (durationSec >= 12) return 'music'
   if (durationSec > 0 && durationSec <= 8) return 'sfx'
   return 'music'
 }
@@ -272,6 +272,8 @@ export async function importAssets({ projectDir, sources, onProgress } = {}) {
   const byHash = new Map(manifest.items.map((it) => [it.sourceKey, it]))
   const added = []
   const existing = []
+  const addedNotes = []
+  const existingNotes = []
   let idx = 0
   for (const file of files) {
     idx++
@@ -289,6 +291,8 @@ export async function importAssets({ projectDir, sources, onProgress } = {}) {
           } catch {}
         }
         existing.push(prev)
+      } else if (type === 'text') {
+        existingNotes.push({ id: `note-${sourceKey}`, name: basename(file), sourceKey })
       }
       continue
     }
@@ -296,8 +300,10 @@ export async function importAssets({ projectDir, sources, onProgress } = {}) {
 
     if (type === 'text') {
       const text = readFileSync(file, 'utf8').slice(0, 20_000)
-      manifest.notes.push({ id: `note-${sourceKey}`, name: basename(file), text, sourceKey })
+      const noteObj = { id: `note-${sourceKey}`, name: basename(file), text, sourceKey }
+      manifest.notes.push(noteObj)
       byHash.set(sourceKey, { sourceKey })
+      addedNotes.push(noteObj)
       continue
     }
 
@@ -418,16 +424,19 @@ export async function importAssets({ projectDir, sources, onProgress } = {}) {
   }
 
   writeAssets(absProject, manifest)
+  const notesMatched = addedNotes.length + existingNotes.length
   return {
     ok: true,
     projectDir: absProject,
     scannedFiles: files.length,
-    addedCount: added.length,
-    existingCount: existing.length,
-    matchedCount: added.length + existing.length,
+    addedCount: added.length + addedNotes.length,
+    existingCount: existing.length + existingNotes.length,
+    addedNotesCount: addedNotes.length,
+    matchedCount: added.length + existing.length + notesMatched,
     summary: summarizeAssets(manifest),
     added: added.slice(0, 50),
     existing: existing.slice(0, 50),
+    addedNotes: addedNotes.slice(0, 20),
   }
 }
 

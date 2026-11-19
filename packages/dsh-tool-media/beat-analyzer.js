@@ -275,7 +275,23 @@ export function quantizeScenesToBeatGrid(scenes = [], beatMeta = {}, { mode = 't
     .sort((a, b) => a.time - b.time)
 
   const maxBgmDur = Number(beatMeta?.durationSec) || normBeats[normBeats.length - 1]?.time || 60
-  const capDur = targetDurationSec > 4 ? Math.min(maxBgmDur, targetDurationSec) : maxBgmDur
+  // NEVER clamp user's targetDurationSec down to a shorter BGM file!
+  // BGM loops seamlessly in FFmpeg (`-stream_loop -1`), so extend the beat grid to cover targetDurationSec.
+  const capDur = targetDurationSec > 4 ? targetDurationSec : maxBgmDur
+  if (normBeats.length > 0 && normBeats[normBeats.length - 1].time < capDur + 4) {
+    const barOffset = Number(beatMeta?.barOffset) || 0
+    let lastT = normBeats[normBeats.length - 1].time
+    let nextIdx = (Number(normBeats[normBeats.length - 1].index) || normBeats.length - 1) + 1
+    while (lastT < capDur + 4) {
+      lastT = Number((lastT + beatStep).toFixed(4))
+      normBeats.push({
+        time: lastT,
+        strong: (nextIdx - barOffset + 4000) % 4 === 0,
+        index: nextIdx,
+      })
+      nextIdx++
+    }
+  }
 
   const updated = scenes.map((s) => ({ ...s }))
 
@@ -404,15 +420,26 @@ export function quantizeScenesToBeatGrid(scenes = [], beatMeta = {}, { mode = 't
   }
 
   // Mode 2: tts-beat-sync — honor TTS voice duration + pause, snap trailing boundary to next beat/downbeat
+  // If user requested a specific targetDurationSec longer than raw speech, distribute musical breathing evenly
+  const rawMinTotal = updated.reduce(
+    (acc, sc) => acc + Math.max(Number(sc.durationSec) || 2.5, (Number(sc.voiceDurationSec) || 0) + (Number(sc.voiceLeadSec) ?? 0.28) + 0.2),
+    0,
+  )
+  const extraPadPerScene =
+    targetDurationSec > 4 && rawMinTotal > 2 && rawMinTotal < targetDurationSec * 0.96
+      ? Math.min(4.2, (targetDurationSec - rawMinTotal) / Math.max(1, updated.length))
+      : 0
+
   let cursorSec = 0
   let cursorFrame = 0
   for (let i = 0; i < updated.length; i++) {
     const sc = updated[i]
-    const minDur = Math.max(Number(sc.durationSec) || 2.5, (Number(sc.voiceDurationSec) || 0) + (Number(sc.voiceLeadSec) ?? 0.28) + 0.2)
+    const baseMinDur = Math.max(Number(sc.durationSec) || 2.5, (Number(sc.voiceDurationSec) || 0) + (Number(sc.voiceLeadSec) ?? 0.28) + 0.2)
+    const minDur = baseMinDur + extraPadPerScene
     const minEnd = cursorSec + minDur
     const snappedEnd = i === updated.length - 1
-      ? minEnd
-      : snapTimeToBeatGrid(minEnd, { beats: normBeats }, { preferDownbeat: false, direction: 'forward', maxShiftSec: beatStep * 1.45 })
+      ? Math.max(minEnd, targetDurationSec > 4 && rawMinTotal < targetDurationSec ? Math.min(targetDurationSec, minEnd + 2.0) : minEnd)
+      : snapTimeToBeatGrid(minEnd, { beats: normBeats }, { preferDownbeat: extraPadPerScene >= beatStep, direction: 'forward', maxShiftSec: beatStep * 1.45 })
 
     const endFrame = Math.max(cursorFrame + 18, Math.round(snappedEnd * safeFps))
     const durFrames = endFrame - cursorFrame

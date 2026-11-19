@@ -1116,4 +1116,5 @@ export function writeScriptJson(projectOrFile, scriptData) {
 export * from './compliance.js'
 export * from './hardware-guard.js'
 export * from './meta-guard.js'
+export * from './duration-policy.js'
 export * from './subtitle-engine.js'

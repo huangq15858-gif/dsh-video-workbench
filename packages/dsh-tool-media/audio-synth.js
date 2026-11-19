@@ -131,11 +131,17 @@ export async function ensureProjectAudioAssets(projectDir, script, assetsManifes
     if (candidateExists(selected)) {
       bgmPath = selected
       bgmSource = 'user-imported'
+    } else if (importedMusic.length > 0 && candidateExists(importedMusic[0].path)) {
+      bgmPath = importedMusic[0].path
+      bgmSource = 'user-imported'
     }
   } else if (bgmMode === 'llm-coded') {
     if (candidateExists('audio/bgm-llm.wav')) {
       bgmPath = 'audio/bgm-llm.wav'
       bgmSource = 'llm-coded'
+    } else if (importedMusic.length > 0 && candidateExists(importedMusic[0].path)) {
+      bgmPath = importedMusic[0].path
+      bgmSource = 'user-imported'
     } else if (candidateExists(script?.bgm?.path)) {
       bgmPath = script.bgm.path
       bgmSource = script?.bgm?.source || 'llm-coded'
@@ -148,6 +154,9 @@ export async function ensureProjectAudioAssets(projectDir, script, assetsManifes
       bgmPath = script.bgm.path
       bgmSource = 'tts-engine'
     }
+  } else if (importedMusic.length > 0 && candidateExists(importedMusic[0].path)) {
+    bgmPath = importedMusic[0].path
+    bgmSource = 'user-imported'
   }
 
   if (!bgmPath && candidateExists(script?.bgm?.path)) {
@@ -252,11 +261,12 @@ export async function mixVideoAudio({ projectDir, script, assetsManifest, output
   const absBgm = bgmPath ? (isAbsolute(bgmPath) ? bgmPath : resolve(absDir, bgmPath)) : ''
   const hasBgm = Boolean(absBgm && existsSync(absBgm)) && script?.bgm?.enabled !== false
   const isPureMvNoVoice = voiceEvents.length === 0 || script?.narrationMode === 'subtitle-mv'
+  const isBeatSyncVoice = !isPureMvNoVoice && (script?.narrationMode === 'tts-beat-sync' || bgmSource === 'user-imported')
   const rawBgmVol = Number(script?.bgm?.volume)
   const bgmVol = isPureMvNoVoice
-    ? (Number.isFinite(rawBgmVol) && rawBgmVol >= 0.45 && rawBgmVol <= 1.0 ? rawBgmVol : 0.80)
-    : (Number.isFinite(rawBgmVol) ? rawBgmVol : 0.24)
-  const bgmFadeInSec = isPureMvNoVoice ? 0.16 : 0.45
+    ? (Number.isFinite(rawBgmVol) && rawBgmVol >= 0.45 && rawBgmVol <= 1.0 ? rawBgmVol : 0.82)
+    : (Number.isFinite(rawBgmVol) && rawBgmVol >= 0.28 && rawBgmVol <= 0.85 ? rawBgmVol : isBeatSyncVoice ? 0.48 : 0.40)
+  const bgmFadeInSec = isPureMvNoVoice ? 0.16 : 0.40
 
   const args = ['-y']
   const filters = []
@@ -301,11 +311,11 @@ export async function mixVideoAudio({ projectDir, script, assetsManifest, output
     const fadeOutStart = Math.max(0, Number((totalSec - 1.5).toFixed(2)))
     if (isPureMvNoVoice) {
       filters.push(
-        `[${bgmIdx}:a]aresample=${SR},aformat=sample_fmts=fltp:channel_layouts=stereo,loudnorm=I=-14.5:TP=-2.0:LRA=6,volume=${bgmVol},afade=t=in:st=0:d=${bgmFadeInSec},afade=t=out:st=${fadeOutStart}:d=1.5[bgm_raw]`,
+        `[${bgmIdx}:a:0]aresample=${SR},aformat=sample_fmts=fltp:channel_layouts=stereo,loudnorm=I=-14.5:TP=-2.0:LRA=6,volume=${bgmVol},afade=t=in:st=0:d=${bgmFadeInSec},afade=t=out:st=${fadeOutStart}:d=1.5[bgm_raw]`,
       )
     } else {
       filters.push(
-        `[${bgmIdx}:a]aresample=${SR},aformat=sample_fmts=fltp:channel_layouts=stereo,volume=${bgmVol},afade=t=in:st=0:d=${bgmFadeInSec},afade=t=out:st=${fadeOutStart}:d=1.5[bgm_raw]`,
+        `[${bgmIdx}:a:0]aresample=${SR},aformat=sample_fmts=fltp:channel_layouts=stereo,loudnorm=I=-16.5:TP=-2.0:LRA=9,volume=${bgmVol},afade=t=in:st=0:d=${bgmFadeInSec},afade=t=out:st=${fadeOutStart}:d=1.5[bgm_raw]`,
       )
     }
   }
@@ -322,7 +332,7 @@ export async function mixVideoAudio({ projectDir, script, assetsManifest, output
     if (hasBgm) {
       filters.push('[voices]asplit=2[v_out][v_sc]')
       mixInputs.push('[v_out]')
-      filters.push('[bgm_raw][v_sc]sidechaincompress=threshold=0.025:ratio=4.5:attack=16:release=260[bgm_vduck]')
+      filters.push('[bgm_raw][v_sc]sidechaincompress=threshold=0.065:ratio=2.4:attack=20:release=240:knee=4[bgm_vduck]')
       bgmStreamForMix = '[bgm_vduck]'
     } else {
       mixInputs.push('[voices]')

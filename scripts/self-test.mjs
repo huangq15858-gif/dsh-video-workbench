@@ -2277,6 +2277,150 @@ export const BATCH_01_SCENES: Record<string, React.FC<CustomSceneProps>> = {
   console.log(
     `[19/19] v0.3.7 Persistent AI-Polished Brief (script.goal + contentOutline[] preservation, legacy reconstruction & UI echo) Verified!`,
   )
+
+  // 20. v0.3.8 Uploaded BGM/Note/SFX Auto-Bind + Audible BGM Mix + Custom Duration & Anti-Shrink Expansion Verification
+  const { parseDurationFromText, resolveTargetDurationPolicy, estimatePlanDurationSec } = await import('../packages/shared/index.js')
+  const parsedTwoMin = parseDurationFromText('视频时长需要两分钟以上，分镜与动效全程踩死上传BGM节拍')
+  const parsed2m30 = parseDurationFromText('做一个2分30秒的产品宣传片')
+  const customPol = resolveTargetDurationPolicy({ durationMode: 'custom', targetDurationSec: 150, text: '随便聊聊', narrationMode: 'tts' })
+  if (
+    !parsedTwoMin || parsedTwoMin.minSec < 120 || parsedTwoMin.sec < 130 ||
+    !parsed2m30 || parsed2m30.sec !== 150 ||
+    !customPol.enforced || customPol.targetSec !== 150 || customPol.requiredCharsMin < 450
+  ) {
+    throw new Error(`v0.3.8 duration policy failed: ${JSON.stringify({ parsedTwoMin, parsed2m30, customPol })}`)
+  }
+
+  // 20b. Verify uploading a BGM via general /assets/upload auto-binds bgmMode='uploaded' & beat analysis,
+  //      and uploading a .txt note returns 200 OK instead of 400!
+  const tmpV038Proj = join(REPO_ROOT, '.tmp', 'v038-bgm-duration')
+  rmSync(tmpV038Proj, { recursive: true, force: true })
+  scaffoldVideoProject(tmpV038Proj, { title: 'v038 BGM & Duration Check', engine: 'remotion', style: 'tech' })
+  const synthBgm15 = join(tmpV038Proj, 'test_bgm_15s.wav')
+  const { buildBeatGrid: buildGridV038, generateBgmWav: genBgmV038, mixVideoAudio: mixV038, quantizeScenesToBeatGrid: quantV038 } = await import('../packages/dsh-tool-media/audio-synth.js')
+  genBgmV038({ durationSec: 16, mood: 'energetic', bpm: 120, outPath: synthBgm15 })
+  const bgmBuf = readFileSync(synthBgm15)
+  const upBgmViaGeneral = await handleWorkbenchApiRequest(
+    new Request(`http://127.0.0.1:4399/api/video-workbench/assets/upload?projectDir=${encodeURIComponent(tmpV038Proj)}&fileName=my-cool-track.wav`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/octet-stream' },
+      body: bgmBuf,
+    }),
+  )
+  const upBgmJson = await upBgmViaGeneral.json()
+  const upNoteViaGeneral = await handleWorkbenchApiRequest(
+    new Request(`http://127.0.0.1:4399/api/video-workbench/assets/upload?projectDir=${encodeURIComponent(tmpV038Proj)}&fileName=story-notes.txt`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/octet-stream' },
+      body: Buffer.from('这是用户上传的脚本文案笔记，包含核心卖点与章节。', 'utf8'),
+    }),
+  )
+  const upNoteJson = await upNoteViaGeneral.json()
+  const scAfterUp = JSON.parse(readFileSync(join(tmpV038Proj, 'script.json'), 'utf8'))
+  if (
+    upBgmViaGeneral.status !== 200 ||
+    !upBgmJson.ok ||
+    !upBgmJson.autoBound?.bgm ||
+    scAfterUp.bgmMode !== 'uploaded' ||
+    !scAfterUp.bgm?.uploadedPath ||
+    upNoteViaGeneral.status !== 200 ||
+    !upNoteJson.ok
+  ) {
+    throw new Error(`v0.3.8 general /assets/upload auto-bind failed: bgm=${JSON.stringify(upBgmJson)} note=${JSON.stringify(upNoteJson)} scriptBgm=${JSON.stringify(scAfterUp.bgm)}`)
+  }
+
+  // 20c. Verify mixVideoAudio produces genuinely audible uploaded BGM (mean_volume > -32 dB, never muted)
+  scAfterUp.totalDurationSec = 6
+  scAfterUp.bgm.volume = 0 // even accidental 0 must NOT mute when enabled !== false
+  const mixV038Res = await mixV038({
+    projectDir: tmpV038Proj,
+    script: scAfterUp,
+    assetsManifest: readAssets(tmpV038Proj),
+    outputPath: join(tmpV038Proj, 'output', 'master-audio.wav'),
+  })
+  const volProbe = await runCommandRedirected(
+    bins.ffmpeg,
+    ['-hide_banner', '-i', mixV038Res.outputPath, '-af', 'volumedetect', '-f', 'null', '-'],
+    { timeoutMs: 20_000 },
+  )
+  const meanMatch = `${volProbe.stderr}\n${volProbe.stdout}`.match(/mean_volume:\s*([-\d.]+)\s*dB/)
+  const meanDb = meanMatch ? Number(meanMatch[1]) : -99
+  if (mixV038Res.bgmSource !== 'user-imported' || !Number.isFinite(meanDb) || meanDb < -30) {
+    throw new Error(`v0.3.8 uploaded BGM mix audibility failed: source=${mixV038Res.bgmSource} meanDb=${meanDb}`)
+  }
+
+  // 20d. Verify quantizeScenesToBeatGrid extends past a 40s BGM when targetDurationSec=130 (no clamping!)
+  const dummyScenes20 = Array.from({ length: 22 }, (_, i) => ({
+    id: `scene-${String(i + 1).padStart(2, '0')}`,
+    title: `分镜 ${i + 1}`,
+    narration: '这是一段用于测试两分钟以上长视频踩拍延展的演示台词。',
+    durationSec: 5.5,
+  }))
+  const shortBgmGrid = buildGridV038(40, 120)
+  const extMvScenes = quantV038(dummyScenes20, { ...shortBgmGrid, durationSec: 40 }, { mode: 'subtitle-mv', fps: 30, targetDurationSec: 130 })
+  const extTotalSec = extMvScenes[extMvScenes.length - 1]?.endSec || 0
+  if (extTotalSec < 115) {
+    throw new Error(`v0.3.8 beat grid clamped to short BGM instead of extending to 130s: got ${extTotalSec}s`)
+  }
+
+  // 20e. Verify Tier 1 Anti-Shrink Expansion triggers when mock LLM returns only ~42s for a 130s custom target
+  const { runSchemaDirectorWithDegradation: runDirV038 } = await import('../packages/dsh-tool-media/plan-schema.js')
+  let mockTierCalls = 0
+  const expandedPlanRes = await runDirV038({
+    projectDir: tmpV038Proj,
+    topic: '两分钟以上历史战争解析',
+    durationMode: 'custom',
+    targetDurationSec: 130,
+    style: 'cinematic',
+    authoringMode: 'ai-coded',
+    scriptData: scAfterUp,
+    assetsManifest: readAssets(tmpV038Proj),
+    callLlmChatFn: async () => {
+      mockTierCalls++
+      if (mockTierCalls === 1) {
+        return {
+          text: JSON.stringify({
+            version: 'promo-plan/1',
+            genre: 'history-theater',
+            genreLabel: '历史剧场',
+            title: '两分钟历史长片',
+            style: 'cinematic',
+            bpm: 112,
+            shots: Array.from({ length: 8 }, (_, k) => ({
+              id: `scene-${String(k + 1).padStart(2, '0')}`,
+              title: `开篇第${k + 1}幕`,
+              narration: '公元前119年大军出征漠北千里奔袭直击敌营。',
+              durationSec: 5.0,
+              layout: 'freeform-stage',
+              transition: k === 0 ? 'cut' : 'slash-wipe',
+              visualBlueprint: '动态疆域行军路线与火光粒子',
+            })),
+          }),
+        }
+      }
+      return {
+        text: JSON.stringify({
+          appendShots: Array.from({ length: 14 }, (_, k) => ({
+            id: `scene-${String(k + 9).padStart(2, '0')}`,
+            title: `续篇第${k + 9}幕`,
+            narration: '骑兵穿插迂回切断补给线，战鼓与号角在苍茫大漠中回荡不绝，最终在狼居胥山勒石纪功。',
+            durationSec: 6.2,
+            layout: 'freeform-stage',
+            transition: 'slash-wipe',
+            visualBlueprint: '水墨地形推演与骑兵包抄轨迹',
+          })),
+        }),
+      }
+    },
+  })
+  const expandedEstSec = estimatePlanDurationSec(expandedPlanRes?.plan?.shots || [], { narrationMode: 'tts' })
+  rmSync(tmpV038Proj, { recursive: true, force: true })
+  if (mockTierCalls < 2 || (expandedPlanRes?.plan?.shots?.length || 0) < 18 || expandedEstSec < 110) {
+    throw new Error(`v0.3.8 anti-shrink expansion failed: calls=${mockTierCalls} shots=${expandedPlanRes?.plan?.shots?.length} estSec=${expandedEstSec}`)
+  }
+  console.log(
+    `[20/20] v0.3.8 Uploaded BGM/Note Auto-Bind + Audible Mix (${meanDb.toFixed(1)} dB) + Custom Duration & Anti-Shrink Expansion (${expandedEstSec}s, ${expandedPlanRes.plan.shots.length} shots) Verified!`,
+  )
   console.log('======================================================================')
 }
 

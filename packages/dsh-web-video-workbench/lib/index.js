@@ -15,6 +15,7 @@ import { fileURLToPath } from 'node:url'
 import {
   computeSafeZonePreflight,
   deriveDisplayTitle,
+  formatDurationLabel,
   isMetaInstructionText,
   loadEnv,
   loadHardwarePreferences,
@@ -26,6 +27,7 @@ import {
   resolveBinaries,
   resolveEnvPath,
   resolveLowSpecPolicy,
+  resolveTargetDurationPolicy,
   resolveVideoDimensions,
   runCommandRedirected,
   saveHardwarePreferences,
@@ -256,9 +258,28 @@ export async function polishTopicPrompt(body = {}, { fetchImpl } = {}) {
     .filter((it) => it.type === 'image' || it.type === 'video')
     .map((it) => `${it.originalName || it.name || it.path} (${it.type}${it.width ? ` ${it.width}x${it.height}` : ''})`)
     .slice(0, 16)
-  const musicList = (manifest.items || []).filter((it) => it.role === 'music').map((it) => it.originalName || it.name)
+  const musicItems = (manifest.items || []).filter((it) => it.role === 'music')
+  const musicList = musicItems.map((it) => `${it.originalName || it.name}${Number(it.durationSec) > 0 ? ` (${Math.round(it.durationSec)}s)` : ''}`)
+  const sfxList = (manifest.items || []).filter((it) => it.role === 'sfx').map((it) => it.originalName || it.name)
+  const specialList = (manifest.items || [])
+    .filter((it) => ['host_video', 'avatar_base', 'voice_clone'].includes(it.role))
+    .map((it) => `${it.originalName || it.name} [${it.role}]`)
   const noteSnippets = (manifest.notes || []).map((n) => String(n.text || '').slice(0, 600)).filter(Boolean)
   const guessedGenre = detectGenre(`${rawPrompt} ${noteSnippets.join(' ')}`, visualList.length > 0)
+  const durationPolicy = resolveTargetDurationPolicy({
+    durationMode: body.durationMode || 'auto',
+    targetDurationSec: Number(body.targetDurationSec) || 0,
+    text: rawPrompt,
+    narrationMode: body.narrationMode || 'tts',
+    hasVisualAssets: visualList.length > 0,
+    bgmDurationSec: Number(musicItems[0]?.durationSec) || 0,
+  })
+  const durationRuleLine = durationPolicy.enforced
+    ? `6. **目标时长硬要求**：用户明确指定目标时长为 **${durationPolicy.label}**（底线 ${durationPolicy.minSec} 秒）！请务必把 \`contentOutline\` 拆解为 **${durationPolicy.outlineCountMin}~${durationPolicy.outlineCountMax} 条** 扎实充实的内容章节要点（保证后续分镜可自然展开到 **${durationPolicy.targetSec} 秒**、约 ${durationPolicy.requiredCharsMin}~${durationPolicy.requiredCharsMax} 字口播或对应密集踩拍镜头），并在 \`directorNotes\` 中明确写明按 **${durationPolicy.targetSec} 秒** 完整铺陈，绝不能缩水成 50 秒！`
+    : `6. **时长策略**：当前为「AI 自由匹配时长」，请按题材和素材丰富度自由给出最合适的章节条数与节奏安排。`
+  const bgmRuleLine = musicList.length > 0
+    ? `\n7. **已上传 BGM 配乐**：用户已上传背景音乐 ${musicList.join('、')}，请在 \`directorNotes\` 中明确要求全程使用上传的 BGM 并贴合其真实节拍与高潮突降点（如用户要求踩拍）。`
+    : ''
 
   const systemPrompt = `你是全品类视频创作总导演，擅长把一句大白话想法扩写成 AI 制作团队可直接执行的结构化创作方案。
 先判断体裁：**没有任何题材限制**！下列只是 11 种常见写法参考，如果用户需求属于美食探店、机甲机械拆解、修仙/都市漫剧、游戏攻略、建筑空间漫游、影视解说、财经宏观、实验视觉艺术等任何未列出的题材，直接设 \`"genre": "other"\`（或简短英文 slug）并在 \`genreLabel\` 填写准确的新体裁名称：
@@ -271,16 +292,17 @@ ${listGenresForPrompt()}
   "displayTitle": "观众可见的作品标题，≤16 个字，只写作品名本身，不含任何制作要求",
   "logline": "一句话说明这部片子讲什么（给导演看）",
   "contentOutline": ["观众将看到/听到的内容要点 1", "要点 2", "..."],
-  "directorNotes": "仅供 AI 制作团队阅读：视觉语言/运镜/动画技法/节奏/配乐/配音音色与情绪方案/素材使用方式。120~260 字。",
+  "directorNotes": "仅供 AI 制作团队阅读：视觉语言/运镜/动画技法/节奏/配乐/配音音色与情绪方案/素材使用方式。120~320 字。",
   "voiceStyle": "配音音色与情绪取向，如：富有张力史诗浑厚的纪录片男声 / 清亮亲切节奏明快的科技解说",
   "suggestedStyle": "tech|cinematic|documentary|energetic|warm|emerald 之一"
 }
 硬性规则：
 1. directorNotes 里的任何文字都不会出现在视频中；displayTitle 与 contentOutline 才是观众可接触的信息。
 2. contentOutline 写事实/情节/步骤的要点（名词短语或短句），不要写成"本视频要求…""请制作…"之类指令。
-3. 结合 uploadedVisualAssets / uploadedNotes：有素材就写明如何使用；没有素材就由代码动画自由绘制（Three.js / SVG / Canvas，不受固定模板限制）。
+3. 结合 uploadedVisualAssets / uploadedNotes / uploadedMusic：有素材就写明如何使用；没有素材就由代码动画自由绘制（Three.js / SVG / Canvas，不受固定模板限制）。
 4. 严禁虚构不存在的数据；用户给出的产品名、网址须原样保留在 contentOutline 中。
-5. 数字用阿拉伯数字书写（206 年、3000 人）。`
+5. 数字用阿拉伯数字书写（206 年、3000 人）。
+${durationRuleLine}${bgmRuleLine}`
 
   const userMsg = JSON.stringify({
     userInput: rawPrompt,
@@ -291,8 +313,13 @@ ${listGenresForPrompt()}
     pacingMode: body.pacingMode || 'auto',
     creationMode: body.creationMode || 'ai-coded',
     narrationMode: body.narrationMode || 'tts',
+    durationPolicy: durationPolicy.enforced
+      ? { mode: durationPolicy.mode, targetSec: durationPolicy.targetSec, minSec: durationPolicy.minSec, outlineCount: `${durationPolicy.outlineCountMin}~${durationPolicy.outlineCountMax}` }
+      : { mode: 'auto', hint: 'AI自由匹配最佳时长' },
     uploadedVisualAssets: visualList,
     uploadedMusic: musicList,
+    uploadedSfx: sfxList,
+    uploadedSpecialRoles: specialList,
     uploadedNotes: noteSnippets,
   })
 
@@ -350,9 +377,13 @@ ${listGenresForPrompt()}
   const displayTitle = str(parsed.displayTitle).slice(0, 24) || deriveDisplayTitle(rawPrompt, '作品')
   const directorNotes = str(parsed.directorNotes)
   const voiceStyle = str(parsed.voiceStyle)
+  const durationLine = durationPolicy.enforced
+    ? `【目标时长】${durationPolicy.targetSec} 秒（${formatDurationLabel(durationPolicy.targetSec)}）`
+    : ''
   const polishedTopic = [
     `【作品标题】${displayTitle}`,
     `【体裁】${genreLabel}`,
+    durationLine,
     str(parsed.logline) ? `【一句话】${str(parsed.logline)}` : '',
     outline.length ? `【内容要点】\n${outline.map((x, i) => `${i + 1}. ${x}`).join('\n')}` : '',
     `【导演备注（仅供 AI 制作，不会出现在视频里）】\n${directorNotes}${voiceStyle ? `\n配音取向：${voiceStyle}` : ''}`,
@@ -365,6 +396,9 @@ ${listGenresForPrompt()}
     displayTitle,
     genre: genreId,
     genreLabel,
+    durationMode: durationPolicy.enforced ? 'custom' : 'auto',
+    targetDurationSec: durationPolicy.enforced ? durationPolicy.targetSec : 0,
+    durationLabel: durationPolicy.label,
     logline: str(parsed.logline),
     contentOutline: outline,
     directorNotes: `${directorNotes}${voiceStyle ? `\n配音取向：${voiceStyle}` : ''}`,
@@ -372,6 +406,70 @@ ${listGenresForPrompt()}
     suggestedStyle: str(parsed.suggestedStyle),
     model,
   }
+}
+
+function resolveAssetAbsPath(projectDir, relOrAbs) {
+  if (!relOrAbs) return ''
+  return isAbsolute(relOrAbs) ? relOrAbs : join(resolve(projectDir), relOrAbs)
+}
+
+/**
+ * Automatically bind newly uploaded/imported special-role assets (BGM music, avatar_base,
+ * voice_clone, host_video) to the active project's script.json so uploading via Card 1 or
+ * Step 1 takes effect immediately without requiring extra manual clicks.
+ */
+async function autoBindUploadedAssets(projectDir, targetItems = [], uploadRole = '') {
+  const autoBound = { bgm: null, avatarBase: null, voiceClone: null, hostVideo: null }
+  if (!projectDir || !Array.isArray(targetItems) || targetItems.length === 0) return autoBound
+  const manifest = readAssets(projectDir)
+  const freshItems = targetItems
+    .map((it) => manifest.items.find((m) => m.id === it?.id) || it)
+    .filter(Boolean)
+
+  const musicItem = freshItems.find((it) => it.role === 'music' || (uploadRole === 'music' && it.type === 'audio'))
+  if (musicItem && existsSync(join(resolve(projectDir), 'script.json'))) {
+    const absBgm = resolveAssetAbsPath(projectDir, musicItem.path)
+    let beatInfo = null
+    if (absBgm && existsSync(absBgm)) {
+      try {
+        beatInfo = await analyzeAudioBeatStructure(absBgm)
+      } catch {}
+    }
+    try {
+      const { data } = readScriptJson(projectDir)
+      data.bgmMode = 'uploaded'
+      data.audioSpec = { ...(data.audioSpec || {}), bgmMode: 'uploaded', ...(beatInfo?.bpm ? { bpm: beatInfo.bpm } : {}) }
+      data.bgm = {
+        ...(data.bgm || {}),
+        ...(beatInfo || {}),
+        enabled: true,
+        mode: 'uploaded',
+        uploadedPath: musicItem.path,
+        path: musicItem.path,
+        source: 'user-imported',
+      }
+      writeScriptJson(projectDir, data)
+      autoBound.bgm = {
+        id: musicItem.id,
+        name: musicItem.name,
+        path: musicItem.path,
+        bpm: beatInfo?.bpm || 0,
+        durationSec: beatInfo?.durationSec || musicItem.durationSec || 0,
+        dropsCount: beatInfo?.drops?.length || 0,
+      }
+    } catch {}
+  }
+
+  const avatarItem = freshItems.find((it) => it.role === 'avatar_base')
+  if (avatarItem) autoBound.avatarBase = { id: avatarItem.id, name: avatarItem.name, path: avatarItem.path }
+
+  const voiceCloneItem = freshItems.find((it) => it.role === 'voice_clone')
+  if (voiceCloneItem) autoBound.voiceClone = { id: voiceCloneItem.id, name: voiceCloneItem.name, path: voiceCloneItem.path }
+
+  const hostVideoItem = freshItems.find((it) => it.role === 'host_video')
+  if (hostVideoItem) autoBound.hostVideo = { id: hostVideoItem.id, name: hostVideoItem.name, path: hostVideoItem.path }
+
+  return autoBound
 }
 
 function stripMetaFree(text) {
@@ -757,6 +855,8 @@ export async function handleWorkbenchApiRequest(req) {
         aiBadgeText: body.aiBadgeText || '',
         pacingMode: body.pacingMode || 'auto',
         narrationMode: body.narrationMode || 'tts',
+        durationMode: body.durationMode === 'custom' ? 'custom' : 'auto',
+        targetDurationSec: Number(body.targetDurationSec) || 0,
         targetPlatform: body.targetPlatform || 'universal',
         bgmMode: body.bgmMode || 'auto',
         creationMode: body.creationMode || 'ai-coded',
@@ -830,11 +930,13 @@ export async function handleWorkbenchApiRequest(req) {
           if (item?.id) updateAsset(body.projectDir, item.id, { role: String(body.role) })
         }
       }
+      const autoBound = await autoBindUploadedAssets(body.projectDir, targetItems, body.role ? String(body.role) : '')
       const manifest = readAssets(body.projectDir)
       return jsonResponse({
         ok: true,
         importedCount: res.matchedCount || res.addedCount || 0,
         ...res,
+        autoBound,
         manifest,
         summary: summarizeAssets(manifest),
       })
@@ -899,12 +1001,13 @@ export async function handleWorkbenchApiRequest(req) {
           if (item?.id) updateAsset(projectDir, item.id, { role: uploadRole })
         }
       }
+      const autoBound = await autoBindUploadedAssets(projectDir, targetItems, uploadRole)
       const manifest = readAssets(projectDir)
       const effectiveCount = res.matchedCount ?? ((res.addedCount || 0) + (res.existingCount || 0))
       if (effectiveCount === 0) {
         return jsonResponse({
           ok: false,
-          error: '未识别到受支持的图片、视频或音频格式（支持 MP4/MOV/WEBM/MKV/AVI/JPG/PNG/WEBP/MP3/WAV 等）',
+          error: '未识别到受支持的图片、视频、音频或文本文档格式（支持 MP4/MOV/WEBM/MKV/AVI/JPG/PNG/WEBP/MP3/WAV/FLAC/M4A/TXT/MD 等）',
           manifest,
           summary: summarizeAssets(manifest),
         }, 400)
@@ -913,6 +1016,7 @@ export async function handleWorkbenchApiRequest(req) {
         ok: true,
         uploadedCount: effectiveCount,
         ...res,
+        autoBound,
         manifest,
         summary: summarizeAssets(manifest),
       })
@@ -1469,6 +1573,8 @@ export async function handleWorkbenchApiRequest(req) {
           ...(body.narrationMode ? { narrationMode: body.narrationMode } : {}),
           ...(body.pacingMode ? { pacingMode: body.pacingMode } : {}),
           ...(body.visual3dMode ? { visual3dMode: body.visual3dMode } : {}),
+          ...(body.durationMode !== undefined ? { durationMode: body.durationMode === 'custom' ? 'custom' : 'auto' } : {}),
+          ...(body.targetDurationSec !== undefined ? { targetDurationSec: Math.max(0, Math.min(600, Math.round(Number(body.targetDurationSec) || 0))) } : {}),
           ...(body.style ? { style: body.style } : {}),
           ...(body.fps ? { fps: Number(body.fps) || 30 } : {}),
           ...(body.voiceId ? { defaultVoiceId: body.voiceId } : {}),
@@ -1673,10 +1779,12 @@ export async function handleWorkbenchApiRequest(req) {
         return jsonResponse({ ok: false, error: 'projectDir, assetId, and role are required' }, 400)
       }
       const patched = updateAsset(body.projectDir, body.assetId, { role: String(body.role) })
+      const autoBound = await autoBindUploadedAssets(body.projectDir, [patched], String(body.role))
       const manifest = readAssets(body.projectDir)
       return jsonResponse({
         ok: true,
         asset: patched,
+        autoBound,
         manifest,
         summary: summarizeAssets(manifest),
       })

@@ -95,7 +95,9 @@ export function writeRemotionProjectFiles(projectDir, script, { rebuildTemplate 
   const theme = resolvePalette(script)
   const safeZone = resolveSafeZoneSpec(script?.width || 1920, script?.height || 1080, script?.targetPlatform || 'universal')
   const complianceNotice = buildComplianceNoticeText(script)
-  const hasMasterAudio = existsSync(join(absDir, 'public', 'master-audio.wav'))
+  const hasMasterAudio =
+    existsSync(join(absDir, 'public', 'master-audio.wav')) ||
+    existsSync(join(absDir, 'output', 'master-audio.wav'))
   const computedMediaDims = buildMediaDimsMap(readAssets(absDir), script)
 
   writeFileSync(

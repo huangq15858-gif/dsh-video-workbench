@@ -3,9 +3,11 @@ import { join, resolve } from 'node:path'
 import {
   cleanSubtitleChunk,
   deriveVerbalSubtitleParts,
+  estimatePlanDurationSec,
   normalizeNumeralsForDisplay,
   normalizeVideoStyle,
   resolveSafeZoneSpec,
+  resolveTargetDurationPolicy,
   sanitizeSpokenNarration,
   stripMetaInstructions,
   VIDEO_STYLES,
@@ -289,7 +291,7 @@ export function validatePromoPlan(plan) {
     plan.narrationMode === 'tts-beat-sync' ||
     plan.narrationMode === 'subtitle-mv'
   const minDur = isBeatNarrative ? 0.26 : 1.5
-  const maxTransitions = isBeatNarrative ? 64 : Math.max(12, Math.min(64, shots.length))
+  const maxTransitions = Math.max(64, shots.length + 4)
 
   let nonCutTransitions = 0
   for (let i = 0; i < shots.length; i++) {
@@ -329,7 +331,9 @@ export function repairPromoPlanRules(
   { topic = '', style = 'tech', genre = '', genreLabel = '', authoringMode = '', directorNotes = '', contentOutline = [], assetsManifest = null, existingScript = null, bgmMeta = null, narrationMode = '', pacingMode = '' } = {},
 ) {
   const existingScenes = Array.isArray(existingScript?.scenes) ? existingScript.scenes : []
-  const mediaItems = (assetsManifest?.items || []).filter((it) => it.role !== 'music' && it.role !== 'sfx' && it.role !== 'note' && it.type !== 'audio')
+  const mediaItems = (assetsManifest?.items || []).filter(
+    (it) => it.role !== 'music' && it.role !== 'sfx' && it.role !== 'note' && it.role !== 'avatar_base' && it.role !== 'voice_clone' && it.type !== 'audio',
+  )
   const cleanTopic = normalizeNumeralsForDisplay(stripMetaInstructions(topic || rawPlan?.title || existingScript?.title || '')) || '主题短片'
   const isFreeformCoding =
     String(authoringMode || rawPlan?.authoringMode || existingScript?.authoringMode || 'ai-coded').trim().toLowerCase() !== 'schema-plan'
@@ -366,7 +370,7 @@ export function repairPromoPlanRules(
   const isNarrativeMv = (!explicitSlowPacing && mediaItems.length === 0 && resolvedPacing.id === 'dynamic') || isBeatMode || resolvedPacing.id === 'dynamic'
   const minDurClamp = isNarrativeMv ? 0.26 : resolvedPacing.id === 'calm' ? 2.4 : 1.5
   const defaultShotDur = resolvedPacing.id === 'calm' ? 5.2 : resolvedPacing.id === 'balanced' ? 4.2 : 2.6
-  const maxTransitionsLimit = isNarrativeMv ? 64 : Math.max(12, Math.min(64, rawPlan?.shots?.length || existingScenes.length || 24))
+  const maxTransitionsLimit = Math.max(64, (rawPlan?.shots?.length || existingScenes.length || 24) + 4)
   const candidateShots =
     Array.isArray(rawPlan?.shots) && rawPlan.shots.length > 0
       ? rawPlan.shots
@@ -807,6 +811,8 @@ export async function runSchemaDirectorWithDegradation({
   bgmMeta = null,
   narrationMode = '',
   pacingMode = '',
+  durationMode = '',
+  targetDurationSec = 0,
   callLlmChatFn = null,
   forceTierForTest = null,
 }) {
@@ -814,7 +820,7 @@ export async function runSchemaDirectorWithDegradation({
   let chosenPlan = null
   let degradationTier = 4
   const mediaCheck = (assetsManifest?.items || []).filter(
-    (it) => it.role !== 'music' && it.role !== 'sfx' && it.role !== 'note' && it.role !== 'brand_mark' && it.type !== 'audio',
+    (it) => it.role !== 'music' && it.role !== 'sfx' && it.role !== 'note' && it.role !== 'brand_mark' && it.role !== 'avatar_base' && it.role !== 'voice_clone' && it.type !== 'audio',
   )
   const cleanTopic = normalizeNumeralsForDisplay(stripMetaInstructions(topic || scriptData?.title || '')) || '主题短片'
   const effectiveDirectorNotes = String(directorNotes || scriptData?.directorNotes || '').trim()
@@ -853,7 +859,7 @@ export async function runSchemaDirectorWithDegradation({
           if (it.editedPath) mediaDimMap.set(it.editedPath, { width: Number(it.editedWidth || it.width || 0), height: Number(it.editedHeight || it.height || 0) })
         }
         const visualItemsCatalog = (assetsManifest?.items || [])
-          .filter((it) => it.role !== 'music' && it.role !== 'sfx' && it.role !== 'note' && it.role !== 'brand_mark' && it.type !== 'audio')
+          .filter((it) => it.role !== 'music' && it.role !== 'sfx' && it.role !== 'note' && it.role !== 'brand_mark' && it.role !== 'avatar_base' && it.role !== 'voice_clone' && it.type !== 'audio')
           .map((it) => ({
             path: it.path,
             type: it.type,
@@ -911,25 +917,43 @@ export async function runSchemaDirectorWithDegradation({
               })),
         }
         const rawGoalText = `${cleanTopic} ${effectiveDirectorNotes} ${scriptData?.goal || ''} ${noteSummaries || ''}`
-        const isComprehensiveUnlimited = /不限制时长|不限时长|全量教程|完整教程|全功能教程|从头到尾教程|全部功能板块/.test(rawGoalText) || noteSummaries.length >= 420 || mediaNames.length >= 6
-        const targetSpanSec = Number(scriptData?.totalDurationSec) || Number(effectiveBgm?.durationSec) || (isComprehensiveUnlimited ? 160 : 60)
-        const approxShots = Math.round((targetSpanSec / 60) * pacingProfile.shotsPerMin)
-        const desiredZeroShotsMin = isComprehensiveUnlimited
-          ? Math.max(12, Math.min(pacingProfile.maxShots - 6, approxShots))
-          : Math.max(pacingProfile.minShots, Math.min(pacingProfile.maxShots - 2, approxShots - 2))
-        const desiredZeroShotsMax = Math.min(pacingProfile.maxShots, desiredZeroShotsMin + (isComprehensiveUnlimited ? 10 : pacingProfile.id === 'dynamic' ? 6 : 4))
-        const desiredUiShotsMin = isComprehensiveUnlimited
-          ? Math.max(14, Math.min(22, mediaNames.length * 2))
-          : Math.max(pacingProfile.minShots, Math.min(pacingProfile.maxShots - 2, approxShots - 2))
-        const desiredUiShotsMax = isComprehensiveUnlimited
-          ? Math.min(pacingProfile.maxShots, desiredUiShotsMin + 8)
-          : Math.min(pacingProfile.maxShots, desiredUiShotsMin + 4)
+        const effectiveNarrationModeT1 = narrationMode || scriptData?.narrationMode || 'tts'
+        const durationPolicy = resolveTargetDurationPolicy({
+          durationMode: durationMode || scriptData?.durationMode || 'auto',
+          targetDurationSec: Number(targetDurationSec) || Number(scriptData?.targetDurationSec) || 0,
+          text: rawGoalText,
+          pacingProfile,
+          narrationMode: effectiveNarrationModeT1,
+          hasVisualAssets: mediaNames.length > 0,
+          bgmDurationSec: Number(effectiveBgm?.durationSec) || 0,
+        })
+        const isComprehensiveUnlimited = durationPolicy.unlimited || noteSummaries.length >= 420 || mediaNames.length >= 6
+        const desiredZeroShotsMin = durationPolicy.enforced
+          ? durationPolicy.targetShotsMin
+          : isComprehensiveUnlimited
+            ? Math.max(12, Math.min(durationPolicy.hardMaxShots - 6, durationPolicy.targetShotsMin))
+            : durationPolicy.targetShotsMin
+        const desiredZeroShotsMax = durationPolicy.targetShotsMax
+        const desiredUiShotsMin = durationPolicy.enforced
+          ? Math.max(durationPolicy.targetShotsMin, Math.min(22, mediaNames.length))
+          : isComprehensiveUnlimited
+            ? Math.max(14, Math.min(22, mediaNames.length * 2))
+            : durationPolicy.targetShotsMin
+        const desiredUiShotsMax = Math.max(desiredUiShotsMin + 4, durationPolicy.targetShotsMax)
+        if (durationPolicy.enforced) {
+          prompt.targetDuration = {
+            mode: durationPolicy.mode,
+            targetSec: durationPolicy.targetSec,
+            minSec: durationPolicy.minSec,
+            maxSec: durationPolicy.maxSec,
+            recommendedShots: `${desiredZeroShotsMin}~${desiredZeroShotsMax}`,
+            ...(durationPolicy.requiredCharsMin > 0 ? { recommendedNarrationChars: `${durationPolicy.requiredCharsMin}~${durationPolicy.requiredCharsMax}` } : {}),
+          }
+        }
         const isHistoricalPrompt =
           resolvedGenre === 'history-theater' ||
           /历史|霸王|项羽|霍去病|卫青|汉武|秦|汉|楚|三国|唐|宋|明|古风|武侠|战役|将军|帝王|演义/i.test(rawGoalText)
-        const unlimitedDurationHint = isComprehensiveUnlimited
-          ? '\n- **【不限制时长模式】**：用户明确需要完整详细的全功能教程/长片，请**不要强行压缩成 60 秒短片**！请按章节与功能模块逐一拆镜（16~24 镜、总时长 2.5~4.5+ 分钟精炼讲透），每镜口播讲透操作步骤、交互逻辑与原理；并为每幕贴心标注富有表现力的 `emotion` 与 `speechRate`（`1.02~1.12`）！'
-          : ''
+        const unlimitedDurationHint = `\n- ${durationPolicy.promptDirective}`
         const strictContentRules = `
 【红线铁律 1 · 零指令词污染】：\`directorNotesOnlyInternalDoNotReadAloud\`、风格需求与润色指令仅供你规划视觉和写作 \`visualBlueprint\`，**严禁将任何“本视频要求…/分镜指令…/画面风格…/节奏设定…/受众定位…/制作规格…”写进 \`title\`、\`narration\`、\`subChunks\` 或 \`highlights\`**！输出给观众看听的必须是 100% 纯正片正文！
 【红线铁律 2 · 字幕自然阿拉伯数字与去标点断句】：\`narration\` 与 \`subChunks\` 中的年份、数量、规格全部保持**自然阿拉伯数字**（如 \`206年\`、\`3000人\`、\`119年\`、\`8 GB\`），严禁写成“二零六年”“三千人”；**\`subChunks\` 中严禁出现任何双引号 \`“”""\`、单引号、书名号 \`《》\` 及首尾逗号/句号**，确保每条短句词意完整、标点不孤立出现在行首或行尾！
@@ -973,16 +997,83 @@ ${pacingLabelHint}
           system: systemPrompt,
           messages: [{ role: 'user', content: JSON.stringify(prompt) }],
           temperature: zeroVisualAssets ? 0.4 : 0.28,
-          maxTokens: isComprehensiveUnlimited || zeroVisualAssets ? 9000 : 7500,
+          maxTokens: durationPolicy.targetSec >= 110 ? 12000 : isComprehensiveUnlimited || zeroVisualAssets ? 9000 : 7500,
           timeoutMs: 300_000,
           responseFormat: 'json',
         })
         const candidate = safeExtractJson(res?.text)
         const candShots = candidate?.shots || candidate?.scenes || candidate?.storyboard
         const hasExplicitCandidateShots = Array.isArray(candShots) && candShots.length >= 2
-        const repaired = hasExplicitCandidateShots
+        let repaired = hasExplicitCandidateShots
           ? repairPromoPlanRules(candidate, { topic: cleanTopic, style, genre: resolvedGenre, genreLabel: resolvedGenreLabel, authoringMode: effectiveAuthoringMode, directorNotes: effectiveDirectorNotes, contentOutline, assetsManifest, existingScript: scriptData, bgmMeta: effectiveBgm, narrationMode, pacingMode: effectivePacingMode })
           : null
+
+        // Anti-shrink duration guard: if user requested a concrete duration (e.g. >= 120s) and LLM under-produced (< 82% of minSec),
+        // automatically ask LLM to append continuation shots so final rendered duration reliably hits user's target!
+        if (repaired && validatePromoPlan(repaired).ok && durationPolicy.enforced && durationPolicy.minSec >= 45) {
+          const estSec = estimatePlanDurationSec(repaired.shots, { narrationMode: effectiveNarrationModeT1 })
+          if (estSec < durationPolicy.minSec * 0.84) {
+            const missingSec = Math.max(20, Math.round(durationPolicy.targetSec - estSec))
+            const extraShotsMin = Math.max(4, Math.round(missingSec / Math.max(2.5, pacingProfile.id === 'dynamic' ? 3.2 : 5.2)))
+            const extraCharsMin = effectiveNarrationModeT1 === 'subtitle-mv' ? 0 : Math.round(missingSec * 3.85)
+            try {
+              const expandRes = await callLlmChatFn({
+                system: `${systemPrompt}\n\n【紧急时长补镜任务】：上一轮规划的分镜预估总时长仅约 ${Math.round(estSec)} 秒，远低于用户要求的 ${durationPolicy.label}（底线 ${durationPolicy.minSec} 秒）！请紧接上一轮已有分镜的剧情/章节继续深入展开，**仅输出需要追加补充的新分镜数组**（JSON: { "appendShots": [...] }），至少补充 **${extraShotsMin} 个高质量新分镜**${extraCharsMin > 0 ? `（新增总旁白至少 ${extraCharsMin} 字，每镜深入展开细节、案例、转折或高潮收束，严禁重复已有台词）` : `（新增总时长至少 ${missingSec} 秒，紧贴 BGM 节拍与高潮突降点）`}！`,
+                messages: [
+                  {
+                    role: 'user',
+                    content: JSON.stringify({
+                      topic: cleanTopic,
+                      targetDurationSec: durationPolicy.targetSec,
+                      currentEstimatedSec: estSec,
+                      missingSec,
+                      existingTitles: repaired.shots.map((s) => `${s.id}: ${s.title}`),
+                      lastShot: repaired.shots[repaired.shots.length - 1],
+                      relativeAssets: mediaNames,
+                    }),
+                  },
+                ],
+                temperature: 0.42,
+                maxTokens: 9000,
+                timeoutMs: 240_000,
+                responseFormat: 'json',
+              })
+              const expJson = safeExtractJson(expandRes?.text)
+              const extraRaw = expJson?.appendShots || expJson?.shots || expJson?.scenes || []
+              if (Array.isArray(extraRaw) && extraRaw.length >= 2) {
+                const startIdx = repaired.shots.length
+                const normalizedExtra = extraRaw.map((s, k) => ({
+                  ...s,
+                  id: `scene-${String(startIdx + k + 1).padStart(2, '0')}`,
+                }))
+                const mergedCandidate = {
+                  ...candidate,
+                  shots: [...repaired.shots, ...normalizedExtra],
+                }
+                const mergedRepaired = repairPromoPlanRules(mergedCandidate, {
+                  topic: cleanTopic,
+                  style,
+                  genre: resolvedGenre,
+                  genreLabel: resolvedGenreLabel,
+                  authoringMode: effectiveAuthoringMode,
+                  directorNotes: effectiveDirectorNotes,
+                  contentOutline,
+                  assetsManifest,
+                  existingScript: scriptData,
+                  bgmMeta: effectiveBgm,
+                  narrationMode,
+                  pacingMode: effectivePacingMode,
+                })
+                if (mergedRepaired && validatePromoPlan(mergedRepaired).ok) {
+                  repaired = mergedRepaired
+                  trace.push({ tier: '1-expand', name: 'Duration Anti-Shrink Expansion', ok: true, fromSec: estSec, toSec: estimatePlanDurationSec(mergedRepaired.shots, { narrationMode: effectiveNarrationModeT1 }) })
+                }
+              }
+            } catch (expErr) {
+              trace.push({ tier: '1-expand', name: 'Duration Anti-Shrink Expansion', ok: false, reason: expErr?.message || String(expErr) })
+            }
+          }
+        }
         if (repaired && validatePromoPlan(repaired).ok) {
           for (const sh of repaired.shots) {
             sh._mediaDimMap = mediaDimMap
@@ -1004,10 +1095,23 @@ ${pacingLabelHint}
   // Tier 2: Sectioned lightweight list
   if (!chosenPlan && (!forceTierForTest || forceTierForTest <= 2) && typeof callLlmChatFn === 'function') {
     try {
-      const visualItemsT2 = (assetsManifest?.items || []).filter((it) => it.role !== 'music' && it.role !== 'sfx' && it.role !== 'note' && it.role !== 'brand_mark' && it.type !== 'audio')
+      const visualItemsT2 = (assetsManifest?.items || []).filter(
+        (it) => it.role !== 'music' && it.role !== 'sfx' && it.role !== 'note' && it.role !== 'brand_mark' && it.role !== 'avatar_base' && it.role !== 'voice_clone' && it.type !== 'audio',
+      )
       const zeroVisT2 = visualItemsT2.length === 0
       const mediaNamesT2 = visualItemsT2.map((it) => it.path).filter(Boolean)
-      const t2CountRange = pacingProfile.id === 'calm' ? '6~12' : mediaNamesT2.length >= 8 ? `${mediaNamesT2.length}~${mediaNamesT2.length + 6}` : pacingProfile.id === 'balanced' ? '10~16' : '22~30'
+      const t2DurationPolicy = resolveTargetDurationPolicy({
+        durationMode: durationMode || scriptData?.durationMode || 'auto',
+        targetDurationSec: Number(targetDurationSec) || Number(scriptData?.targetDurationSec) || 0,
+        text: `${cleanTopic} ${effectiveDirectorNotes} ${scriptData?.goal || ''}`,
+        pacingProfile,
+        narrationMode: narrationMode || scriptData?.narrationMode || 'tts',
+        hasVisualAssets: mediaNamesT2.length > 0,
+        bgmDurationSec: Number(bgmMeta?.durationSec || scriptData?.bgm?.durationSec) || 0,
+      })
+      const t2CountRange = t2DurationPolicy.enforced
+        ? `${t2DurationPolicy.targetShotsMin}~${t2DurationPolicy.targetShotsMax}`
+        : pacingProfile.id === 'calm' ? '6~12' : mediaNamesT2.length >= 8 ? `${mediaNamesT2.length}~${mediaNamesT2.length + 6}` : pacingProfile.id === 'balanced' ? '10~16' : '22~30'
       const isHistoricalT2 =
         resolvedGenre === 'history-theater' ||
         /历史|霸王|项羽|霍去病|卫青|汉武|秦|汉|楚|三国|唐|宋|明|古风|武侠|战役|将军|帝王|演义/i.test(`${cleanTopic} ${effectiveDirectorNotes}`)

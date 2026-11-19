@@ -14,6 +14,7 @@ import {
   REPO_ROOT,
   resolveBinaries,
   resolveLowSpecPolicy,
+  resolveTargetDurationPolicy,
   runCommandRedirected,
   sanitizeSpokenNarration,
   splitDirectorBrief,
@@ -21,7 +22,7 @@ import {
   toTtsText,
   writeScriptJson,
 } from '../shared/index.js'
-import { castVoicesWithLlm, executeGenerateSpeech, getActiveTtsEngineId, matchAllScenesInScript, resolveTtsEngineSpec } from '../dsh-tool-local-tts/index.js'
+import { castVoicesWithLlm, cloneRecordedVoice, executeGenerateSpeech, getActiveTtsEngineId, matchAllScenesInScript, resolveTtsEngineSpec } from '../dsh-tool-local-tts/index.js'
 import { executeGenerateAvatar } from '../dsh-tool-avatar/index.js'
 import {
   executeVideoLint,
@@ -183,6 +184,53 @@ async function executeMultiAgentRunner(run, helpers) {
   const engine = spec.engine === 'remotion' ? 'remotion' : 'html'
   const style = spec.style || 'tech'
   const aspectRatio = spec.aspectRatio || 'auto'
+
+  // Optional initial source import BEFORE resolving BGM & duration policy
+  if (spec.sources && (Array.isArray(spec.sources) ? spec.sources.length > 0 : true)) {
+    await importAssets({ projectDir: absDir, sources: spec.sources })
+  }
+
+  let initialScriptSnap = {}
+  if (existsSync(join(absDir, 'script.json'))) {
+    try {
+      initialScriptSnap = readScriptJson(absDir).data || {}
+    } catch {}
+  }
+  const initialAssetsSnap = readAssets(absDir)
+  const uploadedMusicSnap = (initialAssetsSnap.items || []).filter((it) => it.role === 'music')
+  const intentFullText = `${spec.rawTopic || ''} ${spec.directorNotes || ''} ${spec.goal || ''} ${initialScriptSnap.goal || ''}`
+  const wantsUploadedBgmByPrompt = /(?:上传|自带|导入|个人|我的|现有|本机).{0,10}(?:bgm|配乐|音乐|背景音|歌曲)|(?:bgm|配乐|背景音).{0,12}(?:节拍|卡点|踩拍|踩死|突降|高潮|同步)/i.test(intentFullText)
+  const wantsBeatSyncByPrompt = /(?:踩死|踩准|踩拍|卡点|高潮突降|重拍切镜|同步节拍|节拍同步|beat[- ]?sync)/i.test(intentFullText)
+  if (wantsBeatSyncByPrompt) {
+    spec.beatSync = true
+  }
+
+  let bgmMode = spec.bgmMode || initialScriptSnap.bgmMode || initialScriptSnap.audioSpec?.bgmMode || (uploadedMusicSnap.length > 0 ? 'uploaded' : 'llm-coded')
+  const hasPreGeneratedLlmBgm = existsSync(join(absDir, 'audio', 'bgm-llm.wav'))
+  if (
+    uploadedMusicSnap.length > 0 &&
+    (bgmMode === 'auto' || bgmMode === 'uploaded' || (bgmMode === 'llm-coded' && (!hasPreGeneratedLlmBgm || wantsUploadedBgmByPrompt)))
+  ) {
+    if (bgmMode !== 'uploaded') {
+      appendLog('director', `检测到工程已上传背景音乐「${uploadedMusicSnap[0].name || uploadedMusicSnap[0].path}」，已自动优先挂载上传 BGM 音频与真实节拍！`)
+    }
+    bgmMode = 'uploaded'
+  }
+
+  const durationPolicy = resolveTargetDurationPolicy({
+    durationMode: spec.durationMode || initialScriptSnap.durationMode || 'auto',
+    targetDurationSec: Number(spec.targetDurationSec) || Number(initialScriptSnap.targetDurationSec) || 0,
+    text: intentFullText,
+    narrationMode: spec.narrationMode || initialScriptSnap.narrationMode || 'tts',
+    hasVisualAssets: (initialAssetsSnap.items || []).some((it) => it.type === 'image' || it.type === 'video'),
+    bgmDurationSec: Number(uploadedMusicSnap[0]?.durationSec || initialScriptSnap.bgm?.durationSec) || 0,
+  })
+  const effectiveDurationMode = durationPolicy.durationMode === 'custom' ? 'custom' : (spec.durationMode || initialScriptSnap.durationMode || 'auto')
+  const effectiveTargetDurationSec = durationPolicy.enforced ? durationPolicy.targetSec : 0
+  if (durationPolicy.enforced) {
+    appendLog('director', `已锁定目标时长策略: ${durationPolicy.label}（规划目标 ${durationPolicy.targetSec}s，底线 ${durationPolicy.minSec}s）`)
+  }
+
   const hwProfile = probeHardwareProfile({ targetDir: absDir })
   const hwPolicy = resolveLowSpecPolicy({
     repoRoot: REPO_ROOT,
@@ -190,13 +238,12 @@ async function executeMultiAgentRunner(run, helpers) {
     modePref: spec.lowSpecMode || '',
     requestedQuality: spec.quality || '1080p',
     requestedFps: Number(spec.fps) || 30,
-    totalDurationSec: Number(spec.targetDurationSec) || 60,
+    totalDurationSec: effectiveTargetDurationSec || 60,
   })
   const quality = hwPolicy.effectiveQuality || spec.quality || '1080p'
   const effectiveFps = hwPolicy.effectiveFps || Number(spec.fps) || 30
   const targetPlatform = spec.targetPlatform || 'universal'
-  const bgmMode = spec.bgmMode || 'uploaded'
-  const voiceId = spec.voiceId || 'auto'
+  let voiceId = spec.voiceId || 'auto'
   const speechTempo = Number(spec.speechTempo) || 1.0
   const allowPlaceholder = Boolean(spec.allowPlaceholder)
   const llmSummary = getSafeLlmConfigSummary()
@@ -204,11 +251,6 @@ async function executeMultiAgentRunner(run, helpers) {
     'director',
     `本机算力体检: ${hwProfile.cpu.threads}核 · ${hwProfile.memory.freeGB}/${hwProfile.memory.totalGB}GB 内存 · ${hwProfile.gpu.primaryName} | ${hwPolicy.reason}${hwPolicy.clampedFields.length ? ` [保护限幅: ${hwPolicy.clampedFields.join(' / ')}]` : ''}`,
   )
-
-  // Optional initial source import
-  if (spec.sources && (Array.isArray(spec.sources) ? spec.sources.length > 0 : true)) {
-    await importAssets({ projectDir: absDir, sources: spec.sources })
-  }
 
   // =========================================================================
   // AGENT 1: 策划导演 Agent (director)
@@ -266,6 +308,9 @@ async function executeMultiAgentRunner(run, helpers) {
         fps: effectiveFps,
         voiceId,
         narrationMode: spec.narrationMode || '',
+        durationMode: effectiveDurationMode,
+        targetDurationSec: effectiveTargetDurationSec || undefined,
+        bgmMode,
         userPrompt: preservedGoal,
         goal: preservedGoal,
       })
@@ -317,8 +362,10 @@ async function executeMultiAgentRunner(run, helpers) {
       })
       try {
         const curScript = readScriptJson(absDir).data
-        if (Number(spec.targetDurationSec) > 0) {
-          curScript.totalDurationSec = Number(spec.targetDurationSec)
+        curScript.durationMode = effectiveDurationMode
+        if (effectiveTargetDurationSec > 0) {
+          curScript.targetDurationSec = effectiveTargetDurationSec
+          curScript.totalDurationSec = effectiveTargetDurationSec
         }
         // Ground visual assets with exact DOM sidecars (*.anchors.json) or multimodal Vision LLM coordinates
         try {
@@ -357,6 +404,8 @@ async function executeMultiAgentRunner(run, helpers) {
           bgmMeta: analyzedBgmMeta,
           narrationMode: spec.narrationMode || curScript.narrationMode || '',
           pacingMode: spec.pacingMode || curScript.pacingMode || 'auto',
+          durationMode: effectiveDurationMode,
+          targetDurationSec: effectiveTargetDurationSec,
           callLlmChatFn: (p) => callLlmChat({ ...p, signal }),
         })
         if (schemaRes?.resolved?.resolvedShots?.length >= 2) {
@@ -646,11 +695,37 @@ async function executeMultiAgentRunner(run, helpers) {
 
     scriptNow = readScriptJson(absDir).data
     const visualItemsNow = (assetsNow.items || []).filter((it) => it.type === 'image' || it.type === 'video')
-    const effectiveNarrationMode =
+    let effectiveNarrationMode =
       spec.narrationMode ||
       scriptNow.narrationMode ||
       (visualItemsNow.length === 0 && bgmMode === 'uploaded' && !spec.useHostVocal ? 'subtitle-mv' : 'tts')
+    if (wantsBeatSyncByPrompt && bgmMode === 'uploaded' && effectiveNarrationMode === 'tts') {
+      effectiveNarrationMode = 'tts-beat-sync'
+      appendLog('audio', '检测到指令要求分镜与动效全程踩死上传 BGM 节拍，已自动切换为「AI 配音 + 真实节拍踩点切镜」模式')
+    }
     scriptNow.narrationMode = effectiveNarrationMode
+
+    // Auto-adopt uploaded voice_clone sample when user didn't pick another voice explicitly
+    if (effectiveNarrationMode !== 'subtitle-mv' && voiceCloneSample && (!voiceId || voiceId === 'auto')) {
+      const sampleAbs = isAbsolute(voiceCloneSample.path) ? voiceCloneSample.path : resolve(absDir, voiceCloneSample.path)
+      if (existsSync(sampleAbs)) {
+        try {
+          const cloned = await cloneRecordedVoice({
+            audioPath: sampleAbs,
+            voiceName: `项目声纹_${voiceCloneSample.name || '克隆人声'}`,
+          })
+          if (cloned?.voice?.id) {
+            voiceId = cloned.voice.id
+            scriptNow.defaultVoiceId = voiceId
+            scriptNow.voiceMode = 'manual'
+            writeScriptJson(absDir, scriptNow)
+            appendLog('audio', `检测到已上传声音克隆样本「${voiceCloneSample.name}」，已自动注册并绑定为主讲声纹 (${voiceId})`)
+          }
+        } catch (vcErr) {
+          appendLog('audio', `声音克隆样本自动注册略过: ${vcErr?.message || vcErr}`, 'warn')
+        }
+      }
+    }
 
     if (effectiveNarrationMode === 'subtitle-mv') {
       updateTask('t-audio', {
@@ -767,7 +842,16 @@ async function executeMultiAgentRunner(run, helpers) {
 
     const totalSec = Math.max(4, Number(scriptNow.totalDurationSec) || 12)
     const uploadedMusic = (assetsNow.items || []).filter((it) => it.role === 'music')
+    const uploadedSfx = (assetsNow.items || []).filter((it) => it.role === 'sfx')
     const chosenUploadPath = spec.uploadedBgmPath || uploadedMusic[0]?.path || scriptNow.bgm?.uploadedPath || ''
+    const customSfxPick = (kind) => {
+      if (uploadedSfx.length > 0) {
+        const hit = uploadedSfx.find((x) => String(x.name || x.originalName || '').toLowerCase().includes(String(kind || '').toLowerCase()))
+        if (hit?.path) return hit.path
+      }
+      return `audio/sfx/${kind}.wav`
+    }
+    scriptNow.bgmMode = bgmMode
     scriptNow.audioSpec = { ...(scriptNow.audioSpec || {}), bgmMode }
 
     if (bgmMode === 'uploaded' && chosenUploadPath) {
@@ -781,6 +865,7 @@ async function executeMultiAgentRunner(run, helpers) {
       scriptNow.bgm = {
         ...(scriptNow.bgm || {}),
         ...(beatMeta || {}),
+        enabled: true,
         mode: 'uploaded',
         source: 'user-imported',
         path: chosenUploadPath,
@@ -791,14 +876,14 @@ async function executeMultiAgentRunner(run, helpers) {
         scriptNow.scenes = quantizeScenesToBeatGrid(scriptNow.scenes || [], beatMeta, {
           mode: qMode,
           fps,
-          targetDurationSec: Number(spec.targetDurationSec) || 0,
+          targetDurationSec: effectiveTargetDurationSec,
         })
-        scriptNow.scenes = choreographBeatSfxCues(scriptNow.scenes, beatMeta)
+        scriptNow.scenes = choreographBeatSfxCues(scriptNow.scenes, beatMeta, { sfxPick: customSfxPick })
         scriptNow.subtitles = scriptNow.scenes.flatMap((sc) => sc.subtitles || [])
         const lastSc = scriptNow.scenes[scriptNow.scenes.length - 1]
         scriptNow.totalDurationInFrames = lastSc ? Number(lastSc.startFrame || 0) + Number(lastSc.durationInFrames || 0) : scriptNow.totalDurationInFrames
         scriptNow.totalDurationSec = Number(((scriptNow.totalDurationInFrames || 30) / fps).toFixed(4))
-        appendLog('audio', `已完成真实音乐节拍踩点对齐：${scriptNow.scenes.length} 幕锁定 ${beatMeta.bpm} BPM (${scriptNow.totalDurationSec.toFixed(1)}s)`)
+        appendLog('audio', `已完成真实上传 BGM 节拍踩点对齐：${scriptNow.scenes.length} 幕锁定 ${beatMeta.bpm} BPM (${scriptNow.totalDurationSec.toFixed(1)}s)`)
       }
       writeScriptJson(absDir, scriptNow)
     } else if (bgmMode === 'llm-coded' && mode === 'ai-coded' && llmSummary.configured) {
@@ -858,19 +943,53 @@ async function executeMultiAgentRunner(run, helpers) {
       postBgmScript.scenes = quantizeScenesToBeatGrid(postBgmScript.scenes || [], grid, {
         mode: qMode,
         fps,
-        targetDurationSec: Number(spec.targetDurationSec) || 0,
+        targetDurationSec: effectiveTargetDurationSec,
       })
-      postBgmScript.scenes = choreographBeatSfxCues(postBgmScript.scenes, grid)
+      postBgmScript.scenes = choreographBeatSfxCues(postBgmScript.scenes, grid, { sfxPick: customSfxPick })
       postBgmScript.subtitles = postBgmScript.scenes.flatMap((sc) => sc.subtitles || [])
       const lastSc = postBgmScript.scenes[postBgmScript.scenes.length - 1]
       postBgmScript.totalDurationInFrames = lastSc ? Number(lastSc.startFrame || 0) + Number(lastSc.durationInFrames || 0) : postBgmScript.totalDurationInFrames
       postBgmScript.totalDurationSec = Number(((postBgmScript.totalDurationInFrames || 30) / fps).toFixed(4))
       writeScriptJson(absDir, postBgmScript)
       appendLog('audio', `已对 AI 配乐/节拍轨执行音画踩点绑定 (${qMode} · ${postBgmScript.bgm?.bpm || 120} BPM · ${postBgmScript.scenes.length} 幕)`)
+    } else if (durationPolicy.enforced && effectiveTargetDurationSec > 10 && !wantsBeatSync) {
+      // Non-beat-sync TTS mode: if user set a strict duration and spoken tracks fell slightly short, add smooth visual breathing cushion
+      const curTot = Number(postBgmScript.totalDurationSec) || 0
+      const scArr = Array.isArray(postBgmScript.scenes) ? postBgmScript.scenes : []
+      if (scArr.length > 0 && curTot > 2 && curTot < durationPolicy.minSec * 0.96) {
+        const extraEach = Math.min(3.6, (durationPolicy.targetSec - curTot) / scArr.length)
+        for (const sc of scArr) {
+          sc.durationSec = Number(((Number(sc.durationSec) || 3.5) + extraEach).toFixed(4))
+          sc.durationInFrames = Math.max(15, Math.ceil(sc.durationSec * fps))
+        }
+        writeScriptJson(absDir, postBgmScript)
+        await recomputeCumulativeTimeline(absDir)
+      }
     }
 
     const scriptForMix = readScriptJson(absDir).data
+    scriptForMix.bgmMode = bgmMode
+    scriptForMix.audioSpec = { ...(scriptForMix.audioSpec || {}), bgmMode }
+    if (bgmMode === 'uploaded' && chosenUploadPath) {
+      scriptForMix.bgm = { ...(scriptForMix.bgm || {}), enabled: true, mode: 'uploaded', source: 'user-imported', path: chosenUploadPath, uploadedPath: chosenUploadPath }
+    }
     let sfxInjected = false
+    // Inject user-uploaded custom SFX files (role === 'sfx') onto scene transition/accent points if not already wired
+    if (uploadedSfx.length > 0 && Array.isArray(scriptForMix.scenes) && scriptForMix.scenes.length > 0) {
+      const alreadyUsed = new Set(
+        scriptForMix.scenes.flatMap((s) => (s.sfxCues || []).map((q) => q.path)).filter(Boolean),
+      )
+      const unusedSfx = uploadedSfx.filter((u) => u.path && !alreadyUsed.has(u.path))
+      if (unusedSfx.length > 0) {
+        for (let ui = 0; ui < unusedSfx.length; ui++) {
+          const targetSc = scriptForMix.scenes[Math.min(scriptForMix.scenes.length - 1, Math.floor(((ui + 0.5) * scriptForMix.scenes.length) / unusedSfx.length))]
+          targetSc.sfxCues = Array.isArray(targetSc.sfxCues) ? [...targetSc.sfxCues] : []
+          targetSc.sfxCues.push({ type: 'custom', path: unusedSfx[ui].path, offsetSec: 0.12, volume: 0.68, pan: 0 })
+          sfxInjected = true
+        }
+        appendLog('audio', `已将用户上传的 ${unusedSfx.length} 份自定义音效挂入成片分镜混音轨`)
+      }
+    }
     for (const sc of scriptForMix.scenes || []) {
       const scDur = Math.max(1.0, Number(sc.durationSec) || 4.0)
       sc.sfxCues = Array.isArray(sc.sfxCues) ? [...sc.sfxCues] : []

@@ -580,14 +580,15 @@ export async function executeVideoRender(args = {}) {
   if (engine === 'remotion' && existsSync(join(targetDir, 'src', 'Root.tsx'))) {
     syncRemotionPublicAssets(targetDir, script)
     const vcPath = join(targetDir, 'src', 'VideoComposition.tsx')
-    if (existsSync(vcPath) && script?.authoringMode !== 'ai-coded') {
+    if (existsSync(vcPath)) {
       const vcSrc = readFileSync(vcPath, 'utf8')
       if (
-        (vcSrc.includes('const PALETTE') || vcSrc.includes('import scriptData from')) &&
         !vcSrc.includes('master-audio.wav') &&
         existsSync(join(targetDir, 'public', 'master-audio.wav'))
       ) {
-        writeRemotionProjectFiles(targetDir, script)
+        writeRemotionProjectFiles(targetDir, script, {
+          useCustomSceneRegistry: script?.authoringMode === 'ai-coded' && existsSync(join(targetDir, 'src', 'scenes', 'index.ts')),
+        })
       }
     }
     const r = await renderRemotionProject({

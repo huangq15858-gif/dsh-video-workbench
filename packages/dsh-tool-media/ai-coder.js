@@ -19,6 +19,7 @@ import {
   readScriptJson,
   REPO_ROOT,
   resolveLowSpecPolicy,
+  resolveTargetDurationPolicy,
   resolveVideoDimensions,
   splitDirectorBrief,
   stripMetaInstructions,
@@ -697,6 +698,7 @@ export async function runAiStudioPipeline(options = {}) {
     uploadedBgmPath = '',
     narrationMode = '',
     beatSync,
+    durationMode = '',
     targetDurationSec = 0,
     targetPlatform = 'universal',
     aspectRatio = 'auto',
@@ -771,11 +773,23 @@ export async function runAiStudioPipeline(options = {}) {
   const resolvedGenre = resolvedGenreInfo.id
   const resolvedGenreLabel = resolvedGenreInfo.label
   const resolvedPlatform = targetPlatform || existingScript?.targetPlatform || 'universal'
-  const resolvedBgmMode = bgmMode || existingScript?.audioSpec?.bgmMode || 'llm-coded'
+  const intentForBgm = `${coreTopic} ${directorNotes || ''} ${userPrompt || ''}`
+  const wantsUploadedBgmCoder = /(?:上传|自带|导入|个人|我的|现有|本机).{0,10}(?:bgm|配乐|音乐|背景音|歌曲)|(?:bgm|配乐|背景音).{0,12}(?:节拍|卡点|踩拍|踩死|突降|高潮|同步)/i.test(intentForBgm)
+  const wantsBeatSyncCoder = /(?:踩死|踩准|踩拍|卡点|高潮突降|重拍切镜|同步节拍|节拍同步|beat[- ]?sync)/i.test(intentForBgm)
+  let resolvedBgmMode = bgmMode || existingScript?.audioSpec?.bgmMode || (importedMusic.length > 0 ? 'uploaded' : 'llm-coded')
+  if (
+    importedMusic.length > 0 &&
+    (resolvedBgmMode === 'auto' || resolvedBgmMode === 'uploaded' || (resolvedBgmMode === 'llm-coded' && (!existsSync(join(absDir, 'audio', 'bgm-llm.wav')) || wantsUploadedBgmCoder)))
+  ) {
+    resolvedBgmMode = 'uploaded'
+  }
   const resolvedCreationMode = creationMode === 'schema-plan' ? 'schema-plan' : 'ai-coded'
-  const resolvedNarrationMode =
+  let resolvedNarrationMode =
     narrationMode || existingScript?.narrationMode || (visuals.length === 0 && resolvedBgmMode === 'uploaded' ? 'subtitle-mv' : 'tts')
-  const enableBeatSync = beatSync !== undefined ? Boolean(beatSync) : (resolvedBgmMode === 'uploaded' || resolvedNarrationMode !== 'tts')
+  if (wantsBeatSyncCoder && resolvedBgmMode === 'uploaded' && resolvedNarrationMode === 'tts') {
+    resolvedNarrationMode = 'tts-beat-sync'
+  }
+  const enableBeatSync = beatSync !== undefined ? Boolean(beatSync) : (wantsBeatSyncCoder || resolvedBgmMode === 'uploaded' || resolvedNarrationMode !== 'tts')
 
   let analyzedBgmMeta = existingScript?.bgm?.analyzed ? existingScript.bgm : null
   const pickedUploadBgm = uploadedBgmPath || existingScript?.bgm?.uploadedPath || importedMusic[0]?.path || ''
@@ -789,13 +803,23 @@ export async function runAiStudioPipeline(options = {}) {
     }
   }
 
+  const coderDurationPolicy = resolveTargetDurationPolicy({
+    durationMode: durationMode || existingScript?.durationMode || 'auto',
+    targetDurationSec: Number(targetDurationSec) || Number(existingScript?.targetDurationSec) || 0,
+    text: `${coreTopic} ${directorNotes || ''} ${userPrompt || ''} ${existingScript?.goal || ''}`,
+    narrationMode: resolvedNarrationMode,
+    hasVisualAssets: visuals.length > 0,
+    bgmDurationSec: Number(analyzedBgmMeta?.durationSec || importedMusic[0]?.durationSec) || 0,
+  })
+  const effectiveCoderTargetSec = coderDurationPolicy.enforced ? coderDurationPolicy.targetSec : 0
+
   const baseHwProfile = probeHardwareProfile({ targetDir: absDir })
   const baseHwPolicy = resolveLowSpecPolicy({
     repoRoot: REPO_ROOT,
     hardware: baseHwProfile,
     requestedQuality: quality,
     requestedFps: Number(options.fps) || 30,
-    totalDurationSec: Number(options.targetDurationSec) || 60,
+    totalDurationSec: effectiveCoderTargetSec || 60,
   })
   const baseDims = resolveVideoDimensions({
     aspectRatio,
@@ -838,6 +862,8 @@ export async function runAiStudioPipeline(options = {}) {
       bgmMeta: analyzedBgmMeta,
       narrationMode: resolvedNarrationMode,
       pacingMode: pacingMode || existingScript?.pacingMode || 'auto',
+      durationMode: durationMode || existingScript?.durationMode || 'auto',
+      targetDurationSec: effectiveCoderTargetSec,
       callLlmChatFn: async (p) =>
         callLlmChat({
           overrideConfig: llmCfg,
@@ -1098,6 +1124,8 @@ export async function runAiStudioPipeline(options = {}) {
     aiBadgeText: String(aiBadgeText || existingScript?.aiBadgeText || 'AI 辅助创作').trim(),
     pacingMode: String(pacingMode || existingScript?.pacingMode || 'auto').trim(),
     visual3dMode: String(visual3dMode || existingScript?.visual3dMode || 'auto').trim(),
+    durationMode: coderDurationPolicy.durationMode === 'custom' ? 'custom' : String(durationMode || existingScript?.durationMode || 'auto'),
+    targetDurationSec: effectiveCoderTargetSec,
     voiceMode: voiceId && voiceId !== 'auto' ? 'manual' : 'auto',
     defaultVoiceId: voiceId || 'auto',
     narrationMode: resolvedNarrationMode,
@@ -1195,7 +1223,7 @@ export async function runAiStudioPipeline(options = {}) {
     lockedScript.scenes = quantizeScenesToBeatGrid(lockedScript.scenes || [], activeBeatMeta, {
       mode: qMode,
       fps,
-      targetDurationSec: Number(targetDurationSec) || 0,
+      targetDurationSec: effectiveCoderTargetSec,
     })
     lockedScript.scenes = choreographBeatSfxCues(lockedScript.scenes, activeBeatMeta)
     lockedScript.subtitles = lockedScript.scenes.flatMap((sc) => sc.subtitles || [])
