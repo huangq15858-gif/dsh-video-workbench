@@ -350,7 +350,9 @@ export async function mixVideoAudio({ projectDir, script, assetsManifest, output
     mixInputs.push(bgmStreamForMix)
   }
 
-  filters.push(`${mixInputs.join('')}${formatAmixChain(mixInputs.length, 'first', ffmpeg)},alimiter=limit=0.74:level=disabled:attack=2:release=50[master]`)
+  filters.push(
+    `${mixInputs.join('')}${formatAmixChain(mixInputs.length, 'first', ffmpeg)},loudnorm=I=-14.5:TP=-2.0:LRA=9,alimiter=limit=0.78:level=disabled:attack=0.5:release=50[master]`,
+  )
   args.push('-filter_complex', filters.join(';'), '-map', '[master]', '-c:a', 'pcm_s16le', '-ar', String(SR), '-t', String(totalSec), outWav)
 
   const res = await runCommandRedirected(ffmpeg, args, {

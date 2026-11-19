@@ -1473,6 +1473,13 @@ export async function handleWorkbenchApiRequest(req) {
           ...(body.fps ? { fps: Number(body.fps) || 30 } : {}),
           ...(body.voiceId ? { defaultVoiceId: body.voiceId } : {}),
           ...(body.engine ? { engine: body.engine } : {}),
+          ...(body.topic !== undefined ? { topic: String(body.topic) } : {}),
+          ...(body.goal !== undefined ? { goal: String(body.goal) } : body.topic !== undefined ? { goal: String(body.topic) } : {}),
+          ...(body.displayTitle !== undefined ? { displayTitle: String(body.displayTitle) } : {}),
+          ...(body.directorNotes !== undefined ? { directorNotes: String(body.directorNotes) } : {}),
+          ...(Array.isArray(body.contentOutline) ? { contentOutline: body.contentOutline } : {}),
+          ...(body.genre !== undefined ? { genre: String(body.genre) } : {}),
+          ...(body.genreLabel !== undefined ? { genreLabel: String(body.genreLabel) } : {}),
         })
         syncProjectCodeFromScript(projectDir, updated.data)
         return jsonResponse({ ok: true, action, dimensions: dims, script: updated.data })

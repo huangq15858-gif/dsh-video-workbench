@@ -2209,6 +2209,74 @@ export const BATCH_01_SCENES: Record<string, React.FC<CustomSceneProps>> = {
   console.log(
     `[18/18] v0.3.6 Pixel-Exact FocusShot (containerType 100cqw + __DSH_MEDIA_DIMS + exact 0,0 cursor tip) & 4-Protocol Multimodal Vision/Sidecar Grounding Verified (tsc 0 errors)!`,
   )
+
+  // 19. v0.3.7 Persistent AI-Polished Brief & Step 2 / War Room Textarea Echo Verification
+  const { formatDirectorBrief: formatBriefV037, splitDirectorBrief: splitBriefV037 } = await import('../packages/shared/index.js')
+  const samplePolishedBrief = [
+    '【作品标题】深海奇观导览',
+    '【体裁】海洋科普实操短片',
+    '【一句话】带观众潜入马里亚纳海沟看发光生物',
+    '【内容要点】',
+    '1. 深海高压与发光鱼类的演化机制',
+    '2. 潜航器光学探测与实拍画面对比',
+    '【导演备注（仅供 AI 制作，不会出现在视频里）】',
+    '16:9 满幅清晰展示，不要做左图右字 PPT，配音亲切沉稳 1.08x。',
+  ].join('\n')
+  const splitV037 = splitBriefV037({ topic: samplePolishedBrief })
+  if (
+    !Array.isArray(splitV037.contentOutline) ||
+    splitV037.contentOutline.length !== 2 ||
+    !splitV037.directorNotes.includes('16:9 满幅清晰展示')
+  ) {
+    throw new Error(`splitDirectorBrief failed to preserve contentOutline[] & directorNotes: ${JSON.stringify(splitV037)}`)
+  }
+  // Verify reconstructing full polished brief when legacy script.json had goal: ""
+  const reconstructedLegacy = formatBriefV037({
+    title: 'DSH 视频工作台实操',
+    displayTitle: 'DSH视频工作台实操',
+    genreLabel: '亮色界面软件全流程实操教程',
+    goal: '',
+    contentOutline: '产品定位：工作台支持 4-Agent 协同。,配置要求：最低 4 核 8 GB。',
+    directorNotes: '16:9 亮色满幅，不做左图右字。',
+  })
+  if (
+    !reconstructedLegacy.includes('【作品标题】DSH视频工作台实操') ||
+    !reconstructedLegacy.includes('【内容要点】\n1. 产品定位') ||
+    !reconstructedLegacy.includes('2. 配置要求') ||
+    !reconstructedLegacy.includes('【导演备注（仅供 AI 制作，不会出现在视频里）】')
+  ) {
+    throw new Error(`formatDirectorBrief failed legacy reconstruction: ${reconstructedLegacy}`)
+  }
+  // Verify planVideoFromAssets preserves full polished goal instead of wiping it to ""
+  const tmpV037Proj = join(REPO_ROOT, '.tmp', 'v037-brief-echo')
+  rmSync(tmpV037Proj, { recursive: true, force: true })
+  mkdirSync(tmpV037Proj, { recursive: true })
+  await planVideoFromAssets({
+    projectDir: tmpV037Proj,
+    topic: samplePolishedBrief,
+    displayTitle: splitV037.displayTitle,
+    genreLabel: splitV037.genreLabel,
+    contentOutline: splitV037.contentOutline,
+    directorNotes: splitV037.directorNotes,
+    goal: '',
+    engine: 'remotion',
+    style: 'tech',
+  })
+  const savedV037 = JSON.parse(readFileSync(join(tmpV037Proj, 'script.json'), 'utf8'))
+  rmSync(tmpV037Proj, { recursive: true, force: true })
+  const clientSrcV037 = readFileSync(join(REPO_ROOT, 'packages', 'dsh-web-video-workbench', 'lib', 'client.js'), 'utf8')
+  if (
+    !String(savedV037.goal || '').includes('【导演备注') ||
+    !Array.isArray(savedV037.contentOutline) ||
+    savedV037.contentOutline.length !== 2 ||
+    clientSrcV037.includes('ap.script?.goal ?? ap.script?.topic') ||
+    !clientSrcV037.includes('resolveDisplayPrompt')
+  ) {
+    throw new Error(`v0.3.7 persistent polished prompt check failed: goal=${savedV037.goal} outline=${JSON.stringify(savedV037.contentOutline)}`)
+  }
+  console.log(
+    `[19/19] v0.3.7 Persistent AI-Polished Brief (script.goal + contentOutline[] preservation, legacy reconstruction & UI echo) Verified!`,
+  )
   console.log('======================================================================')
 }
 

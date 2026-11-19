@@ -118,9 +118,73 @@ function parseBriefSections(raw) {
   }
 }
 
+const BOILERPLATE_GOALS = new Set([
+  '带有文案、配音、音效、动效、音乐与字幕的完整成片',
+  '呈现具备动态视觉排版、空间运镜、粒子光效、节拍音效、配乐与配音的完整成片',
+])
+
+export function normalizeContentOutline(val) {
+  if (Array.isArray(val)) {
+    return val
+      .map((x) => String(x ?? '').trim().replace(/^[-\d.、\s]+/, '').trim())
+      .filter(Boolean)
+  }
+  const s = String(val ?? '').trim()
+  if (!s) return []
+  const byLines = s
+    .split(/\r?\n+/)
+    .map((x) => x.trim().replace(/^[-\d.、\s]+/, '').trim())
+    .filter(Boolean)
+  if (byLines.length > 1) return byLines
+  // Legacy scripts saved by String(array) joined outline items with commas after '。' or before '标题：'
+  const legacySplit = s
+    .split(/(?<=。),|,(?=\s*(?:第\s*\d+\s*步|[\u4e00-\u9fa5A-Za-z0-9｜| ]{2,18}[：:]))/)
+    .map((x) => x.trim().replace(/^[-\d.、\s]+/, '').trim())
+    .filter(Boolean)
+  return legacySplit.length > 1 ? legacySplit : byLines
+}
+
+export function formatDirectorBrief(scriptLike = {}) {
+  if (!scriptLike || typeof scriptLike !== 'object') return ''
+  const rawGoal = String(scriptLike.goal || scriptLike.userPrompt || scriptLike.polishedTopic || '').trim()
+  const notes = String(scriptLike.directorNotes || '').trim()
+  const outlineItems = normalizeContentOutline(scriptLike.contentOutline)
+  const title = String(scriptLike.displayTitle || scriptLike.topic || scriptLike.title || '').trim()
+  const genreLabel = String(scriptLike.genreLabel || '').trim()
+
+  if (rawGoal && !BOILERPLATE_GOALS.has(rawGoal)) {
+    // If rawGoal already contains full structured markers or detailed notes, show it directly.
+    if (/【\s*(?:作品标题|体裁|内容要点|导演备注)/.test(rawGoal) || (!notes && outlineItems.length === 0) || rawGoal.length >= 60) {
+      return rawGoal
+    }
+  }
+
+  if (notes || outlineItems.length > 0) {
+    const parts = []
+    if (title) parts.push(`【作品标题】${title}`)
+    if (genreLabel) parts.push(`【体裁】${genreLabel}`)
+    if (rawGoal && !BOILERPLATE_GOALS.has(rawGoal) && rawGoal !== title) {
+      parts.push(`【一句话】${rawGoal}`)
+    }
+    if (outlineItems.length > 0) {
+      parts.push(`【内容要点】\n${outlineItems.map((x, i) => `${i + 1}. ${x}`).join('\n')}`)
+    }
+    if (notes) {
+      parts.push(`【导演备注（仅供 AI 制作，不会出现在视频里）】\n${notes}`)
+    }
+    return parts.join('\n')
+  }
+
+  if (rawGoal && !BOILERPLATE_GOALS.has(rawGoal)) return rawGoal
+  return title
+}
+
 export function splitDirectorBrief(spec = {}) {
   const rawTopic = String(spec.topic || '').trim()
   const sections = parseBriefSections(rawTopic)
+  const explicitOutline = normalizeContentOutline(spec.contentOutline)
+  const sectionOutline = normalizeContentOutline(sections.outline)
+  const mergedOutline = explicitOutline.length > 0 ? explicitOutline : sectionOutline
   if (sections.hasMarkers) {
     const displayTitle = String(spec.displayTitle || '').trim() || sections.title || deriveDisplayTitle(rawTopic, '')
     const notes = [spec.directorNotes, sections.notes].map((x) => String(x || '').trim()).filter(Boolean)
@@ -130,7 +194,7 @@ export function splitDirectorBrief(spec = {}) {
       title: displayTitle || '作品',
       displayTitle: displayTitle || '作品',
       directorNotes,
-      contentOutline: String(spec.contentOutline || '').trim() || sections.outline,
+      contentOutline: mergedOutline,
       genre: String(spec.genre || '').trim() || sections.genre,
       genreLabel: String(spec.genreLabel || '').trim() || sections.genreLabel,
       isBrief: true,
@@ -160,7 +224,7 @@ export function splitDirectorBrief(spec = {}) {
     title: safeRawTitle || displayTitle || topic,
     displayTitle: displayTitle || topic,
     directorNotes,
-    contentOutline: String(spec.contentOutline || '').trim(),
+    contentOutline: mergedOutline,
     genre: String(spec.genre || '').trim(),
     genreLabel: String(spec.genreLabel || '').trim(),
     isBrief: looksLikeBrief,

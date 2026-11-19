@@ -51,6 +51,7 @@ voice-packs/samples/
 # Generated Media & Test Artifacts
 *.tgz
 *.mp4
+!docs/tutorial/*.mp4
 *.mov
 *.webm
 *.wav
@@ -62,6 +63,7 @@ voice-packs/samples/
 *.onnx
 *.png
 !assets/screenshots/*.png
+!docs/tutorial/*.png
 *.jpg
 *.jpeg
 *.webp

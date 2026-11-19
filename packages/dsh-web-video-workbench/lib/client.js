@@ -1702,14 +1702,56 @@ window.__ModuleLoader__?.load({
               if (isNewProjectSelection || forceSyncForm) {
                 const rawEngine = String(ap.script?.engine || 'remotion').toLowerCase()
                 const normEngine = rawEngine === 'html' || rawEngine === 'html5' ? 'html' : 'remotion'
+                const BOILERPLATE_GOALS = new Set([
+                  '带有文案、配音、音效、动效、音乐与字幕的完整成片',
+                  '呈现具备动态视觉排版、空间运镜、粒子光效、节拍音效、配乐与配音的完整成片',
+                ])
+                const normalizeOutline = (val) => {
+                  if (Array.isArray(val)) return val.map((x) => String(x ?? '').trim()).filter(Boolean)
+                  const s = String(val ?? '').trim()
+                  if (!s) return []
+                  const byLines = s.split(/\r?\n+/).map((x) => x.trim().replace(/^[-\d.、\s]+/, '').trim()).filter(Boolean)
+                  if (byLines.length > 1) return byLines
+                  const legacy = s
+                    .split(/(?<=。),|,(?=\s*(?:第\s*\d+\s*步|[\u4e00-\u9fa5A-Za-z0-9｜| ]{2,18}[：:]))/)
+                    .map((x) => x.trim().replace(/^[-\d.、\s]+/, '').trim())
+                    .filter(Boolean)
+                  return legacy.length > 1 ? legacy : byLines
+                }
+                const resolveDisplayPrompt = (sc) => {
+                  if (!sc || typeof sc !== 'object') return ''
+                  const rawGoal = String(sc.goal || sc.userPrompt || '').trim()
+                  const notes = String(sc.directorNotes || '').trim()
+                  const outlineArr = normalizeOutline(sc.contentOutline)
+                  const title = String(sc.displayTitle || sc.topic || sc.title || '').trim()
+                  const gLabel = String(sc.genreLabel || '').trim()
+                  if (rawGoal && !BOILERPLATE_GOALS.has(rawGoal)) {
+                    if (/【\s*(?:作品标题|体裁|内容要点|导演备注)/.test(rawGoal) || (!notes && outlineArr.length === 0) || rawGoal.length >= 60) {
+                      return rawGoal
+                    }
+                  }
+                  if (notes || outlineArr.length > 0) {
+                    const parts = []
+                    if (title) parts.push(`【作品标题】${title}`)
+                    if (gLabel) parts.push(`【体裁】${gLabel}`)
+                    if (rawGoal && !BOILERPLATE_GOALS.has(rawGoal) && rawGoal !== title) parts.push(`【一句话】${rawGoal}`)
+                    if (outlineArr.length > 0) parts.push(`【内容要点】\n${outlineArr.map((x, i) => `${i + 1}. ${x}`).join('\n')}`)
+                    if (notes) parts.push(`【导演备注（仅供 AI 制作，不会出现在视频里）】\n${notes}`)
+                    return parts.join('\n')
+                  }
+                  if (rawGoal && !BOILERPLATE_GOALS.has(rawGoal)) return rawGoal
+                  return title
+                }
+                const hydratedOutline = normalizeOutline(ap.script?.contentOutline)
+                const hydratedPrompt = resolveDisplayPrompt(ap.script)
                 setDirectorForm((prev) => ({
                   ...prev,
-                  topic: ap.script?.goal ?? ap.script?.topic ?? prev.topic ?? '',
+                  topic: hydratedPrompt || prev.topic || '',
                   displayTitle: ap.script?.displayTitle || ap.script?.title || prev.displayTitle || '',
                   genre: ap.script?.genre || prev.genre || '',
                   genreLabel: ap.script?.genreLabel || prev.genreLabel || '',
                   directorNotes: ap.script?.directorNotes || prev.directorNotes || '',
-                  contentOutline: Array.isArray(ap.script?.contentOutline) ? ap.script.contentOutline : prev.contentOutline || [],
+                  contentOutline: hydratedOutline.length > 0 ? hydratedOutline : prev.contentOutline || [],
                   style: UNIFIED_STYLES.some((s) => s.id === ap.script?.style) ? ap.script.style : 'tech',
                   engine: normEngine,
                   creationMode: ap.script?.creationMode || 'ai-coded',
@@ -2427,6 +2469,8 @@ window.__ModuleLoader__?.load({
             body: JSON.stringify({
               projectDir: activeProjectDir,
               topic: directorForm.topic.trim() || script?.title || 'AI 影视概念短片',
+              userPrompt: directorForm.topic.trim() || script?.goal || '',
+              goal: directorForm.topic.trim() || script?.goal || '',
               displayTitle: directorForm.displayTitle || undefined,
               genre: directorForm.genre || undefined,
               genreLabel: directorForm.genreLabel || undefined,
@@ -2518,6 +2562,13 @@ window.__ModuleLoader__?.load({
               projectDir: activeProjectDir,
               sources: assetDirInput.trim() || undefined,
               topic: directorForm.topic.trim() || script?.title || '个人品牌介绍',
+              userPrompt: directorForm.topic.trim() || script?.goal || '',
+              goal: directorForm.topic.trim() || script?.goal || '',
+              displayTitle: directorForm.displayTitle || undefined,
+              genre: directorForm.genre || undefined,
+              genreLabel: directorForm.genreLabel || undefined,
+              directorNotes: directorForm.directorNotes || undefined,
+              contentOutline: Array.isArray(directorForm.contentOutline) && directorForm.contentOutline.length > 0 ? directorForm.contentOutline : undefined,
               style: directorForm.style,
               engine: directorForm.engine,
               aspectRatio: directorForm.aspectRatio,
@@ -2580,6 +2631,12 @@ window.__ModuleLoader__?.load({
               sources: assetDirInput.trim() || undefined,
               topic: directorForm.topic.trim() || script?.title || '',
               userPrompt: directorForm.topic.trim() || script?.goal || '',
+              goal: directorForm.topic.trim() || script?.goal || '',
+              displayTitle: directorForm.displayTitle || undefined,
+              genre: directorForm.genre || undefined,
+              genreLabel: directorForm.genreLabel || undefined,
+              directorNotes: directorForm.directorNotes || undefined,
+              contentOutline: Array.isArray(directorForm.contentOutline) && directorForm.contentOutline.length > 0 ? directorForm.contentOutline : undefined,
               engine: directorForm.engine,
               aspectRatio: directorForm.aspectRatio,
               quality: directorForm.quality,
@@ -4360,6 +4417,23 @@ window.__ModuleLoader__?.load({
                   )
                 }),
               ),
+              h(
+                'div',
+                {
+                  style: {
+                    padding: '10px 18px',
+                    borderTop: `1px solid ${T.borderSubtle}`,
+                    fontSize: '12px',
+                    color: T.textMuted,
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    gap: '8px',
+                  },
+                },
+                h('span', null, '作者 Merziller · 交流/反馈'),
+                h('span', { style: { fontFamily: 'var(--dsh-font-mono)', fontWeight: 700, color: T.textSecondary, userSelect: 'text' } }, 'QQ 1411574209'),
+              ),
             ),
           )
         : null
@@ -5116,11 +5190,17 @@ window.__ModuleLoader__?.load({
               ),
             ),
             h('textarea', {
-              rows: 3,
+              rows: 6,
               value: directorForm.topic,
               onChange: (ev) => setDirectorForm((p) => ({ ...p, topic: ev.target.value })),
+              onBlur: (ev) => {
+                const v = ev.target.value.trim()
+                if (v && v !== String(script?.goal || '').trim()) {
+                  updateDirectorAndSync({ goal: v })
+                }
+              },
               placeholder: '写一句需求即可（写完可点上方「✨ AI 一键润色提示词」自动扩写为专业指令）：\n例如：帮我把这几张产品截图做成一个软件功能介绍短片，语气真诚清晰...',
-              style: { ...inputStyle, fontSize: '15px', lineHeight: 1.65, resize: 'vertical', flex: 1, minHeight: '94px' },
+              style: { ...inputStyle, fontSize: '14.5px', lineHeight: 1.65, resize: 'vertical', flex: 1, minHeight: '148px' },
             }),
             h(
               'div',
@@ -5863,11 +5943,17 @@ window.__ModuleLoader__?.load({
               ),
             ),
             h('textarea', {
-              rows: 4,
+              rows: 8,
               value: directorForm.topic,
               onChange: (ev) => setDirectorForm((p) => ({ ...p, topic: ev.target.value })),
+              onBlur: (ev) => {
+                const v = ev.target.value.trim()
+                if (v && v !== String(script?.goal || '').trim()) {
+                  updateDirectorAndSync({ goal: v })
+                }
+              },
               placeholder: '写一句需求即可（点右上「✨ AI 一键润色提示词」可自动扩写并覆盖为专业导演指令）...',
-              style: { ...inputStyle, fontSize: '14.5px', lineHeight: 1.6, resize: 'vertical' },
+              style: { ...inputStyle, fontSize: '14.5px', lineHeight: 1.6, resize: 'vertical', minHeight: '188px' },
             }),
           ),
           h(

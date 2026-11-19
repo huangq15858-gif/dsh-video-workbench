@@ -7,10 +7,24 @@
 [![Platform: Windows 11](https://img.shields.io/badge/Platform-Windows%2011-0078D6.svg)](#)
 [![Engine: Remotion 4.x + Three.js 3D & HTML5](https://img.shields.io/badge/Engine-Remotion%204.x%20%2B%20Three.js%203D%20%7C%20HTML5-38bdf8.svg)](#)
 [![TTS: IndexTTS-2.5 & GPT-SoVITS](https://img.shields.io/badge/TTS-IndexTTS--2.5%20%7C%20GPT--SoVITS-10b981.svg)](#)
+[![Author QQ: 1411574209](https://img.shields.io/badge/Author%20QQ-1411574209-12B7F5.svg)](#-联系作者与交流反馈-contact)
+
+---
+
+## 🎥 官方完整实操教程视频（由本插件全流程自动生成）
+
+> 想要快速上手从「新建工程 → 算力体检与低配保护 → AI 一键润色提示词 → 素材提词拍 → 四协议大模型与多引擎配音 → 监看台 AI 改片 → 9 宫格质检导出与任务断点重试」的全流程，可直接观看或下载本仓库附带的 **1080P 高清亮色交互实操教程成片（3 分 17 秒，24 幕分镜，由本插件自身全链路自动生成）**：
+>
+> - **仓库内视频文件**：[`docs/tutorial/dsh-video-workbench-tutorial.mp4`](./docs/tutorial/dsh-video-workbench-tutorial.mp4)
+> - **GitHub Release 高速直链下载**：[`dsh-video-workbench-tutorial.mp4 (1080P MP4)`](https://github.com/Merziller/dsh-video-workbench/releases/download/v0.3.7/dsh-video-workbench-tutorial.mp4)
+> - **作者交流联系（Bug 反馈 / 定制建议 / 使用答疑）**：**QQ `1411574209`**
+
+![DSH Video Workbench 实操教程 3×3 关键帧预览](./docs/tutorial/tutorial-preview-3x3.png)
 
 ---
 
 ## 📖 目录 / Table of Contents
+- [🎥 官方完整实操教程视频](#-官方完整实操教程视频由本插件全流程自动生成)
 - [一、核心特性 (Features)](#-一核心特性-features)
 - [💻 电脑配置要求与低配电脑保护机制 (Hardware & Low-Spec Guard)](#-电脑配置要求与低配电脑保护机制-hardware--low-spec-guard)
 - [二、系统架构图 (Architecture)](#-二系统架构图-architecture)
@@ -19,6 +33,7 @@
 - [五、本地 IndexTTS-2.5 与声音克隆指南](#-五本地-indextts-25-与声音克隆指南)
 - [六、数字人叠加引擎说明 (`@dsh-video/tool-avatar`)](#-六数字人叠加引擎说明-dsh-videotool-avatar)
 - [七、常见问题排查 (Troubleshooting)](#-七常见问题排查-troubleshooting)
+- [📬 联系作者与交流反馈 (Contact)](#-联系作者与交流反馈-contact)
 - [八、English Documentation](#-八english-documentation)
 
 ---
@@ -40,7 +55,7 @@
      - `🔥 纯音乐卡点 (免 TTS)`：跳过语音合成，按 `0.5` / `1` / `2` / `4` 拍自动对准重拍与高潮切镜，输出高燃纯动画 MV 与卡点音效。
    - **依题材自适应节奏 (`auto` / `calm` / `balanced` / `dynamic`)**：不再一刀切套用历史片快闪节奏——品牌故事温情短片自动保持 `4~7s/镜` 从容留白，产品功能/教程保持 `3~5s/镜` 清晰解说，历史卡点 MV 才启用高速半拍闪烁切镜。
 4. **🪐 Opus 5.5 级全开放自由编码 (`Freeform Three.js 3D` + 动态 `SVG` + `HUD` 遥测 + 节拍弹簧物理) + 内置保底预设**：
-   - **真实交互式教程镜头、像素级坐标锚点与全链路无限制开放体裁 (`v0.3.4` ~ `v0.3.6`)**：支持高清晰亮色 UI 教程拍摄模式（`windowTheme: "light"`、`1.8x~2.4x` 局部特写推镜 `<FocusShot>`、`(0,0)` 尖端对齐光标与点击涟漪 `<InteractiveCursor>`、`clipPath` 平滑抽屉展开 `<UiDrawerSlide>` 及逐字打字 `<UiTypingOverlay>`，并自动挂载对齐 `click` / `whoosh` / `typing` 音效）；新增 **AI 大模型语义选音 (`castVoicesWithLlm`)**，自动索引本地高表现力精品音色并动态驱动 8 维情绪向量与语速曲线；**`v0.3.5`** 打通自创体裁标签 **`genreLabel` 全链路透传** 与 **`freeform-stage` 零固定版式策划**；**`v0.3.6`** 升级全四协议多模态视觉接口（支持 Vision 大模型自动识别截图真实按钮坐标与 `*.anchors.json` 精确 DOM 锚点）、重构 `<FocusShot>` 精确等比容器查询坐标系（彻底消除 `objectFit: contain` 留白导致的光标错位）、支持真实界面操作录屏视频无裁切直放与零 PPT 沉浸式教程生成。
+   - **真实交互式教程镜头、像素级坐标锚点与全链路无限制开放体裁 (`v0.3.4` ~ `v0.3.7`)**：支持高清晰亮色 UI 教程拍摄模式（`windowTheme: "light"`、`1.8x~2.4x` 局部特写推镜 `<FocusShot>`、`(0,0)` 尖端对齐光标与点击涟漪 `<InteractiveCursor>`、`clipPath` 平滑抽屉展开 `<UiDrawerSlide>` 及逐字打字 `<UiTypingOverlay>`，并自动挂载对齐 `click` / `whoosh` / `typing` 音效）；新增 **AI 大模型语义选音 (`castVoicesWithLlm`)**，自动索引本地高表现力精品音色并动态驱动 8 维情绪向量与语速曲线；**`v0.3.5`** 打通自创体裁标签 **`genreLabel` 全链路透传** 与 **`freeform-stage` 零固定版式策划**；**`v0.3.6`** 升级全四协议多模态视觉接口（支持 Vision 大模型自动识别截图真实按钮坐标与 `*.anchors.json` 精确 DOM 锚点）、重构 `<FocusShot>` 精确等比容器查询坐标系（彻底消除 `objectFit: contain` 留白导致的光标错位）、支持真实界面操作录屏视频无裁切直放与零 PPT 沉浸式教程生成；**`v0.3.7`** 修复点击一键出片或重新切换工程后 AI 润色完整指令（`script.goal` / `contentOutline` / `directorNotes`）被覆盖清空或回显空白的问题，在作战大屏与第 2 步大号文本框中完整持久回显全部结构化导演指令。
    - **真正无预设束缚的 AI 自由造景 (`<FreeformThreeStage />` + 动态 `<svg>`)**：在大模型编码模式下，AI 不再被固定模板或预设数量捆死！插件直接把原生 **`THREE.*`** 几何与相机接口（`FreeformThreeApi`：`addMesh` / `addLine3D` / `addParticle3D` / `addLabel3D` / `orbitPoint` / `arc3D`）、动态 **`<svg>`** 曲线工具（`buildSmoothSvgPath` / `describeSvgArc`）与 **HTML5 3D 透视投影** 开放给大模型主程，AI 可针对任意题材从零自由编写专属 3D 旋转地球、3D 芯片爆炸拆解、K线雷达图、思维导图或公式推演；内置 6 大 3D 舞台、5 种动态 SVG 拓扑 (`<SvgArchitectureDiagram />`) 与全息 HUD 代码面板 (`<HudDataDashboard />` + `<HudTelemetryOverlay />`) 既可作原子积木混搭，也作离线/容错保底。
    - **支柱 ① · 原生 `three` + `@remotion/three` (`<ThreeCyberStage />` / `ThreeCanvas`)**：内置 6 大帧级确定性 Three.js 3D 空间舞台预设（`orbital-core` 3D 量子二十面体与三轴陀螺仪星环、`cyber-terrain` 3D 赛博山谷网格与日冕门户、`particle-vortex` 3D 星云漩涡与神经网络突触、`floating-monoliths` 3D 空间悬浮晶碑矩阵、`chrono-helix` 3D 时空双螺旋隧道、`matrix-cubes` 3D 算力矩阵波浪），逐帧随音乐重拍脉冲与相机推拉同步响应。
    - **支柱 ② · 动态 SVG 系统架构拓扑图 (`<SvgArchitectureDiagram />` / `svg-architecture-flow`)**：内置 5 种可编程架构拓扑（`neural-pipeline`、`microservice-mesh`、`layered-stack`、`radial-hub`、`ast-tree`），包含弹簧逐级弹出的架构节点卡、三次贝塞尔发光电路总线与沿路径高速穿梭的数据包光子脉冲 (`<circle>`)。
@@ -244,6 +259,16 @@ node scripts/pack-bundle.mjs
 
 ---
 
+## 📬 联系作者与交流反馈 (Contact)
+
+使用过程中遇到任何安装配置问题、Bug 反馈、功能建议或合作交流，欢迎直接联系作者：
+
+- **作者 QQ**：`1411574209`
+- **GitHub 仓库与 Issue 反馈**：https://github.com/Merziller/dsh-video-workbench/issues
+- **实操教程视频**：[`docs/tutorial/dsh-video-workbench-tutorial.mp4`](./docs/tutorial/dsh-video-workbench-tutorial.mp4)
+
+---
+
 ## 🌐 八、English Documentation
 
 ### Overview
@@ -263,5 +288,7 @@ node scripts/pack-bundle.mjs
 - `packages/dsh-preset-video`: Registers the `视频制作模式` (`video-maker`) DSH Agent Preset and project scaffolder.
 - `packages/dsh-web-video-workbench`: Registers `/api/video-workbench/*` endpoints and the DSH Desktop `main` (with top-left `← DeepSeek 对话` layout switcher), `sidebar.panellist`, and `tool.call.toolview` UI slots.
 
-### License
-Released under the [MIT License](./LICENSE).
+### Contact & License
+- **Author**: Merziller — **QQ**: `1411574209` · [GitHub Issues](https://github.com/Merziller/dsh-video-workbench/issues)
+- **Full Interactive Tutorial Video (1080p MP4)**: [`docs/tutorial/dsh-video-workbench-tutorial.mp4`](./docs/tutorial/dsh-video-workbench-tutorial.mp4)
+- **License**: Released under the [MIT License](./LICENSE).

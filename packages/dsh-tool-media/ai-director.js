@@ -9,6 +9,8 @@ import { join, resolve } from 'node:path'
 import {
   cleanSubtitleChunk,
   deriveVerbalSubtitleParts,
+  formatDirectorBrief,
+  normalizeContentOutline,
   normalizeNumeralsForDisplay,
   normalizeVideoStyle,
   readScriptJson,
@@ -657,14 +659,33 @@ export async function planVideoFromAssets(options = {}) {
       ? options.workflowSteps
       : existing.workflowSteps
 
+  const mergedOutline = Array.isArray(briefSplit.contentOutline) && briefSplit.contentOutline.length > 0
+    ? briefSplit.contentOutline
+    : normalizeContentOutline(existing.contentOutline)
+  const mergedNotes = briefSplit.directorNotes || existing.directorNotes || ''
+  const rawGoalInput =
+    String(options.userPrompt || options.polishedTopic || '').trim() ||
+    (goal && goal !== '呈现具备动态视觉排版、空间运镜、粒子光效、节拍音效、配乐与配音的完整成片' ? String(goal).trim() : '') ||
+    (String(topic || '').trim().length > 36 || /【/.test(String(topic || '')) ? String(topic).trim() : '') ||
+    String(existing.goal || '').trim()
+  const preservedGoal =
+    formatDirectorBrief({
+      goal: rawGoalInput,
+      displayTitle: briefSplit.displayTitle,
+      genreLabel: resolvedGenreLabel,
+      contentOutline: mergedOutline,
+      directorNotes: mergedNotes,
+      topic: coreTopic,
+    }) || goal
+
   const nextScript = {
     ...existing,
     authoringMode: 'local-draft',
     title: projectTitle,
     topic: coreTopic,
     displayTitle: briefSplit.displayTitle,
-    directorNotes: briefSplit.directorNotes || existing.directorNotes || '',
-    contentOutline: briefSplit.contentOutline || existing.contentOutline || '',
+    directorNotes: mergedNotes,
+    contentOutline: mergedOutline,
     genre: resolvedGenre,
     genreLabel: resolvedGenreLabel,
     style: normalizedStyle,
@@ -685,7 +706,7 @@ export async function planVideoFromAssets(options = {}) {
     brandMark: resolvedBrandMark || undefined,
     workflowSteps: resolvedWorkflowSteps,
     audience,
-    goal,
+    goal: preservedGoal,
     voiceMode: voiceId && voiceId !== 'auto' ? 'manual' : 'auto',
     defaultVoiceId: voiceId || 'auto',
     narrationMode: options.narrationMode || existing.narrationMode || 'tts',

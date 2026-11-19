@@ -4,7 +4,9 @@ import {
   buildSentenceSubtitles,
   cleanSubtitleChunk,
   createAbortError,
+  formatDirectorBrief,
   loadEnv,
+  normalizeContentOutline,
   normalizeNumeralsForDisplay,
   probeAudioDuration,
   probeHardwareProfile,
@@ -167,7 +169,9 @@ async function executeMultiAgentRunner(run, helpers) {
     const brief = splitDirectorBrief(spec)
     spec.rawTopic = spec.rawTopic || spec.topic || ''
     spec.directorNotes = brief.directorNotes
-    spec.contentOutline = brief.contentOutline || spec.contentOutline || ''
+    spec.contentOutline = Array.isArray(brief.contentOutline) && brief.contentOutline.length > 0
+      ? brief.contentOutline
+      : normalizeContentOutline(spec.contentOutline)
     spec.genre = brief.genre || spec.genre || ''
     spec.genreLabel = brief.genreLabel || spec.genreLabel || ''
     spec.displayTitle = brief.displayTitle
@@ -221,6 +225,23 @@ async function executeMultiAgentRunner(run, helpers) {
     if (preserveExisting) {
       // Allow re-running director preservation smoothly
     } else {
+      let existingBeforePlan = {}
+      if (existsSync(join(absDir, 'script.json'))) {
+        try {
+          existingBeforePlan = readScriptJson(absDir).data || {}
+        } catch {}
+      }
+      const preservedGoal = formatDirectorBrief({
+        goal:
+          String(spec.userPrompt || spec.polishedTopic || spec.goal || '').trim() ||
+          (String(spec.rawTopic || '').trim().length > 36 || /【/.test(String(spec.rawTopic || '')) ? String(spec.rawTopic).trim() : '') ||
+          String(existingBeforePlan.goal || '').trim(),
+        displayTitle: spec.displayTitle,
+        genreLabel: spec.genreLabel,
+        contentOutline: spec.contentOutline,
+        directorNotes: spec.directorNotes,
+        topic: spec.rawTopic || spec.topic,
+      })
       await planVideoFromAssets({
         projectDir: absDir,
         topic: spec.topic || '',
@@ -245,7 +266,8 @@ async function executeMultiAgentRunner(run, helpers) {
         fps: effectiveFps,
         voiceId,
         narrationMode: spec.narrationMode || '',
-        goal: spec.userPrompt || '',
+        userPrompt: preservedGoal,
+        goal: preservedGoal,
       })
     }
 

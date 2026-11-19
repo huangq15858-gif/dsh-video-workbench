@@ -12,6 +12,7 @@ import { dirname, join, normalize, resolve } from 'node:path'
 import {
   cleanSubtitleChunk,
   createAbortError,
+  formatDirectorBrief,
   normalizeNumeralsForDisplay,
   probeAudioDuration,
   probeHardwareProfile,
@@ -1069,6 +1070,15 @@ export async function runAiStudioPipeline(options = {}) {
     displayTitle: rawBriefSplit.displayTitle,
     directorNotes,
     contentOutline,
+    goal:
+      formatDirectorBrief({
+        goal: userPrompt || options.goal || (String(topic || '').trim().length > 36 || /【/.test(String(topic || '')) ? String(topic).trim() : '') || existingScript?.goal || '',
+        displayTitle: rawBriefSplit.displayTitle,
+        genreLabel: plan.genreLabel || resolvedGenreLabel,
+        contentOutline,
+        directorNotes,
+        topic: coreTopic,
+      }) || existingScript?.goal || '',
     genre: plan.genre || resolvedGenre,
     genreLabel: plan.genreLabel || resolvedGenreLabel,
     style: plan.style || existingScript?.style || 'tech',
